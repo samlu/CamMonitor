@@ -42,6 +42,16 @@ interface SecurityRepository {
     // Envelope Security
     fun createEnvelope(recipientId: String, plaintextJson: String, secretOrDerivedKey: ByteArray): SignalingEnvelope
     fun verifyAndDecryptEnvelope(envelope: SignalingEnvelope, secretOrDerivedKey: ByteArray, isOtpKey: Boolean = false): String?
+    fun verifyEnvelopeSignature(envelope: SignalingEnvelope, publicKeyBase64: String): Boolean {
+        return try {
+            val pubKey = CryptoUtils.publicKeyFromBase64(publicKeyBase64)
+            val sigPayload = "${envelope.senderId}${envelope.recipientId}${envelope.timestamp}${envelope.nonce}${envelope.ciphertext}"
+                .toByteArray(Charsets.UTF_8)
+            CryptoUtils.verify(sigPayload, envelope.signature, pubKey)
+        } catch (_: Exception) {
+            false
+        }
+    }
 
     // Preferences / Settings
     fun isViewerAudioPlaybackEnabled(): Boolean

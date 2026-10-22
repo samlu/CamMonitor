@@ -328,6 +328,10 @@ private suspend fun handleScannedQr(
         try {
             signalingClient.incomingMessages.collect { (senderId, msg) ->
                 if (msg is SignalingMessage.PairConfirm && senderId == payload.deviceId) {
+                    if (senderId != msg.paDeviceId) {
+                        AppLogger.w("ViewerPairing", "Dropped PAIR_CONFIRM: senderId mismatch ($senderId != ${msg.paDeviceId})")
+                        return@collect
+                    }
                     isConfirmed = true
                     retryJob.cancel()
                     securityRepo.clearPairingOtp()

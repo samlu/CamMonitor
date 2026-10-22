@@ -72,6 +72,10 @@ fun CameraPairingScreen(
         signalingClient.startListening()
         signalingClient.incomingMessages.collect { (senderId, msg) ->
             if (msg is SignalingMessage.PairRequest) {
+                if (senderId != msg.pbDeviceId) {
+                    AppLogger.w("CameraPairing", "Dropped PAIR_REQUEST: senderId mismatch ($senderId != ${msg.pbDeviceId})")
+                    return@collect
+                }
                 AppLogger.i("CameraPairing", "Received PAIR_REQUEST from ${msg.pbName} ($senderId)")
                 val newViewer = PairedDevice(
                     deviceId = msg.pbDeviceId,

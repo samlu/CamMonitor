@@ -334,16 +334,19 @@ class MqttSignalingClient(
                     )
                 } else null
 
+                var usedOtpKey = false
                 val decryptedJson = when {
                     ecdhKey != null -> {
                         val result = securityRepository.verifyAndDecryptEnvelope(envelope, ecdhKey, isOtpKey = false)
                         if (result == null && otpKey != null) {
+                            usedOtpKey = true
                             securityRepository.verifyAndDecryptEnvelope(envelope, otpKey, isOtpKey = true)
                         } else {
                             result
                         }
                     }
                     otpKey != null -> {
+                        usedOtpKey = true
                         securityRepository.verifyAndDecryptEnvelope(envelope, otpKey, isOtpKey = true)
                     }
                     else -> {
@@ -355,6 +358,23 @@ class MqttSignalingClient(
                 if (decryptedJson != null) {
                     val message = SignalingMessage.fromJson(decryptedJson)
                     if (message != null) {
+                        // Enforce Proof-of-Possession on OTP-decrypted handshake messages
+                        if (usedOtpKey && (message is SignalingMessage.PairRequest || message is SignalingMessage.PairConfirm)) {
+                            val (claimedDeviceId, claimedPubKey) = when (message) {
+                                is SignalingMessage.PairRequest -> message.pbDeviceId to message.pbPublicKeyBase64
+                                is SignalingMessage.PairConfirm -> message.paDeviceId to message.paPublicKeyBase64
+                            }
+                            if (claimedDeviceId != envelope.senderId) {
+                                AppLogger.w(tag, "Handshake dropped: deviceId mismatch (envelope=${envelope.senderId}, claimed=$claimedDeviceId)")
+                                return@launch
+                            }
+                            if (claimedPubKey.isNullOrEmpty() || !securityRepository.verifyEnvelopeSignature(envelope, claimedPubKey)) {
+                                AppLogger.w(tag, "Handshake dropped: Proof-of-Possession signature verification failed for ${envelope.senderId}")
+                                return@launch
+                            }
+                            AppLogger.i(tag, "Proof-of-Possession verified for ${message.javaClass.simpleName} from ${envelope.senderId}")
+                        }
+
                         AppLogger.i(tag, "Received verified message [${message.javaClass.simpleName}] from ${envelope.senderId}")
                         _incomingMessages.emit(Pair(envelope.senderId, message))
                     } else {
