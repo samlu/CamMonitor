@@ -34,8 +34,8 @@ class WebRtcManager(private val context: Context) {
     private var localRenderer: SurfaceViewRenderer? = null
 
     // Active PeerConnections mapped by peerId (max 2 for PA)
-    private val peerConnections = mutableMapOf<String, PeerConnection>()
-    private val dataChannels = mutableMapOf<String, DataChannel>()
+    private val peerConnections = java.util.concurrent.ConcurrentHashMap<String, PeerConnection>()
+    private val dataChannels = java.util.concurrent.ConcurrentHashMap<String, DataChannel>()
 
     // Flows
     private val _incomingIceCandidates = MutableSharedFlow<Pair<String, IceCandidate>>(extraBufferCapacity = 32)
@@ -63,7 +63,7 @@ class WebRtcManager(private val context: Context) {
     // Receiver state (PB & PA)
     private var remoteVideoTrack: VideoTrack? = null
     private var remoteAudioTrack: AudioTrack? = null
-    private val remoteAudioTracks = mutableMapOf<String, AudioTrack>()
+    private val remoteAudioTracks = java.util.concurrent.ConcurrentHashMap<String, AudioTrack>()
     private var isRemoteAudioEnabled = false
     private var remoteRenderer: SurfaceViewRenderer? = null
     @Volatile

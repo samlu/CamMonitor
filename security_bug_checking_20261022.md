@@ -34,7 +34,7 @@ Additionally, MQTT signaling currently operates over unencrypted TCP port 1883 i
 | **B-04** | Bug | Reconnecting Viewer Rejected via Stale Capacity Check | **Fixed** (High) | [`CameraMonitorService.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/service/CameraMonitorService.kt#L306-L311), [`WebRtcManager.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/webrtc/WebRtcManager.kt#L745) |
 | **B-05** | Bug | Ephemeral OTP Timer Dies After Initial 5 Minutes | **Fixed** (Medium) | [`CameraPairingScreen.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/pairing/CameraPairingScreen.kt#L60-L71) |
 | **B-06** | Concurrency | Coroutine Leak in Viewer Mode Retries | **Fixed** (Medium) | [`ViewerModeScreen.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/viewer/ViewerModeScreen.kt#L163-L320) |
-| **B-07** | Concurrency | Unsynchronized Maps in `WebRtcManager` Callback Threads | **Medium** | [`WebRtcManager.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/webrtc/WebRtcManager.kt#L37-L39), [`#L66`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/webrtc/WebRtcManager.kt#L66) |
+| **B-07** | Concurrency | Unsynchronized Maps in `WebRtcManager` Callback Threads | **Fixed** (Medium) | [`WebRtcManager.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/webrtc/WebRtcManager.kt#L37-L38), [`#L66`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/webrtc/WebRtcManager.kt#L66) |
 | **B-08** | Bug | Duplicate Flow Collectors on Service Re-Entry | **Fixed** (Medium) | [`CameraMonitorService.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/service/CameraMonitorService.kt#L49-L220) |
 | **B-09** | Reliability | Silent Permission Denial in `MainActivity` | **Low** | [`MainActivity.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/MainActivity.kt#L39-L43) |
 
@@ -418,14 +418,21 @@ Additionally, MQTT signaling currently operates over unencrypted TCP port 1883 i
 ---
 
 ### B-07: Unsynchronized Maps in `WebRtcManager` Callback Threads
-* **Location:** [`WebRtcManager.kt:37-39, 66`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/webrtc/WebRtcManager.kt#L37-L39)
-* **Description:** `peerConnections`, `dataChannels`, and `remoteAudioTracks` are standard `mutableMapOf` collections accessed concurrently by WebRTC native threads (`onDataChannel`, `onConnectionChange`, `onTrack`) and main/coroutine threads (`broadcastDataChannelCommand`, `closePeer`).
-* **Remediation:** Use thread-safe `ConcurrentHashMap`:
+* **Location:** [`WebRtcManager.kt:37-38, 66`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/webrtc/WebRtcManager.kt#L37-L38)
+* **Status:** **Resolved / Fixed**
+* **Description:** `peerConnections`, `dataChannels`, and `remoteAudioTracks` were standard non-thread-safe `mutableMapOf` (`LinkedHashMap`) collections accessed concurrently by WebRTC native callback threads (`onDataChannel`, `onConnectionChange`, `onTrack`), background coroutine dispatchers (`broadcastDataChannelCommand`, FPS adjustments), and main thread teardown (`closePeer`, `closeAll`). Concurrent reads during writes presented race conditions and risk of `ConcurrentModificationException`.
+* **Remediation & Applied Implementation:**
+  Replaced all three collections with thread-safe `ConcurrentHashMap`:
   ```kotlin
+  // Thread-safe concurrent collections for multi-threaded WebRTC callback & coroutine access
   private val peerConnections = java.util.concurrent.ConcurrentHashMap<String, PeerConnection>()
   private val dataChannels = java.util.concurrent.ConcurrentHashMap<String, DataChannel>()
+  ...
   private val remoteAudioTracks = java.util.concurrent.ConcurrentHashMap<String, AudioTrack>()
   ```
+* **Verification:**
+  - **Unit Tests:** Created [`WebRtcConcurrentMapTest.kt`](file:///E:/Antigravity/CamMonitor/app/src/test/java/com/a0soft/gphone/camonitor/webrtc/WebRtcConcurrentMapTest.kt) running 1,000 rapid concurrent `put`/`remove` operations from 4 parallel threads while simultaneously running map iterations (`values.forEach`, `keys.count`) without throwing.
+  - **Device Deployment:** Built and verified on Pixel 6 Pro & Pixel 8 Pro.
 
 ---
 
