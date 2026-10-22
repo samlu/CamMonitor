@@ -32,7 +32,7 @@ Additionally, MQTT signaling currently operates over unencrypted TCP port 1883 i
 | **B-02** | Concurrency | Main-Thread Deadlock / 2000ms Freeze in `stopCapture()` | **Fixed** (Critical) | [`CameraXVideoCapturer.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/camera/CameraXVideoCapturer.kt#L597-L634) |
 | **B-03** | Bug | WebRTC Reconnection Stalls via Stale Duplicate ICE Cache | **Fixed** (High) | [`WebRtcManager.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/webrtc/WebRtcManager.kt#L746-L758) |
 | **B-04** | Bug | Reconnecting Viewer Rejected via Stale Capacity Check | **Fixed** (High) | [`CameraMonitorService.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/service/CameraMonitorService.kt#L306-L311), [`WebRtcManager.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/webrtc/WebRtcManager.kt#L745) |
-| **B-05** | Bug | Ephemeral OTP Timer Dies After Initial 5 Minutes | **Medium** | [`CameraPairingScreen.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/pairing/CameraPairingScreen.kt#L60-L68) |
+| **B-05** | Bug | Ephemeral OTP Timer Dies After Initial 5 Minutes | **Fixed** (Medium) | [`CameraPairingScreen.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/pairing/CameraPairingScreen.kt#L60-L71) |
 | **B-06** | Concurrency | Coroutine Leak in Viewer Mode Retries | **Medium** | [`ViewerModeScreen.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/viewer/ViewerModeScreen.kt#L257-L281) |
 | **B-07** | Concurrency | Unsynchronized Maps in `WebRtcManager` Callback Threads | **Medium** | [`WebRtcManager.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/webrtc/WebRtcManager.kt#L37-L39), [`#L66`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/webrtc/WebRtcManager.kt#L66) |
 | **B-08** | Bug | Duplicate Flow Collectors on Service Re-Entry | **Fixed** (Medium) | [`CameraMonitorService.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/service/CameraMonitorService.kt#L49-L220) |
@@ -350,7 +350,8 @@ Additionally, MQTT signaling currently operates over unencrypted TCP port 1883 i
 ---
 
 ### B-05: Ephemeral OTP Timer Dies After Initial 5 Minutes
-* **Location:** [`CameraPairingScreen.kt:60-68`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/pairing/CameraPairingScreen.kt#L60-L68)
+* **Location:** [`CameraPairingScreen.kt:60-71`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/pairing/CameraPairingScreen.kt#L60-L71)
+* **Status:** **Resolved / Fixed**
 * **Description:**
   ```kotlin
   LaunchedEffect(Unit) {
@@ -362,8 +363,9 @@ Additionally, MQTT signaling currently operates over unencrypted TCP port 1883 i
       secondsLeft = 300
   }
   ```
-  When `secondsLeft` reaches 0, it regenerates the OTP once, resets `secondsLeft = 300`, and the `LaunchedEffect` terminates permanently.
-* **Remediation:** Wrap in an outer loop checking `isActive`:
+  When `secondsLeft` reached 0 after the first 5 minutes, it regenerated the OTP once, reset `secondsLeft = 300`, and the `LaunchedEffect` coroutine completed permanently. For all subsequent time, `secondsLeft` was frozen at 300 ("05:00"), the timer never ticked again, and once the second OTP expired in [`SecurityRepository`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/security/SecurityRepository.kt#L187), the displayed QR code became permanently invalid.
+* **Remediation & Applied Implementation:**
+  Wrapped the countdown loop inside an outer `while (isActive)` loop so the countdown decrements continuously across all subsequent 5-minute cycles:
   ```kotlin
   LaunchedEffect(Unit) {
       while (isActive) {
@@ -371,11 +373,15 @@ Additionally, MQTT signaling currently operates over unencrypted TCP port 1883 i
               delay(1000L)
               secondsLeft--
           }
+          // Regenerate OTP if expired and restart 5-minute countdown
           otp = securityRepo.generatePairingOtp()
           secondsLeft = 300
       }
   }
   ```
+* **Verification:**
+  - **Unit Tests:** Created [`CameraPairingOtpTest.kt`](file:///E:/Antigravity/CamMonitor/app/src/test/java/com/a0soft/gphone/camonitor/pairing/CameraPairingOtpTest.kt) verifying the countdown coroutine remains active and decrements continuously across multiple 5-minute cycles (T = 300s, T = 600s), generating new OTPs each cycle.
+  - **Device Deployment:** Built and verified on Pixel 6 Pro & Pixel 8 Pro.
 
 ---
 

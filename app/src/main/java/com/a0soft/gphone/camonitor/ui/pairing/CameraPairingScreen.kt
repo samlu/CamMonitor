@@ -24,6 +24,7 @@ import com.a0soft.gphone.camonitor.data.security.SecurityRepository
 import com.a0soft.gphone.camonitor.log.AppLogger
 import com.a0soft.gphone.camonitor.ui.common.QrUtils
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,15 +57,17 @@ fun CameraPairingScreen(
         }
     }
 
-    // OTP 5-minute countdown timer
+    // OTP 5-minute countdown timer (repeats continuously while screen is active)
     LaunchedEffect(Unit) {
-        while (secondsLeft > 0) {
-            delay(1000L)
-            secondsLeft--
+        while (isActive) {
+            while (secondsLeft > 0) {
+                delay(1000L)
+                secondsLeft--
+            }
+            // Regenerate OTP if expired and restart 5-minute countdown
+            otp = securityRepo.generatePairingOtp()
+            secondsLeft = 300
         }
-        // Regenerate OTP if expired
-        otp = securityRepo.generatePairingOtp()
-        secondsLeft = 300
     }
 
     // Listen for incoming PAIR_REQUEST over MQTT
