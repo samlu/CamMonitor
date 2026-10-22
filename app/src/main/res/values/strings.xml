@@ -138,4 +138,11 @@
     <string name="about_open_source_notice">This app is open source under the Apache 2.0 License.</string>
     <string name="about_view_on_github">View on GitHub</string>
     <string name="about_github_url">https://github.com/samlu/CamMonitor</string>
+    <!-- Permissions Rationale & Recovery -->
+    <string name="permission_dialog_title">Permissions Required</string>
+    <string name="permission_camera_reason">Camera: Required to stream video and scan pairing QR codes.</string>
+    <string name="permission_audio_reason">Microphone: Required for 2-way audio intercom.</string>
+    <string name="permission_notification_reason">Notifications: Required to keep camera monitoring running in the background.</string>
+    <string name="permission_open_settings">Open Settings</string>
+    <string name="permission_grant">Grant</string>
 </resources>

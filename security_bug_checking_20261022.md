@@ -36,7 +36,7 @@ Additionally, MQTT signaling currently operates over unencrypted TCP port 1883 i
 | **B-06** | Concurrency | Coroutine Leak in Viewer Mode Retries | **Fixed** (Medium) | [`ViewerModeScreen.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/viewer/ViewerModeScreen.kt#L163-L320) |
 | **B-07** | Concurrency | Unsynchronized Maps in `WebRtcManager` Callback Threads | **Fixed** (Medium) | [`WebRtcManager.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/webrtc/WebRtcManager.kt#L37-L38), [`#L66`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/webrtc/WebRtcManager.kt#L66) |
 | **B-08** | Bug | Duplicate Flow Collectors on Service Re-Entry | **Fixed** (Medium) | [`CameraMonitorService.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/service/CameraMonitorService.kt#L49-L220) |
-| **B-09** | Reliability | Silent Permission Denial in `MainActivity` | **Low** | [`MainActivity.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/MainActivity.kt#L39-L43) |
+| **B-09** | Reliability | Silent Permission Denial in `MainActivity` | **Fixed** (Low) | [`MainActivity.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/MainActivity.kt#L55-L162) |
 
 ---
 
@@ -483,9 +483,17 @@ Additionally, MQTT signaling currently operates over unencrypted TCP port 1883 i
 ---
 
 ### B-09: Silent Permission Denial in `MainActivity`
-* **Location:** [`MainActivity.kt:39-43`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/MainActivity.kt#L39-L43)
-* **Description:** The permission callback leaves handling empty (`// Permissions handled`). Denying `CAMERA` or `RECORD_AUDIO` produces no feedback, resulting in crashes or black screens when entering Camera or Viewer modes.
-* **Remediation:** Track denied permissions in state and prompt the user before opening camera or microphone streams.
+* **Location:** [`MainActivity.kt:55-162`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/MainActivity.kt#L55-L162)
+* **Status:** **Resolved / Fixed**
+* **Description:** The permission callback previously left handling empty (`// Permissions handled`). Denying `CAMERA` or `RECORD_AUDIO` produced no feedback, resulting in crashes or black screens when entering Camera or Viewer modes.
+* **Remediation & Applied Implementation:**
+  1. **Intercepted Screen Transitions:** Added `checkAndRequestPermissions()` guarding all navigation actions requiring hardware resources (`CAMERA`, `RECORD_AUDIO`, `POST_NOTIFICATIONS`) in [`HomeScreen`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/home/HomeScreen.kt) and [`ManageDevicesScreen`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/devices/ManageDevicesScreen.kt).
+  2. **Transient vs Permanent Denial Distinction:** Tracked `deniedPermissions` and `isPermanentlyDenied = !ActivityCompat.shouldShowRequestPermissionRationale(activity, perm)`.
+  3. **User Feedback Dialog:** Rendered Material 3 `AlertDialog` displaying rationale for each missing permission. If permanently denied, directs the user directly to App Settings (`Settings.ACTION_APPLICATION_DETAILS_SETTINGS`); otherwise allows re-requesting.
+  4. **Auto-Recovery on `onResume`:** When the user returns from system settings, `onResume()` automatically re-evaluates permissions, clears the rationale dialog, and executes the pending queued action.
+* **Verification:**
+  - **Unit Tests:** Created [`PermissionStateTest.kt`](file:///E:/Antigravity/CamMonitor/app/src/test/java/com/a0soft/gphone/camonitor/permission/PermissionStateTest.kt) testing immediate execution on grant, action queueing on transient denial, settings routing on permanent denial, and `onResume()` auto-recovery.
+  - **Device Deployment:** Built and verified on Pixel 6 Pro & Pixel 8 Pro.
 
 ---
 

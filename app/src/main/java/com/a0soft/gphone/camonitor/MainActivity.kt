@@ -1,17 +1,29 @@
 package com.a0soft.gphone.camonitor
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.a0soft.gphone.camonitor.ui.about.AboutScreen
 import com.a0soft.gphone.camonitor.ui.camera.CameraModeScreen
@@ -36,10 +48,28 @@ enum class AppScreen {
 
 class MainActivity : ComponentActivity() {
 
+    var deniedPermissions by mutableStateOf<List<String>>(emptyList())
+    var showPermissionRationaleDialog by mutableStateOf(false)
+    var isPermanentlyDenied by mutableStateOf(false)
+    var pendingPermissionAction: (() -> Unit)? = null
+
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) {
-        // Permissions handled
+    ) { result ->
+        val denied = result.filterValues { !it }.keys.toList()
+        if (denied.isEmpty()) {
+            showPermissionRationaleDialog = false
+            deniedPermissions = emptyList()
+            val action = pendingPermissionAction
+            pendingPermissionAction = null
+            action?.invoke()
+        } else {
+            deniedPermissions = denied
+            isPermanentlyDenied = denied.any { perm ->
+                !ActivityCompat.shouldShowRequestPermissionRationale(this@MainActivity, perm)
+            }
+            showPermissionRationaleDialog = true
+        }
     }
 
     override fun attachBaseContext(newBase: android.content.Context) {
@@ -77,10 +107,25 @@ class MainActivity : ComponentActivity() {
         if (latestTag != currentLanguageTag) {
             currentLanguageTag = latestTag
             recreate()
+            return
+        }
+
+        // Auto-recover if user granted missing permissions in Android App Settings
+        if (deniedPermissions.isNotEmpty()) {
+            val stillDenied = deniedPermissions.filter {
+                ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+            }
+            deniedPermissions = stillDenied
+            if (stillDenied.isEmpty()) {
+                showPermissionRationaleDialog = false
+                val action = pendingPermissionAction
+                pendingPermissionAction = null
+                action?.invoke()
+            }
         }
     }
 
-    private fun requestRequiredPermissions() {
+    fun getCameraPermissions(): List<String> {
         val permissions = mutableListOf(
             Manifest.permission.CAMERA,
             Manifest.permission.RECORD_AUDIO
@@ -88,8 +133,35 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissions.add(Manifest.permission.POST_NOTIFICATIONS)
         }
+        return permissions
+    }
 
-        val needed = permissions.filter {
+    fun checkAndRequestPermissions(
+        required: List<String>,
+        onGranted: () -> Unit
+    ) {
+        val needed = required.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (needed.isEmpty()) {
+            onGranted()
+        } else {
+            pendingPermissionAction = onGranted
+            val permanentlyDenied = needed.any { perm ->
+                !ActivityCompat.shouldShowRequestPermissionRationale(this, perm)
+            }
+            if (permanentlyDenied && deniedPermissions.any { it in needed }) {
+                deniedPermissions = needed
+                isPermanentlyDenied = true
+                showPermissionRationaleDialog = true
+            } else {
+                permissionLauncher.launch(needed.toTypedArray())
+            }
+        }
+    }
+
+    private fun requestRequiredPermissions() {
+        val needed = getCameraPermissions().filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }
 
@@ -131,22 +203,28 @@ class MainActivity : ComponentActivity() {
             AppScreen.HOME -> {
                 HomeScreen(
                     onStartCameraMode = {
-                        val viewerCount = securityRepo.getPairedViewers().size
-                        if (viewerCount == 0) {
-                            navigateTo(AppScreen.CAMERA_PAIRING)
-                        } else {
-                            navigateTo(AppScreen.CAMERA_MODE)
+                        checkAndRequestPermissions(getCameraPermissions()) {
+                            val viewerCount = securityRepo.getPairedViewers().size
+                            if (viewerCount == 0) {
+                                navigateTo(AppScreen.CAMERA_PAIRING)
+                            } else {
+                                navigateTo(AppScreen.CAMERA_MODE)
+                            }
                         }
                     },
                     onPairNewViewer = {
-                        navigateTo(AppScreen.CAMERA_PAIRING)
+                        checkAndRequestPermissions(getCameraPermissions()) {
+                            navigateTo(AppScreen.CAMERA_PAIRING)
+                        }
                     },
                     onStartViewerMode = { deviceId ->
                         selectedCameraDeviceId = deviceId
                         navigateTo(AppScreen.VIEWER_MODE)
                     },
                     onPairNewCamera = {
-                        navigateTo(AppScreen.VIEWER_PAIRING)
+                        checkAndRequestPermissions(listOf(Manifest.permission.CAMERA)) {
+                            navigateTo(AppScreen.VIEWER_PAIRING)
+                        }
                     },
                     onOpenPairedDevices = { navigateTo(AppScreen.MANAGE_DEVICES) },
                     onOpenLogs = { navigateTo(AppScreen.LOGS) },
@@ -185,8 +263,16 @@ class MainActivity : ComponentActivity() {
             }
             AppScreen.MANAGE_DEVICES -> {
                 ManageDevicesScreen(
-                    onPairNewViewer = { navigateTo(AppScreen.CAMERA_PAIRING) },
-                    onPairNewCamera = { navigateTo(AppScreen.VIEWER_PAIRING) },
+                    onPairNewViewer = {
+                        checkAndRequestPermissions(getCameraPermissions()) {
+                            navigateTo(AppScreen.CAMERA_PAIRING)
+                        }
+                    },
+                    onPairNewCamera = {
+                        checkAndRequestPermissions(listOf(Manifest.permission.CAMERA)) {
+                            navigateTo(AppScreen.VIEWER_PAIRING)
+                        }
+                    },
                     onBack = { navigateBack() }
                 )
             }
@@ -200,6 +286,62 @@ class MainActivity : ComponentActivity() {
                     onBack = { navigateBack() }
                 )
             }
+        }
+
+        if (showPermissionRationaleDialog && deniedPermissions.isNotEmpty()) {
+            AlertDialog(
+                onDismissRequest = {
+                    showPermissionRationaleDialog = false
+                    pendingPermissionAction = null
+                },
+                title = {
+                    Text(stringResource(R.string.permission_dialog_title))
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (deniedPermissions.contains(Manifest.permission.CAMERA)) {
+                            Text(stringResource(R.string.permission_camera_reason))
+                        }
+                        if (deniedPermissions.contains(Manifest.permission.RECORD_AUDIO)) {
+                            Text(stringResource(R.string.permission_audio_reason))
+                        }
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                            deniedPermissions.contains(Manifest.permission.POST_NOTIFICATIONS)
+                        ) {
+                            Text(stringResource(R.string.permission_notification_reason))
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            if (isPermanentlyDenied) {
+                                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                    data = Uri.fromParts("package", packageName, null)
+                                }
+                                startActivity(intent)
+                            } else {
+                                permissionLauncher.launch(deniedPermissions.toTypedArray())
+                            }
+                        }
+                    ) {
+                        Text(
+                            if (isPermanentlyDenied) stringResource(R.string.permission_open_settings)
+                            else stringResource(R.string.permission_grant)
+                        )
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            showPermissionRationaleDialog = false
+                            pendingPermissionAction = null
+                        }
+                    ) {
+                        Text(stringResource(R.string.action_cancel))
+                    }
+                }
+            )
         }
     }
 }

@@ -138,4 +138,11 @@
     <string name="about_open_source_notice">本專案採 Apache 2.0 授權條款開放原始碼。</string>
     <string name="about_view_on_github">在 GitHub 上檢視專案</string>
     <string name="about_github_url">https://github.com/samlu/CamMonitor</string>
+    <!-- Permissions Rationale & Recovery -->
+    <string name="permission_dialog_title">需要必要權限</string>
+    <string name="permission_camera_reason">相機：用於視訊串流與掃描配對 QR 碼。</string>
+    <string name="permission_audio_reason">麥克風：用於雙向語音對講功能。</string>
+    <string name="permission_notification_reason">通知：用於在背景持續穩定執行監控服務。</string>
+    <string name="permission_open_settings">開啟應用程式設定</string>
+    <string name="permission_grant">授權</string>
 </resources>
