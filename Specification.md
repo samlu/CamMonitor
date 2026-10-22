@@ -8,7 +8,7 @@ CamMonitor is a peer-to-peer camera monitoring Android application running acros
 * **Testability & Quality Assurance:** Architected for 100% deterministic testability with interface-driven abstraction layers, fake implementations, Coroutine `TestDispatcher` time control, and comprehensive Unit, Integration, and Compose UI test suites.
 * **Platform & SDK Targets:**
   * **Application ID / Package Name:** `com.a0soft.gphone.camonitor`
-  * **Current App Version:** `1.0.3` (`versionCode = 4`)
+  * **Current App Version:** `1.0.4` (`versionCode = 5`)
   * **Minimum SDK (`minSdk`):** `28` (Android 9 Pie)
   * **Target SDK (`targetSdk`):** `37` (Android 17)
   * **Compile SDK (`compileSdk`):** `37`
@@ -442,7 +442,7 @@ Every signaling envelope sent over the public MQTT broker is structured as:
 * **Header Branding:**
   * App Icon: Layered vector squircle (96dp, dark background `#121212` with cyan/emerald foreground).
   * App Title: `"CamMonitor"` (HeadlineMedium, bold).
-  * Version String: `"Version 1.0.3"` (`BuildConfig.VERSION_NAME`, BodyLarge, muted outline color).
+  * Version String: `"Version 1.0.4"` (`BuildConfig.VERSION_NAME`, BodyLarge, muted outline color).
 * **Application Summary Card (`ElevatedCard`):**
   * Short Description: Multi-line overview emphasizing zero-account, P2P encryption, OLED power management, and 2-way talkback.
   * Open Source Notice: License declaration (Apache License 2.0).
