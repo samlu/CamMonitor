@@ -695,6 +695,9 @@ class WebRtcManager(private val context: Context) {
     private val pendingRemoteIceCandidates = java.util.concurrent.ConcurrentHashMap<String, MutableList<IceCandidate>>()
     private val addedRemoteIceCandidates = java.util.concurrent.ConcurrentHashMap<String, MutableSet<String>>()
 
+    internal fun getAddedRemoteIceCandidates(peerId: String): Set<String>? = addedRemoteIceCandidates[peerId]?.toSet()
+    internal fun getPendingRemoteIceCandidates(peerId: String): List<IceCandidate>? = pendingRemoteIceCandidates[peerId]?.toList()
+
     fun addRemoteIceCandidate(peerId: String, candidate: IceCandidate) {
         val seen = addedRemoteIceCandidates.getOrPut(peerId) { java.util.Collections.synchronizedSet(mutableSetOf()) }
         val candidateKey = "${candidate.sdpMid}:${candidate.sdpMLineIndex}:${candidate.sdp}"
@@ -743,6 +746,16 @@ class WebRtcManager(private val context: Context) {
         if (!keepPendingCandidates) {
             pendingRemoteIceCandidates.remove(peerId)
             addedRemoteIceCandidates.remove(peerId)
+        } else {
+            val pending = pendingRemoteIceCandidates[peerId]
+            if (pending.isNullOrEmpty()) {
+                addedRemoteIceCandidates.remove(peerId)
+            } else {
+                val freshSet = java.util.Collections.synchronizedSet(
+                    pending.map { "${it.sdpMid}:${it.sdpMLineIndex}:${it.sdp}" }.toMutableSet()
+                )
+                addedRemoteIceCandidates[peerId] = freshSet
+            }
         }
         dataChannels.remove(peerId)?.dispose()
         peerConnections.remove(peerId)?.dispose()

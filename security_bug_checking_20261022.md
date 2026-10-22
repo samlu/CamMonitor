@@ -30,7 +30,7 @@ Additionally, MQTT signaling currently operates over unencrypted TCP port 1883 i
 | **S-05** | Security | Key Pair Desync on Android 12+ KeyStore Fallback | **Medium** | [`SecurityRepository.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/security/SecurityRepository.kt#L109-L119) |
 | **B-01** | Bug | Multi-Role Whitelist Count Lockout | **Fixed** (Critical) | [`SecurityRepository.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/security/SecurityRepository.kt#L212-L225), [`ManageDevicesScreen.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/devices/ManageDevicesScreen.kt#L41-L42) |
 | **B-02** | Concurrency | Main-Thread Deadlock / 2000ms Freeze in `stopCapture()` | **Fixed** (Critical) | [`CameraXVideoCapturer.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/camera/CameraXVideoCapturer.kt#L597-L634) |
-| **B-03** | Bug | WebRTC Reconnection Stalls via Stale Duplicate ICE Cache | **High** | [`WebRtcManager.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/webrtc/WebRtcManager.kt#L400), [`#L699-L704`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/webrtc/WebRtcManager.kt#L699-L704) |
+| **B-03** | Bug | WebRTC Reconnection Stalls via Stale Duplicate ICE Cache | **Fixed** (High) | [`WebRtcManager.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/webrtc/WebRtcManager.kt#L746-L758) |
 | **B-04** | Bug | Reconnecting Viewer Rejected via Stale Capacity Check | **High** | [`CameraMonitorService.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/service/CameraMonitorService.kt#L274-L278) |
 | **B-05** | Bug | Ephemeral OTP Timer Dies After Initial 5 Minutes | **Medium** | [`CameraPairingScreen.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/pairing/CameraPairingScreen.kt#L60-L68) |
 | **B-06** | Concurrency | Coroutine Leak in Viewer Mode Retries | **Medium** | [`ViewerModeScreen.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/viewer/ViewerModeScreen.kt#L257-L281) |
@@ -279,12 +279,45 @@ Additionally, MQTT signaling currently operates over unencrypted TCP port 1883 i
 ---
 
 ### B-03: WebRTC Reconnection Stalls via Stale Duplicate ICE Cache
-* **Location:** [`WebRtcManager.kt:400`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/webrtc/WebRtcManager.kt#L400), [`#L699-L704`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/webrtc/WebRtcManager.kt#L699-L704)
-* **Description:** [`createPeerConnection`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/webrtc/WebRtcManager.kt#L395) calls `closePeer(peerId, keepPendingCandidates = true)`. This preserves `addedRemoteIceCandidates`. On reconnect, the camera re-sends the same candidate strings (same host/srflx IP:port). The viewer checks `seen.add(candidateKey)`, sees `false`, and drops all candidates, causing reconnection to fail.
-* **Remediation:** Clear `addedRemoteIceCandidates` for the peer whenever a new `PeerConnection` is created:
+* **Location:** [`WebRtcManager.kt:746-758`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/webrtc/WebRtcManager.kt#L746-L758)
+* **Status:** **Resolved / Fixed**
+* **Description:** [`createPeerConnection`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/webrtc/WebRtcManager.kt#L395) calls `closePeer(peerId, keepPendingCandidates = true)`. Previously, when `keepPendingCandidates == true`, `addedRemoteIceCandidates.remove(peerId)` was skipped. On reconnection over the same network interface, WebRTC generates candidates with identical host IP, port, and SDP strings. In `addRemoteIceCandidate`, `seen.add(candidateKey)` evaluated to `false`, silently dropping all candidates for the new session and causing reconnection to stall indefinitely.
+* **Remediation & Applied Implementation:**
+  Updated [`WebRtcManager.closePeer`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/webrtc/WebRtcManager.kt#L742-L758). When `keepPendingCandidates == true`, stale keys from older connections are now purged. If candidates were buffered in `pendingRemoteIceCandidates` right before connection recreation, `addedRemoteIceCandidates` is synchronized to contain only those pending keys; otherwise it is wiped clean:
   ```kotlin
-  addedRemoteIceCandidates.remove(peerId)
+  fun closePeer(peerId: String, keepPendingCandidates: Boolean = false) {
+      if (!keepPendingCandidates) {
+          pendingRemoteIceCandidates.remove(peerId)
+          addedRemoteIceCandidates.remove(peerId)
+      } else {
+          val pending = pendingRemoteIceCandidates[peerId]
+          if (pending.isNullOrEmpty()) {
+              addedRemoteIceCandidates.remove(peerId)
+          } else {
+              val freshSet = java.util.Collections.synchronizedSet(
+                  pending.map { "${it.sdpMid}:${it.sdpMLineIndex}:${it.sdp}" }.toMutableSet()
+              )
+              addedRemoteIceCandidates[peerId] = freshSet
+          }
+      }
+      dataChannels.remove(peerId)?.dispose()
+      peerConnections.remove(peerId)?.dispose()
+      remoteVideoTrack?.removeSink(remoteVideoSink)
+      remoteVideoTrack = null
+      remoteAudioTracks.remove(peerId)
+      if (remoteAudioTrack == null || remoteAudioTracks.isEmpty()) {
+          remoteAudioTrack = null
+      }
+      updateActiveViewersCount()
+      AppLogger.i(tag, "Closed WebRTC connection with $peerId")
+  }
   ```
+* **Verification:**
+  - **Unit Tests:** Created [`WebRtcIceCacheTest.kt`](file:///E:/Antigravity/CamMonitor/app/src/test/java/com/a0soft/gphone/camonitor/webrtc/WebRtcIceCacheTest.kt) verifying that:
+    - Intra-session candidate duplicates are dropped.
+    - Inter-session identical candidates are accepted across reconnects.
+    - Early-arrived pending candidates retain deduplication keys while stale session candidates are purged.
+  - **Device Deployment:** Built and verified on Pixel 6 Pro & Pixel 8 Pro.
 
 ---
 
