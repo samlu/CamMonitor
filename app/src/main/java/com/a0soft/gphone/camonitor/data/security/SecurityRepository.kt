@@ -112,18 +112,21 @@ class DefaultSecurityRepository(
                 .remove("paired_devices")
                 .remove("device_priv_key")
                 .remove("device_pub_key")
+                .remove("key_using_software_fallback")
                 .putBoolean("key_ecdh_capable_v2", true)
                 .apply()
         }
 
+        val usingSoftwareFallback = prefs.getBoolean("key_using_software_fallback", false)
         keyPair = try {
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            if (!usingSoftwareFallback && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
                 CryptoUtils.getOrCreateDeviceKeyPair(alias)
             } else {
                 getOrCreateSoftwareKeyPair()
             }
         } catch (e: Exception) {
             AppLogger.w("SecurityRepository", "KeyStore ECDH unavailable, using persistent software key: ${e.message}")
+            prefs.edit().putBoolean("key_using_software_fallback", true).apply()
             getOrCreateSoftwareKeyPair()
         }
     }
@@ -284,6 +287,12 @@ class DefaultSecurityRepository(
         secretOrDerivedKey: ByteArray,
         isOtpKey: Boolean
     ): String? {
+        // 0. Recipient ID Check (S-03)
+        if (envelope.recipientId != deviceId) {
+            AppLogger.w("SecurityRepository", "Envelope discarded: recipientId mismatch (${envelope.recipientId} != $deviceId)")
+            return null
+        }
+
         val now = timeProvider.currentTimeMillis()
 
         // 1. Anti-Replay Timestamp Check (30 seconds window)
@@ -292,9 +301,9 @@ class DefaultSecurityRepository(
             return null
         }
 
-        // 2. Anti-Replay Nonce Check
+        // 2. Anti-Replay Nonce Check (S-04: Atomic reservation)
         cleanOldNonces(now)
-        if (seenNonces.containsKey(envelope.nonce)) {
+        if (seenNonces.putIfAbsent(envelope.nonce, envelope.timestamp) != null) {
             AppLogger.d("SecurityRepository", "Envelope duplicate nonce (${envelope.nonce}) discarded (sender: ${envelope.senderId})")
             return null
         }
@@ -307,6 +316,7 @@ class DefaultSecurityRepository(
             // Unpaired sender is only permitted if an active OTP is set (handshake flow)
             if (activeOtp == null) {
                 AppLogger.w("SecurityRepository", "Envelope discarded: Sender not in whitelist (${envelope.senderId})")
+                seenNonces.remove(envelope.nonce)
                 return null
             }
             null
@@ -319,6 +329,7 @@ class DefaultSecurityRepository(
             val isValid = CryptoUtils.verify(sigPayload, envelope.signature, senderPublicKey)
             if (!isValid) {
                 AppLogger.w("SecurityRepository", "Envelope discarded: Invalid signature from ${envelope.senderId}")
+                seenNonces.remove(envelope.nonce)
                 return null
             }
         }
@@ -333,11 +344,10 @@ class DefaultSecurityRepository(
             )
         } catch (e: Exception) {
             AppLogger.e("SecurityRepository", "Decryption failed for envelope from ${envelope.senderId}", e)
+            seenNonces.remove(envelope.nonce)
             return null
         }
 
-        // Only register nonce upon successful verification and decryption
-        seenNonces[envelope.nonce] = envelope.timestamp
         return String(decryptedBytes, Charsets.UTF_8)
     }
 

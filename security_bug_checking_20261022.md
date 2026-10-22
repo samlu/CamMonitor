@@ -25,9 +25,9 @@ Additionally, MQTT signaling currently operates over unencrypted TCP port 1883 i
 |---|---|---|---|---|
 | **S-01** | Security | Plaintext Unencrypted MQTT Signaling over Port 1883 | **Fixed** (High) | [`SignalingClient.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/signaling/SignalingClient.kt#L56-L61) |
 | **S-02** | Security | Missing Proof-of-Possession in `PAIR_REQUEST` Handshake | **Fixed** (High) | [`SecurityRepository.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/security/SecurityRepository.kt#L45-L55), [`SignalingClient.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/signaling/SignalingClient.kt#L360-L380) |
-| **S-03** | Security | Missing `recipientId` Validation in Envelope Verification | **Medium** | [`SecurityRepository.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/security/SecurityRepository.kt#L267-L327) |
-| **S-04** | Security | Non-Atomic Nonce Cache Race Condition | **Medium** | [`SecurityRepository.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/security/SecurityRepository.kt#L282-L325) |
-| **S-05** | Security | Key Pair Desync on Android 12+ KeyStore Fallback | **Medium** | [`SecurityRepository.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/security/SecurityRepository.kt#L109-L119) |
+| **S-03** | Security | Missing `recipientId` Validation in Envelope Verification | **Fixed** (Medium) | [`SecurityRepository.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/security/SecurityRepository.kt#L290-L294) |
+| **S-04** | Security | Non-Atomic Nonce Cache Race Condition | **Fixed** (Medium) | [`SecurityRepository.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/security/SecurityRepository.kt#L304-L348) |
+| **S-05** | Security | Key Pair Desync on Android 12+ KeyStore Fallback | **Fixed** (Medium) | [`SecurityRepository.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/security/SecurityRepository.kt#L115-L132) |
 | **B-01** | Bug | Multi-Role Whitelist Count Lockout | **Fixed** (Critical) | [`SecurityRepository.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/security/SecurityRepository.kt#L212-L225), [`ManageDevicesScreen.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/devices/ManageDevicesScreen.kt#L41-L42) |
 | **B-02** | Concurrency | Main-Thread Deadlock / 2000ms Freeze in `stopCapture()` | **Fixed** (Critical) | [`CameraXVideoCapturer.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/camera/CameraXVideoCapturer.kt#L597-L634) |
 | **B-03** | Bug | WebRTC Reconnection Stalls via Stale Duplicate ICE Cache | **Fixed** (High) | [`WebRtcManager.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/webrtc/WebRtcManager.kt#L746-L758) |
@@ -142,45 +142,77 @@ Additionally, MQTT signaling currently operates over unencrypted TCP port 1883 i
 ---
 
 ### S-03: Missing `recipientId` Validation in Envelope Verification
-* **Location:** [`SecurityRepository.kt:267-327`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/security/SecurityRepository.kt#L267-L327)
-* **Description:** While `recipientId` is included in the signed payload, `verifyAndDecryptEnvelope` never asserts `envelope.recipientId == this.deviceId`.
-* **Impact:** Envelopes reflected by the broker, cross-routed across topics, or replayed between multiple paired cameras will be accepted as long as the key matches.
-* **Remediation:**
+* **Location:** [`SecurityRepository.kt:290-294`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/security/SecurityRepository.kt#L290-L294)
+* **Status:** **Resolved / Fixed**
+* **Description:** While `recipientId` was included in the signed payload, `verifyAndDecryptEnvelope` never asserted `envelope.recipientId == this.deviceId`.
+* **Impact:** Envelopes reflected by the broker, cross-routed across topics, or replayed between multiple paired cameras would be accepted as long as the key matched.
+* **Remediation & Applied Implementation:**
+  Asserted recipient equality before processing anti-replay timestamps or nonces:
   ```kotlin
-  // In SecurityRepository.kt: verifyAndDecryptEnvelope
+  // 0. Recipient ID Check (S-03)
   if (envelope.recipientId != deviceId) {
       AppLogger.w("SecurityRepository", "Envelope discarded: recipientId mismatch (${envelope.recipientId} != $deviceId)")
       return null
   }
   ```
+* **Verification:**
+  - **Unit Tests:** Added `testRecipientIdMismatch_Rejected` in [`AntiReplayTest.kt`](file:///E:/Antigravity/CamMonitor/app/src/test/java/com/a0soft/gphone/camonitor/security/AntiReplayTest.kt).
+  - **Device Deployment:** Built and verified on Pixel 6 Pro & Pixel 8 Pro.
 
 ---
 
 ### S-04: Non-Atomic Nonce Cache Race Condition
-* **Location:** [`SecurityRepository.kt:282-325`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/security/SecurityRepository.kt#L282-L325)
-* **Description:** The anti-replay check uses a check-then-act pattern across separate lines:
+* **Location:** [`SecurityRepository.kt:304-348`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/security/SecurityRepository.kt#L304-L348)
+* **Status:** **Resolved / Fixed**
+* **Description:** The anti-replay check used a check-then-act pattern across separate lines:
   ```kotlin
   if (seenNonces.containsKey(envelope.nonce)) return null
   // ... verify and decrypt ...
   seenNonces[envelope.nonce] = envelope.timestamp
   ```
-  Incoming MQTT messages are dispatched concurrently on `Dispatchers.IO`. Two identical messages arriving in close succession will both evaluate `containsKey == false`, allowing duplicate processing.
-* **Remediation:**
+  Incoming MQTT messages are dispatched concurrently on `Dispatchers.IO`. Two identical messages arriving in close succession evaluated `containsKey == false`, allowing duplicate processing.
+* **Remediation & Applied Implementation:**
+  Atomically claimed the nonce using `putIfAbsent`. If whitelist check, signature verification, or decryption subsequently fails, released the reservation via `seenNonces.remove(envelope.nonce)`:
   ```kotlin
-  // Reserve nonce atomically
+  // 2. Anti-Replay Nonce Check (S-04: Atomic reservation)
+  cleanOldNonces(now)
   if (seenNonces.putIfAbsent(envelope.nonce, envelope.timestamp) != null) {
-      AppLogger.d("SecurityRepository", "Envelope duplicate nonce discarded: ${envelope.nonce}")
+      AppLogger.d("SecurityRepository", "Envelope duplicate nonce (${envelope.nonce}) discarded (sender: ${envelope.senderId})")
       return null
   }
+  ...
+  // On signature/decryption failure:
+  seenNonces.remove(envelope.nonce)
   ```
-  If signature verification or decryption subsequently throws, remove the nonce reservation via `seenNonces.remove(envelope.nonce)`.
+* **Verification:**
+  - **Unit Tests:** Added `testConcurrentDuplicateNonce_AtomicDeduplication` in [`AntiReplayTest.kt`](file:///E:/Antigravity/CamMonitor/app/src/test/java/com/a0soft/gphone/camonitor/security/AntiReplayTest.kt) running 8 concurrent threads contending for the same nonce; exactly 1 claimed the nonce successfully.
+  - **Device Deployment:** Built and verified on Pixel 6 Pro & Pixel 8 Pro.
 
 ---
 
 ### S-05: Key Pair Desync on Android 12+ KeyStore Fallback
-* **Location:** [`SecurityRepository.kt:109-119`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/security/SecurityRepository.kt#L109-L119)
-* **Description:** If a device running Android 12+ fails ECDH in KeyStore during initialization (e.g. OEM-specific driver flaws with `PURPOSE_AGREE_KEY`), it falls back to software keys saved in `prefs`. On next launch, `SecurityRepository` checks `SDK_INT >= S` first and attempts KeyStore creation again. If KeyStore succeeds on reboot, the public key changes, breaking existing pairings.
-* **Remediation:** Record a flag in SharedPreferences (`key_using_software_fallback = true`) when falling back to software keys, and skip KeyStore generation if the flag is set.
+* **Location:** [`SecurityRepository.kt:115-132`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/security/SecurityRepository.kt#L115-L132)
+* **Status:** **Resolved / Fixed**
+* **Description:** If a device running Android 12+ failed ECDH in KeyStore during initialization (e.g. OEM-specific driver flaws with `PURPOSE_AGREE_KEY`), it fell back to software keys saved in `prefs`. On next launch, `SecurityRepository` checked `SDK_INT >= S` first and attempted KeyStore creation again. If KeyStore succeeded on reboot, the public key changed, breaking existing pairings.
+* **Remediation & Applied Implementation:**
+  Recorded `key_using_software_fallback = true` in `prefs` upon falling back, and checked `!usingSoftwareFallback` before attempting Android 12+ KeyStore key retrieval:
+  ```kotlin
+  val usingSoftwareFallback = prefs.getBoolean("key_using_software_fallback", false)
+  keyPair = try {
+      if (!usingSoftwareFallback && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+          CryptoUtils.getOrCreateDeviceKeyPair(alias)
+      } else {
+          getOrCreateSoftwareKeyPair()
+      }
+  } catch (e: Exception) {
+      AppLogger.w("SecurityRepository", "KeyStore ECDH unavailable, using persistent software key: ${e.message}")
+      prefs.edit().putBoolean("key_using_software_fallback", true).apply()
+      getOrCreateSoftwareKeyPair()
+  }
+  ```
+* **Verification:**
+  - **Unit Tests:** Added `testSoftwareFallbackKeyPersistence` in [`AntiReplayTest.kt`](file:///E:/Antigravity/CamMonitor/app/src/test/java/com/a0soft/gphone/camonitor/security/AntiReplayTest.kt) verifying that software fallback flag suppresses future KeyStore re-generation across simulated reboots.
+  - **Device Deployment:** Built and verified on Pixel 6 Pro & Pixel 8 Pro.
 
 ---
 
