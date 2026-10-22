@@ -102,4 +102,12 @@ class SignalingStateTest {
         onDisconnect(2L)
         assertFalse("Current generation disconnect must update connected state to false", isConnectedFlow.value)
     }
+
+    @Test
+    fun testBrokerTlsConfiguration() {
+        assertEquals(8883, com.a0soft.gphone.camonitor.data.signaling.MqttSignalingClient.PRIMARY_BROKER_PORT)
+        assertEquals("broker.hivemq.com", com.a0soft.gphone.camonitor.data.signaling.MqttSignalingClient.PRIMARY_BROKER_HOST)
+        assertEquals(8883, com.a0soft.gphone.camonitor.data.signaling.MqttSignalingClient.SECONDARY_BROKER_PORT)
+        assertEquals("broker.emqx.io", com.a0soft.gphone.camonitor.data.signaling.MqttSignalingClient.SECONDARY_BROKER_HOST)
+    }
 }

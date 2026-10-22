@@ -10,6 +10,7 @@ import com.a0soft.gphone.camonitor.data.model.SignalingMessage
 import com.a0soft.gphone.camonitor.data.security.SecurityRepository
 import com.a0soft.gphone.camonitor.log.AppLogger
 import com.hivemq.client.mqtt.MqttClient
+import com.hivemq.client.mqtt.MqttClientSslConfig
 import com.hivemq.client.mqtt.datatypes.MqttQos
 import com.hivemq.client.mqtt.mqtt3.Mqtt3AsyncClient
 import kotlinx.coroutines.*
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.UUID
+import javax.net.ssl.HttpsURLConnection
 import kotlin.coroutines.resume
 
 interface SignalingClient {
@@ -54,7 +56,9 @@ class MqttSignalingClient(
 
     companion object {
         const val PRIMARY_BROKER_HOST = "broker.hivemq.com"
-        const val PRIMARY_BROKER_PORT = 1883
+        const val PRIMARY_BROKER_PORT = 8883
+        const val SECONDARY_BROKER_HOST = "broker.emqx.io"
+        const val SECONDARY_BROKER_PORT = 8883
     }
 
     init {
@@ -137,37 +141,47 @@ class MqttSignalingClient(
         activeClient = null
 
         val currentGen = ++clientGeneration
-        val candidates = resolveHostCandidates(PRIMARY_BROKER_HOST)
-        AppLogger.i(tag, "Attempting connection to $PRIMARY_BROKER_HOST:$PRIMARY_BROKER_PORT (candidates=$candidates, gen=$currentGen)...")
+        val brokers = listOf(
+            PRIMARY_BROKER_HOST to PRIMARY_BROKER_PORT,
+            SECONDARY_BROKER_HOST to SECONDARY_BROKER_PORT
+        )
 
-        var success = false
-        for (targetHost in candidates) {
-            success = try {
-                withTimeoutOrNull(8_000L) {
-                    attemptConnect(targetHost, PRIMARY_BROKER_PORT, false, topic, currentGen)
-                } ?: false
-            } catch (e: Exception) {
-                AppLogger.w(tag, "Connection error for $targetHost: ${e.message}")
-                false
-            }
-            if (success) {
-                AppLogger.i(tag, "Successfully connected to $targetHost:$PRIMARY_BROKER_PORT (host=$PRIMARY_BROKER_HOST, gen=$currentGen)")
-                break
+        for ((canonicalHost, port) in brokers) {
+            val candidates = resolveHostCandidates(canonicalHost)
+            AppLogger.i(tag, "Attempting TLS connection to $canonicalHost:$port (candidates=$candidates, gen=$currentGen)...")
+
+            for (targetHost in candidates) {
+                val success = try {
+                    withTimeoutOrNull(8_000L) {
+                        attemptConnect(
+                            host = targetHost,
+                            expectedHost = canonicalHost,
+                            port = port,
+                            useSsl = true,
+                            topic = topic,
+                            generation = currentGen
+                        )
+                    } ?: false
+                } catch (e: Exception) {
+                    AppLogger.w(tag, "TLS connection error for $targetHost ($canonicalHost): ${e.message}")
+                    false
+                }
+                if (success) {
+                    AppLogger.i(tag, "Successfully connected via TLS to $targetHost:$port (host=$canonicalHost, gen=$currentGen)")
+                    _isConnectedFlow.value = true
+                    return@withLock true
+                }
             }
         }
 
-        if (success) {
-            _isConnectedFlow.value = true
-            return@withLock true
-        } else {
-            AppLogger.w(tag, "All candidate connection attempts failed for $PRIMARY_BROKER_HOST:$PRIMARY_BROKER_PORT (gen=$currentGen)")
-            _isConnectedFlow.value = false
-            return@withLock false
-        }
+        AppLogger.w(tag, "All TLS candidate connection attempts failed across brokers (gen=$currentGen)")
+        _isConnectedFlow.value = false
+        return@withLock false
     }
 
     private suspend fun attemptConnect(
         host: String,
+        expectedHost: String,
         port: Int,
         useSsl: Boolean,
         topic: String,
@@ -201,7 +215,13 @@ class MqttSignalingClient(
                 }
 
             val newClient = if (useSsl) {
-                builder.sslWithDefaultConfig().buildAsync()
+                val sslConfig = MqttClientSslConfig.builder()
+                    .hostnameVerifier { _, session ->
+                        // Validate certificate matches the canonical hostname (e.g. broker.hivemq.com)
+                        HttpsURLConnection.getDefaultHostnameVerifier().verify(expectedHost, session)
+                    }
+                    .build()
+                builder.sslConfig(sslConfig).buildAsync()
             } else {
                 builder.buildAsync()
             }
