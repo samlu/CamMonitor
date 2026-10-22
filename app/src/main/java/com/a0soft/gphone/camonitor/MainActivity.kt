@@ -119,10 +119,18 @@ class MainActivity : ComponentActivity() {
         if (appWentToBackground) {
             appWentToBackground = false
             val hadPending = pendingPermissionAction
-            checkStartupPermissions()
-            if (deniedPermissions.isEmpty() && hadPending != null) {
-                pendingPermissionAction = null
-                hadPending.invoke()
+            if (hadPending != null || showPermissionRationaleDialog) {
+                val needed = getCameraPermissions().filter {
+                    ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+                }
+                deniedPermissions = needed
+                if (needed.isEmpty()) {
+                    showPermissionRationaleDialog = false
+                    pendingPermissionAction = null
+                    hadPending?.invoke()
+                } else {
+                    isPermanentlyDenied = needed.any { isPermanentlyDenied(it) }
+                }
             }
         } else if (deniedPermissions.isNotEmpty()) {
             val stillDenied = deniedPermissions.filter {

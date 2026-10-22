@@ -98,6 +98,7 @@
     <string name="viewer_pairing_authenticating">正在與 %1$s 進行驗證...</string>
     <string name="viewer_pairing_success">配對成功！正在啟動觀看端...</string>
     <string name="viewer_pairing_timeout">配對逾時。請重新對準 QR 碼重試。</string>
+    <string name="viewer_pairing_limit_reached">已達相機數量上限（最多 %1$d 台相機）。</string>
 
     <!-- Manage Devices Screen -->
     <string name="manage_devices_pair_device">配對裝置</string>

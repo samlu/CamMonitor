@@ -98,6 +98,7 @@
     <string name="viewer_pairing_authenticating">Authenticating with %1$s...</string>
     <string name="viewer_pairing_success">Pairing successful! Starting viewer...</string>
     <string name="viewer_pairing_timeout">Pairing timed out. Align QR code again to retry.</string>
+    <string name="viewer_pairing_limit_reached">Maximum camera limit reached (%1$d cameras).</string>
 
     <!-- Manage Devices Screen -->
     <string name="manage_devices_pair_device">Pair Device</string>

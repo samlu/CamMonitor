@@ -315,13 +315,15 @@ fun ViewerModeScreen(
             override fun onSetFailure(err: String?) {}
         }, MediaConstraints())
 
+        var isRemoteDescriptionSet = false
+
         // Periodic Offer retry while waiting for camera to come online / answer
         val retryJob = effectScope.launch {
             var attempt = 1
-            while (isActive && pc.remoteDescription == null) {
+            while (isActive && !isRemoteDescriptionSet) {
                 delay(3000L)
                 val offer = localOfferDesc
-                if (pc.remoteDescription == null && offer != null) {
+                if (!isRemoteDescriptionSet && offer != null) {
                     attempt++
                     val elapsed = System.currentTimeMillis() - startTime
                     val candidatesSnapshot = ArrayList(localIceCandidates)
@@ -365,6 +367,7 @@ fun ViewerModeScreen(
                         val answerDesc = SessionDescription(SessionDescription.Type.ANSWER, msg.sdp)
                         pc.setRemoteDescription(object : SdpObserver {
                             override fun onSetSuccess() {
+                                isRemoteDescriptionSet = true
                                 try {
                                     val setElapsed = System.currentTimeMillis() - startTime
                                     AppLogger.i("ViewerMode", "Remote Answer applied successfully (+${setElapsed}ms). Draining buffered candidates...")

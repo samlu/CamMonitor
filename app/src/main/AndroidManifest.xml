@@ -19,6 +19,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
 
     <application
@@ -46,8 +47,8 @@
         <service
             android:name=".service.CameraMonitorService"
             android:exported="false"
-            android:foregroundServiceType="camera"
-            tools:targetApi="29" />
+            android:foregroundServiceType="camera|microphone"
+            tools:targetApi="30" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

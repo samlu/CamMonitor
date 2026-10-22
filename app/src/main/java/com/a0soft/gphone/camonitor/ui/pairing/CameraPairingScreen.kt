@@ -1,5 +1,6 @@
 package com.a0soft.gphone.camonitor.ui.pairing
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -25,6 +26,7 @@ import com.a0soft.gphone.camonitor.log.AppLogger
 import com.a0soft.gphone.camonitor.ui.common.QrUtils
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -35,9 +37,13 @@ fun CameraPairingScreen(
     val app = remember { CamMonitorApp.instance }
     val securityRepo = app.securityRepository
     val signalingClient = app.signalingClient
+    val coroutineScope = rememberCoroutineScope()
 
     var otp by remember { mutableStateOf(securityRepo.generatePairingOtp()) }
     var secondsLeft by remember { mutableStateOf(300) } // 5 minutes
+    var isPairingSuccessful by remember { mutableStateOf(false) }
+    var confirmedDeviceId by remember { mutableStateOf<String?>(null) }
+    var isNavigatingSuccess by remember { mutableStateOf(false) }
 
     val cameraName = remember { securityRepo.getDeviceName() }
     val deviceId = remember { securityRepo.getDeviceId() }
@@ -51,9 +57,20 @@ fun CameraPairingScreen(
         QrUtils.generateQrBitmap(payload.toJson(), 512)
     }
 
+    BackHandler {
+        onCancel()
+    }
+
     DisposableEffect(Unit) {
         onDispose {
             securityRepo.clearPairingOtp()
+            if (!isPairingSuccessful) {
+                coroutineScope.launch {
+                    try {
+                        signalingClient.stopListening()
+                    } catch (_: Exception) {}
+                }
+            }
         }
     }
 
@@ -79,6 +96,23 @@ fun CameraPairingScreen(
                     AppLogger.w("CameraPairing", "Dropped PAIR_REQUEST: senderId mismatch ($senderId != ${msg.pbDeviceId})")
                     return@collect
                 }
+                val confirm = SignalingMessage.PairConfirm(
+                    paDeviceId = deviceId,
+                    paName = cameraName,
+                    paPublicKeyBase64 = securityRepo.getDevicePublicKeyBase64()
+                )
+                val otpKey = CryptoUtils.hkdfSha256(
+                    otp.toByteArray(Charsets.UTF_8),
+                    ByteArray(0),
+                    "CamMonitor-OTP".toByteArray(),
+                    32
+                )
+                if (confirmedDeviceId == msg.pbDeviceId) {
+                    // Retransmit PAIR_CONFIRM immediately on retry
+                    val sent = signalingClient.sendSignalingMessage(msg.pbDeviceId, confirm, otpKey)
+                    AppLogger.i("CameraPairing", "Retransmitted PAIR_CONFIRM to ${msg.pbDeviceId} upon retry (sent=$sent)")
+                    return@collect
+                }
                 AppLogger.i("CameraPairing", "Received PAIR_REQUEST from ${msg.pbName} ($senderId)")
                 val newViewer = PairedDevice(
                     deviceId = msg.pbDeviceId,
@@ -89,24 +123,19 @@ fun CameraPairingScreen(
                 )
                 val added = securityRepo.addPairedDevice(newViewer, maxLimit = SecurityRepository.MAX_PAIRED_VIEWERS)
                 if (added) {
-                    // Send PAIR_CONFIRM
-                    val confirm = SignalingMessage.PairConfirm(
-                        paDeviceId = deviceId,
-                        paName = cameraName,
-                        paPublicKeyBase64 = securityRepo.getDevicePublicKeyBase64()
-                    )
-                    val otpKey = CryptoUtils.hkdfSha256(
-                        otp.toByteArray(Charsets.UTF_8),
-                        ByteArray(0),
-                        "CamMonitor-OTP".toByteArray(),
-                        32
-                    )
+                    confirmedDeviceId = msg.pbDeviceId
                     val sent = signalingClient.sendSignalingMessage(msg.pbDeviceId, confirm, otpKey)
                     if (sent) {
                         AppLogger.i("CameraPairing", "PAIR_CONFIRM transmitted successfully to ${msg.pbDeviceId}")
                     }
-                    delay(1500L)
-                    onPairingSuccess()
+                    if (!isNavigatingSuccess) {
+                        isNavigatingSuccess = true
+                        isPairingSuccessful = true
+                        launch {
+                            delay(4000L) // Ample retry window for viewer while servicing retries concurrently
+                            onPairingSuccess()
+                        }
+                    }
                 }
             }
         }

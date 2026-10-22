@@ -2,6 +2,7 @@ package com.a0soft.gphone.camonitor.ui.pairing
 
 import android.content.Context
 import android.view.ViewGroup
+import androidx.activity.compose.BackHandler
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
@@ -61,6 +62,7 @@ fun ViewerPairingScreen(
     val signalingClient = app.signalingClient
 
     var isScanning by remember { mutableStateOf(true) }
+    var isPairingSuccessful by remember { mutableStateOf(false) }
     val defaultPairingStatus = stringResource(R.string.viewer_pairing_align_qr)
     var pairingStatus by remember { mutableStateOf<String?>(null) }
     var cameraControl by remember { mutableStateOf<androidx.camera.core.CameraControl?>(null) }
@@ -68,9 +70,20 @@ fun ViewerPairingScreen(
     var cameraProviderRef by remember { mutableStateOf<ProcessCameraProvider?>(null) }
     var analyzerExecutor by remember { mutableStateOf<java.util.concurrent.ExecutorService?>(null) }
 
+    BackHandler {
+        onCancel()
+    }
+
     DisposableEffect(Unit) {
         onDispose {
             securityRepo.clearPairingOtp()
+            if (!isPairingSuccessful) {
+                coroutineScope.launch {
+                    try {
+                        signalingClient.stopListening()
+                    } catch (_: Exception) {}
+                }
+            }
             try {
                 cameraControl?.enableTorch(false)
                 cameraProviderRef?.unbindAll()
@@ -168,7 +181,10 @@ fun ViewerPairingScreen(
                                         app,
                                         securityRepo,
                                         signalingClient,
-                                        onSuccess = onPairingSuccess,
+                                        onSuccess = { pairedCamId ->
+                                            isPairingSuccessful = true
+                                            onPairingSuccess(pairedCamId)
+                                        },
                                         onRetry = { isScanning = true }
                                     ) { status ->
                                         pairingStatus = status
@@ -314,10 +330,9 @@ private suspend fun handleScannedQr(
     var isConfirmed = false
 
     withTimeoutOrNull(20_000L) {
-        val retryScope = CoroutineScope(Dispatchers.IO)
-        val retryJob = retryScope.launch {
+        val retryJob = launch(Dispatchers.IO) {
             var attempts = 0
-            while (!isConfirmed && attempts < 15) {
+            while (isActive && !isConfirmed && attempts < 15) {
                 attempts++
                 AppLogger.i("ViewerPairing", "Sending PAIR_REQUEST to ${payload.deviceId} (Attempt #$attempts)")
                 signalingClient.sendSignalingMessage(payload.deviceId, request, otpKey)
@@ -343,10 +358,19 @@ private suspend fun handleScannedQr(
                         pairedTimestamp = System.currentTimeMillis(),
                         role = "CAMERA"
                     )
-                    securityRepo.addPairedDevice(pairedCam, maxLimit = com.a0soft.gphone.camonitor.data.security.SecurityRepository.MAX_PAIRED_CAMERAS)
-                    updateStatus(context.getString(R.string.viewer_pairing_success))
-                    delay(300L)
-                    onSuccess(msg.paDeviceId)
+                    val added = securityRepo.addPairedDevice(pairedCam, maxLimit = com.a0soft.gphone.camonitor.data.security.SecurityRepository.MAX_PAIRED_CAMERAS)
+                    if (added) {
+                        updateStatus(context.getString(R.string.viewer_pairing_success))
+                        delay(300L)
+                        onSuccess(msg.paDeviceId)
+                    } else {
+                        AppLogger.w("ViewerPairing", "Failed to add paired camera: maximum limit of ${com.a0soft.gphone.camonitor.data.security.SecurityRepository.MAX_PAIRED_CAMERAS} reached")
+                        securityRepo.clearPairingOtp()
+                        updateStatus(context.getString(R.string.viewer_pairing_limit_reached, com.a0soft.gphone.camonitor.data.security.SecurityRepository.MAX_PAIRED_CAMERAS))
+                        delay(2500L)
+                        signalingClient.stopListening()
+                        onRetry()
+                    }
                     return@collect
                 }
             }
@@ -360,6 +384,7 @@ private suspend fun handleScannedQr(
         securityRepo.clearPairingOtp()
         updateStatus(context.getString(R.string.viewer_pairing_timeout))
         delay(2500L)
+        signalingClient.stopListening()
         onRetry()
     }
 }
