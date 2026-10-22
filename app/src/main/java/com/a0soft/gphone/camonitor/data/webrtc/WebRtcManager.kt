@@ -314,6 +314,7 @@ class WebRtcManager(private val context: Context) {
             peerConnections.clear()
             dataChannels.values.forEach { it.dispose() }
             dataChannels.clear()
+            remoteDescriptionSetPeers.clear()
             _activeViewersCount.value = 0
 
             releaseCameraHardwareOnly()
@@ -701,14 +702,15 @@ class WebRtcManager(private val context: Context) {
         AppLogger.i(tag, "onPttCommand: peerId=$peerId, isStart=$isStart, trackId=${track?.id()}")
     }
 
-    private val pendingRemoteIceCandidates = java.util.concurrent.ConcurrentHashMap<String, MutableList<IceCandidate>>()
+    private val remoteDescriptionSetPeers = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val pendingRemoteIceCandidates = java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.CopyOnWriteArrayList<IceCandidate>>()
     private val addedRemoteIceCandidates = java.util.concurrent.ConcurrentHashMap<String, MutableSet<String>>()
 
     internal fun getAddedRemoteIceCandidates(peerId: String): Set<String>? = addedRemoteIceCandidates[peerId]?.toSet()
     internal fun getPendingRemoteIceCandidates(peerId: String): List<IceCandidate>? = pendingRemoteIceCandidates[peerId]?.toList()
 
     fun addRemoteIceCandidate(peerId: String, candidate: IceCandidate) {
-        val seen = addedRemoteIceCandidates.getOrPut(peerId) { java.util.Collections.synchronizedSet(mutableSetOf()) }
+        val seen = addedRemoteIceCandidates.getOrPut(peerId) { java.util.concurrent.ConcurrentHashMap.newKeySet() }
         val candidateKey = "${candidate.sdpMid}:${candidate.sdpMLineIndex}:${candidate.sdp}"
         if (!seen.add(candidateKey)) {
             // Duplicate candidate ignored
@@ -717,17 +719,27 @@ class WebRtcManager(private val context: Context) {
 
         val pc = peerConnections[peerId]
         val typeMatch = Regex("typ\\s+(\\w+)").find(candidate.sdp)?.groupValues?.getOrNull(1) ?: "unknown"
-        if (pc != null && pc.remoteDescription != null) {
-            val added = pc.addIceCandidate(candidate)
-            AppLogger.i(tag, "Added remote ICE candidate directly for $peerId: type=$typeMatch, mid=${candidate.sdpMid}, added=$added")
+        val isRemoteDescSet = remoteDescriptionSetPeers.contains(peerId)
+
+        if (pc != null && isRemoteDescSet) {
+            try {
+                val added = pc.addIceCandidate(candidate)
+                AppLogger.i(tag, "Added remote ICE candidate directly for $peerId: type=$typeMatch, mid=${candidate.sdpMid}, added=$added")
+            } catch (e: Throwable) {
+                AppLogger.w(tag, "Failed adding candidate directly to pc for $peerId: ${e.message}")
+            }
         } else {
-            val list = pendingRemoteIceCandidates.getOrPut(peerId) { java.util.Collections.synchronizedList(mutableListOf()) }
+            val list = pendingRemoteIceCandidates.getOrPut(peerId) { java.util.concurrent.CopyOnWriteArrayList() }
             list.add(candidate)
             AppLogger.i(tag, "Buffered remote ICE candidate for $peerId: type=$typeMatch, mid=${candidate.sdpMid} (pending count=${list.size}, pc=${if (pc != null) "exists(waiting remoteDesc)" else "null"})")
+            if (remoteDescriptionSetPeers.contains(peerId)) {
+                drainRemoteIceCandidates(peerId)
+            }
         }
     }
 
     fun drainRemoteIceCandidates(peerId: String) {
+        remoteDescriptionSetPeers.add(peerId)
         val pc = peerConnections[peerId] ?: run {
             AppLogger.w(tag, "Cannot drain ICE candidates: PeerConnection not found for $peerId")
             return
@@ -739,8 +751,12 @@ class WebRtcManager(private val context: Context) {
         }
         AppLogger.i(tag, "Draining ${pending.size} buffered ICE candidates for $peerId into PeerConnection")
         pending.forEach { cand ->
-            val added = pc.addIceCandidate(cand)
-            AppLogger.d(tag, "Drained candidate mid=${cand.sdpMid} (added=$added)")
+            try {
+                val added = pc.addIceCandidate(cand)
+                AppLogger.d(tag, "Drained candidate mid=${cand.sdpMid} (added=$added)")
+            } catch (e: Throwable) {
+                AppLogger.w(tag, "Failed adding drained candidate for $peerId: ${e.message}")
+            }
         }
     }
 
@@ -757,6 +773,7 @@ class WebRtcManager(private val context: Context) {
 
     fun closePeer(peerId: String, keepPendingCandidates: Boolean = false) {
         peerConnectionStates.remove(peerId)
+        remoteDescriptionSetPeers.remove(peerId)
         if (!keepPendingCandidates) {
             pendingRemoteIceCandidates.remove(peerId)
             addedRemoteIceCandidates.remove(peerId)
@@ -765,9 +782,8 @@ class WebRtcManager(private val context: Context) {
             if (pending.isNullOrEmpty()) {
                 addedRemoteIceCandidates.remove(peerId)
             } else {
-                val freshSet = java.util.Collections.synchronizedSet(
-                    pending.map { "${it.sdpMid}:${it.sdpMLineIndex}:${it.sdp}" }.toMutableSet()
-                )
+                val freshSet = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+                freshSet.addAll(pending.map { "${it.sdpMid}:${it.sdpMLineIndex}:${it.sdp}" })
                 addedRemoteIceCandidates[peerId] = freshSet
             }
         }
@@ -785,6 +801,7 @@ class WebRtcManager(private val context: Context) {
 
     fun closeAll() {
         peerConnectionStates.clear()
+        remoteDescriptionSetPeers.clear()
         stopCameraCapture()
         stopViewerAudioCapture()
         pendingRemoteIceCandidates.clear()

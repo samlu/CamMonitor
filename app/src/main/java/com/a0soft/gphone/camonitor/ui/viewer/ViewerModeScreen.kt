@@ -241,7 +241,7 @@ fun ViewerModeScreen(
         val remotePubKey = CryptoUtils.publicKeyFromBase64(targetCamera.publicKeyBase64)
         val sharedKey = CryptoUtils.deriveEcdhKey(securityRepo.getKeyPair().private, remotePubKey)
 
-        val localIceCandidates = java.util.Collections.synchronizedList(mutableListOf<IceCandidate>())
+        val localIceCandidates = java.util.concurrent.CopyOnWriteArrayList<IceCandidate>()
 
         val pc = webRtcManager.createPeerConnection(targetCamera.deviceId) { candidate ->
             val typeMatch = Regex("typ\\s+(\\w+)").find(candidate.sdp)?.groupValues?.getOrNull(1) ?: "unknown"

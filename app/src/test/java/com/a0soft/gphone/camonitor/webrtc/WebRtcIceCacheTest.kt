@@ -110,4 +110,55 @@ class WebRtcIceCacheTest {
         assertTrue(cache!!.contains("0:0:${earlyNewCand.sdp}"))
         assertFalse(cache.contains("0:0:${oldCand.sdp}"))
     }
+
+    @Test
+    fun testCandidateBufferedAroundDrainDoesNotGetStranded() {
+        val peerId = "peer-camera-03"
+        val cand1 = IceCandidate("0", 0, "candidate:cand1 1 udp 2122260223 192.168.1.50 51432 typ host")
+        val cand2 = IceCandidate("0", 0, "candidate:cand2 1 udp 2122260223 192.168.1.50 51433 typ host")
+
+        val remoteDescriptionSetPeers = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+        val pendingRemoteIceCandidates = java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.CopyOnWriteArrayList<IceCandidate>>()
+        val addedRemoteIceCandidates = java.util.concurrent.ConcurrentHashMap<String, MutableSet<String>>()
+        val deliveredToPc = mutableListOf<IceCandidate>()
+
+        fun drainRemoteIceCandidates(peer: String) {
+            remoteDescriptionSetPeers.add(peer)
+            val pending = pendingRemoteIceCandidates.remove(peer)
+            if (!pending.isNullOrEmpty()) {
+                deliveredToPc.addAll(pending)
+            }
+        }
+
+        fun addRemoteIceCandidate(peer: String, candidate: IceCandidate) {
+            val seen = addedRemoteIceCandidates.getOrPut(peer) { java.util.concurrent.ConcurrentHashMap.newKeySet() }
+            val candidateKey = "${candidate.sdpMid}:${candidate.sdpMLineIndex}:${candidate.sdp}"
+            if (!seen.add(candidateKey)) return
+
+            if (remoteDescriptionSetPeers.contains(peer)) {
+                deliveredToPc.add(candidate)
+            } else {
+                val list = pendingRemoteIceCandidates.getOrPut(peer) { java.util.concurrent.CopyOnWriteArrayList() }
+                list.add(candidate)
+                if (remoteDescriptionSetPeers.contains(peer)) {
+                    drainRemoteIceCandidates(peer)
+                }
+            }
+        }
+
+        // Candidate 1 arrives before remote description is set
+        addRemoteIceCandidate(peerId, cand1)
+        assertEquals(0, deliveredToPc.size)
+        assertEquals(1, pendingRemoteIceCandidates[peerId]?.size)
+
+        // Drain occurs when remote description is set
+        drainRemoteIceCandidates(peerId)
+        assertEquals(1, deliveredToPc.size)
+        assertNull(pendingRemoteIceCandidates[peerId])
+
+        // Candidate 2 arrives after remote description is set
+        addRemoteIceCandidate(peerId, cand2)
+        assertEquals(2, deliveredToPc.size)
+        assertNull(pendingRemoteIceCandidates[peerId])
+    }
 }

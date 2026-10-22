@@ -121,6 +121,7 @@ class CameraXVideoCapturer(
 
     private val capturerLifecycleOwner = CapturerLifecycleOwner()
     private val isCapturing = AtomicBoolean(false)
+    private val captureSessionToken = java.util.concurrent.atomic.AtomicInteger(0)
 
     private var lastWidth: Int = 1280
     private var lastHeight: Int = 720
@@ -215,6 +216,7 @@ class CameraXVideoCapturer(
             return
         }
 
+        val currentToken = captureSessionToken.incrementAndGet()
         lastWidth = width
         lastHeight = height
         lastFramerate = framerate
@@ -225,7 +227,7 @@ class CameraXVideoCapturer(
 
         if (cachedProvider != null && cachedExtManager != null) {
             mainHandler.post {
-                proceedStartSession(cachedProvider, cachedExtManager, helper)
+                proceedStartSession(cachedProvider, cachedExtManager, helper, currentToken)
             }
         } else {
             val providerFuture = ProcessCameraProvider.getInstance(context)
@@ -238,19 +240,23 @@ class CameraXVideoCapturer(
                         try {
                             val extManager = extManagerFuture.get()
                             this.extensionsManager = extManager
-                            proceedStartSession(provider, extManager, helper)
+                            proceedStartSession(provider, extManager, helper, currentToken)
                         } catch (e: Exception) {
-                            AppLogger.e(tag, "ExtensionsManager initialization failed", e)
-                            isCapturing.set(false)
-                            capturerObserver?.onCapturerStarted(false)
-                            onCameraError?.invoke(e.message ?: "ExtensionsManager init failed")
+                            if (currentToken == captureSessionToken.get()) {
+                                AppLogger.e(tag, "ExtensionsManager initialization failed", e)
+                                isCapturing.set(false)
+                                capturerObserver?.onCapturerStarted(false)
+                                onCameraError?.invoke(e.message ?: "ExtensionsManager init failed")
+                            }
                         }
                     }, mainExecutor)
                 } catch (e: Exception) {
-                    AppLogger.e(tag, "ProcessCameraProvider initialization failed", e)
-                    isCapturing.set(false)
-                    capturerObserver?.onCapturerStarted(false)
-                    onCameraError?.invoke(e.message ?: "ProcessCameraProvider init failed")
+                    if (currentToken == captureSessionToken.get()) {
+                        AppLogger.e(tag, "ProcessCameraProvider initialization failed", e)
+                        isCapturing.set(false)
+                        capturerObserver?.onCapturerStarted(false)
+                        onCameraError?.invoke(e.message ?: "ProcessCameraProvider init failed")
+                    }
                 }
             }, mainExecutor)
         }
@@ -259,10 +265,11 @@ class CameraXVideoCapturer(
     private fun proceedStartSession(
         provider: ProcessCameraProvider,
         extManager: ExtensionsManager,
-        helper: SurfaceTextureHelper
+        helper: SurfaceTextureHelper,
+        sessionToken: Int
     ) {
-        if (!isCapturing.get()) {
-            AppLogger.w(tag, "proceedStartSession cancelled: capturer was stopped before session started")
+        if (sessionToken != captureSessionToken.get() || !isCapturing.get()) {
+            AppLogger.w(tag, "proceedStartSession cancelled: capturer was stopped or restarted (token mismatch: expected=$sessionToken, current=${captureSessionToken.get()})")
             return
         }
         try {
@@ -643,6 +650,7 @@ class CameraXVideoCapturer(
     }
 
     override fun stopCapture() {
+        captureSessionToken.incrementAndGet()
         if (!isCapturing.getAndSet(false)) {
             return
         }
@@ -698,6 +706,7 @@ class CameraXVideoCapturer(
     }
 
     override fun dispose() {
+        captureSessionToken.incrementAndGet()
         stopCapture()
         if (Looper.myLooper() == Looper.getMainLooper()) {
             capturerLifecycleOwner.destroy()
