@@ -336,7 +336,7 @@ fun ViewerModeScreen(
                             AppLogger.d("ViewerMode", "Re-transmitted candidate to camera (success=$candSent, mid=${cand.sdpMid})")
                         }
                     }
-                    if (attempt >= 15 && pc.connectionState() == PeerConnection.PeerConnectionState.NEW) {
+                    if (attempt >= 15 && webRtcManager.getPeerConnectionState(targetCamera.deviceId) == PeerConnection.PeerConnectionState.NEW) {
                         connectionState = ViewerConnectionState.WaitingResponse
                     }
                 }

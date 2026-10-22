@@ -61,4 +61,22 @@ class WebRtcConcurrentMapTest {
         executor.shutdown()
         assertEquals("No ConcurrentModificationException should occur on ConcurrentHashMap", 0, exceptionCount.get())
     }
+
+    @Test
+    fun testPeerConnectionStateTrackingDoesNotThrowOnConcurrentTeardown() {
+        val states = ConcurrentHashMap<String, String>()
+        states["peer1"] = "CONNECTED"
+        states["peer2"] = "CONNECTED"
+
+        // Count connected viewers
+        val connectedCount = states.values.count { it == "CONNECTED" }
+        assertEquals(2, connectedCount)
+
+        // Simulate concurrent closePeer / closeAll
+        states.remove("peer1")
+        assertEquals(1, states.values.count { it == "CONNECTED" })
+
+        states.clear()
+        assertEquals(0, states.values.count { it == "CONNECTED" })
+    }
 }

@@ -35,6 +35,7 @@ class WebRtcManager(private val context: Context) {
 
     // Active PeerConnections mapped by peerId (max 2 for PA)
     private val peerConnections = java.util.concurrent.ConcurrentHashMap<String, PeerConnection>()
+    private val peerConnectionStates = java.util.concurrent.ConcurrentHashMap<String, PeerConnection.PeerConnectionState>()
     private val dataChannels = java.util.concurrent.ConcurrentHashMap<String, DataChannel>()
 
     // Flows
@@ -426,6 +427,7 @@ class WebRtcManager(private val context: Context) {
 
             override fun onConnectionChange(newState: PeerConnection.PeerConnectionState) {
                 AppLogger.i(tag, "ConnectionChange for $peerId: $newState")
+                peerConnectionStates[peerId] = newState
                 _connectionState.value = newState
                 updateActiveViewersCount()
             }
@@ -489,6 +491,7 @@ class WebRtcManager(private val context: Context) {
             localAudioTrack?.let { pc.addTrack(it, listOf("CAM_STREAM")) }
 
             peerConnections[peerId] = pc
+            peerConnectionStates[peerId] = PeerConnection.PeerConnectionState.NEW
             updateActiveViewersCount()
         }
 
@@ -742,15 +745,18 @@ class WebRtcManager(private val context: Context) {
     }
 
     private fun updateActiveViewersCount() {
-        val count = peerConnections.values.count {
-            it.connectionState() == PeerConnection.PeerConnectionState.CONNECTED
+        val count = peerConnectionStates.values.count {
+            it == PeerConnection.PeerConnectionState.CONNECTED
         }
         _activeViewersCount.value = count
     }
 
     fun hasPeer(peerId: String): Boolean = peerConnections.containsKey(peerId)
 
+    fun getPeerConnectionState(peerId: String): PeerConnection.PeerConnectionState? = peerConnectionStates[peerId]
+
     fun closePeer(peerId: String, keepPendingCandidates: Boolean = false) {
+        peerConnectionStates.remove(peerId)
         if (!keepPendingCandidates) {
             pendingRemoteIceCandidates.remove(peerId)
             addedRemoteIceCandidates.remove(peerId)
@@ -778,6 +784,7 @@ class WebRtcManager(private val context: Context) {
     }
 
     fun closeAll() {
+        peerConnectionStates.clear()
         stopCameraCapture()
         stopViewerAudioCapture()
         pendingRemoteIceCandidates.clear()
