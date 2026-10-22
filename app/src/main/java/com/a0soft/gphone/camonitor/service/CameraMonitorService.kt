@@ -46,6 +46,12 @@ class CameraMonitorService : Service() {
     private val _isPttReceiving = MutableStateFlow(false)
     val isPttReceiving: StateFlow<Boolean> = _isPttReceiving.asStateFlow()
 
+    private var isStreamingActive = false
+    private var signalingJob: Job? = null
+    private var signalingClientJob: Job? = null
+    private var dataChannelJob: Job? = null
+    private var viewersCountJob: Job? = null
+
     private var inactivityJob: Job? = null
     private var batteryBroadcastJob: Job? = null
 
@@ -134,6 +140,12 @@ class CameraMonitorService : Service() {
 
     fun startStreaming() {
         val app = CamMonitorApp.instance
+        if (isStreamingActive) {
+            AppLogger.i(tag, "startStreaming called but streaming is already active; ensuring camera capture is running")
+            app.webRtcManager.startCameraCapture()
+            return
+        }
+        isStreamingActive = true
         _streamingState.value = CameraStreamingState.WAITING_FOR_VIEWERS
         updateNotification(getString(R.string.notification_waiting_for_viewers))
 
@@ -152,22 +164,26 @@ class CameraMonitorService : Service() {
         app.webRtcManager.startCameraCapture()
 
         // Start listening to signaling
-        serviceScope.launch {
+        signalingJob?.cancel()
+        signalingJob = serviceScope.launch {
             observeSignaling(app)
         }
-        serviceScope.launch {
+        signalingClientJob?.cancel()
+        signalingClientJob = serviceScope.launch {
             app.signalingClient.startListening()
         }
 
         // Listen to DataChannel commands from viewers
-        serviceScope.launch {
+        dataChannelJob?.cancel()
+        dataChannelJob = serviceScope.launch {
             app.webRtcManager.dataChannelCommands.collect { (peerId, cmd) ->
                 handleViewerCommand(peerId, cmd)
             }
         }
 
         // Track active viewers count for 60s timeout and battery broadcast
-        serviceScope.launch {
+        viewersCountJob?.cancel()
+        viewersCountJob = serviceScope.launch {
             app.webRtcManager.activeViewersCount.collect { count ->
                 if (count > 0) {
                     _streamingState.value = CameraStreamingState.STREAMING
@@ -185,6 +201,23 @@ class CameraMonitorService : Service() {
         }
 
         startInactivityTimer()
+    }
+
+    fun stopStreaming() {
+        if (!isStreamingActive) return
+        isStreamingActive = false
+        signalingJob?.cancel()
+        signalingJob = null
+        signalingClientJob?.cancel()
+        signalingClientJob = null
+        dataChannelJob?.cancel()
+        dataChannelJob = null
+        viewersCountJob?.cancel()
+        viewersCountJob = null
+        cancelInactivityTimer()
+        stopBatteryBroadcast()
+        _streamingState.value = CameraStreamingState.IDLE
+        CamMonitorApp.instance.webRtcManager.stopCameraCapture()
     }
 
     private fun startBatteryBroadcast() {
@@ -270,8 +303,9 @@ class CameraMonitorService : Service() {
             app.webRtcManager.startCameraCapture()
         }
 
-        // Cap max 2 viewers
-        if (app.webRtcManager.activeViewersCount.value >= 2) {
+        // Cap max 2 viewers (allow reconnecting existing peer)
+        val isExistingPeer = app.webRtcManager.hasPeer(senderId)
+        if (app.webRtcManager.activeViewersCount.value >= 2 && !isExistingPeer) {
             AppLogger.w(tag, "Rejecting connection from $senderId: Max 2 viewers reached")
             sendSignalingMessageToViewer(senderId, SignalingMessage.Reject("MAX_CAPACITY_REACHED"))
             return
@@ -431,10 +465,9 @@ class CameraMonitorService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         AppLogger.i(tag, "CameraMonitorService destroyed")
+        stopStreaming()
         CamMonitorApp.instance.webRtcManager.onCameraUnexpectedClosed = null
         com.a0soft.gphone.camonitor.ui.common.AudioRoutingManager.restoreNormalMode(this)
-        cancelInactivityTimer()
-        stopBatteryBroadcast()
         serviceScope.cancel()
         CamMonitorApp.instance.webRtcManager.closeAll()
         if (wakeLock?.isHeld == true) {

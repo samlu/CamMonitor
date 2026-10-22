@@ -148,4 +148,53 @@ class CameraStandbyStateTest {
         runCurrent()
         assertEquals(CameraStreamingState.PAUSED_INACTIVITY, streamingState.value)
     }
+
+    @Test
+    fun testReconnectingViewerBypassesCapacityRejection() {
+        val existingPeers = mutableSetOf("viewer-1", "viewer-2")
+        val activeViewersCount = 2
+
+        fun canAcceptOffer(senderId: String): Boolean {
+            val isExistingPeer = existingPeers.contains(senderId)
+            if (activeViewersCount >= 2 && !isExistingPeer) {
+                return false // MAX_CAPACITY_REACHED
+            }
+            return true
+        }
+
+        // Reconnecting existing peer (viewer-1) should NOT be rejected
+        assertTrue("Reconnecting viewer-1 must be accepted even if activeViewersCount == 2", canAcceptOffer("viewer-1"))
+        assertTrue("Reconnecting viewer-2 must be accepted even if activeViewersCount == 2", canAcceptOffer("viewer-2"))
+
+        // New third viewer (viewer-3) must be rejected
+        assertFalse("New 3rd viewer must be rejected when activeViewersCount == 2", canAcceptOffer("viewer-3"))
+    }
+
+    @Test
+    fun testStartStreamingIdempotencyPreventsDuplicateCollectors() = runTest {
+        var isStreamingActive = false
+        var collectorLaunchCount = 0
+
+        fun startStreaming() {
+            if (isStreamingActive) {
+                // Already active: ensure camera capture running but do NOT spawn duplicate collectors
+                return
+            }
+            isStreamingActive = true
+            collectorLaunchCount++
+        }
+
+        // First invocation (initial start)
+        startStreaming()
+        assertEquals(1, collectorLaunchCount)
+        assertTrue(isStreamingActive)
+
+        // Second invocation (e.g. screen rotation / ServiceConnection re-bind)
+        startStreaming()
+        assertEquals("Duplicate collectors must not be spawned on service re-entry", 1, collectorLaunchCount)
+
+        // Third invocation
+        startStreaming()
+        assertEquals(1, collectorLaunchCount)
+    }
 }

@@ -742,6 +742,8 @@ class WebRtcManager(private val context: Context) {
         _activeViewersCount.value = count
     }
 
+    fun hasPeer(peerId: String): Boolean = peerConnections.containsKey(peerId)
+
     fun closePeer(peerId: String, keepPendingCandidates: Boolean = false) {
         if (!keepPendingCandidates) {
             pendingRemoteIceCandidates.remove(peerId)

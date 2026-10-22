@@ -31,11 +31,11 @@ Additionally, MQTT signaling currently operates over unencrypted TCP port 1883 i
 | **B-01** | Bug | Multi-Role Whitelist Count Lockout | **Fixed** (Critical) | [`SecurityRepository.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/security/SecurityRepository.kt#L212-L225), [`ManageDevicesScreen.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/devices/ManageDevicesScreen.kt#L41-L42) |
 | **B-02** | Concurrency | Main-Thread Deadlock / 2000ms Freeze in `stopCapture()` | **Fixed** (Critical) | [`CameraXVideoCapturer.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/camera/CameraXVideoCapturer.kt#L597-L634) |
 | **B-03** | Bug | WebRTC Reconnection Stalls via Stale Duplicate ICE Cache | **Fixed** (High) | [`WebRtcManager.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/webrtc/WebRtcManager.kt#L746-L758) |
-| **B-04** | Bug | Reconnecting Viewer Rejected via Stale Capacity Check | **High** | [`CameraMonitorService.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/service/CameraMonitorService.kt#L274-L278) |
+| **B-04** | Bug | Reconnecting Viewer Rejected via Stale Capacity Check | **Fixed** (High) | [`CameraMonitorService.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/service/CameraMonitorService.kt#L306-L311), [`WebRtcManager.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/webrtc/WebRtcManager.kt#L745) |
 | **B-05** | Bug | Ephemeral OTP Timer Dies After Initial 5 Minutes | **Medium** | [`CameraPairingScreen.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/pairing/CameraPairingScreen.kt#L60-L68) |
 | **B-06** | Concurrency | Coroutine Leak in Viewer Mode Retries | **Medium** | [`ViewerModeScreen.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/viewer/ViewerModeScreen.kt#L257-L281) |
 | **B-07** | Concurrency | Unsynchronized Maps in `WebRtcManager` Callback Threads | **Medium** | [`WebRtcManager.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/webrtc/WebRtcManager.kt#L37-L39), [`#L66`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/webrtc/WebRtcManager.kt#L66) |
-| **B-08** | Bug | Duplicate Flow Collectors on Service Re-Entry | **Medium** | [`CameraMonitorService.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/service/CameraMonitorService.kt#L135-L188) |
+| **B-08** | Bug | Duplicate Flow Collectors on Service Re-Entry | **Fixed** (Medium) | [`CameraMonitorService.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/service/CameraMonitorService.kt#L49-L220) |
 | **B-09** | Reliability | Silent Permission Denial in `MainActivity` | **Low** | [`MainActivity.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/MainActivity.kt#L39-L43) |
 
 ---
@@ -322,7 +322,8 @@ Additionally, MQTT signaling currently operates over unencrypted TCP port 1883 i
 ---
 
 ### B-04: Reconnecting Viewer Rejected via Stale Capacity Check
-* **Location:** [`CameraMonitorService.kt:274-278`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/service/CameraMonitorService.kt#L274-L278)
+* **Location:** [`CameraMonitorService.kt:306-311`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/service/CameraMonitorService.kt#L306-L311), [`WebRtcManager.kt:745`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/webrtc/WebRtcManager.kt#L745)
+* **Status:** **Resolved / Fixed**
 * **Description:**
   ```kotlin
   if (app.webRtcManager.activeViewersCount.value >= 2) {
@@ -330,15 +331,21 @@ Additionally, MQTT signaling currently operates over unencrypted TCP port 1883 i
       return
   }
   ```
-  If Viewer 1 disconnects briefly and reconnects, its prior WebRTC peer connection may still register as `CONNECTED` for several seconds before ICE timeout. The camera drops Viewer 1 with `MAX_CAPACITY_REACHED`.
-* **Remediation:** Check whether the connecting viewer already holds an active peer connection:
-  ```kotlin
-  val isExistingPeer = app.webRtcManager.hasPeer(senderId)
-  if (app.webRtcManager.activeViewersCount.value >= 2 && !isExistingPeer) {
-      sendSignalingMessageToViewer(senderId, SignalingMessage.Reject("MAX_CAPACITY_REACHED"))
-      return
-  }
-  ```
+  If Viewer 1 disconnected briefly and reconnected, its prior WebRTC peer connection often still registered as `CONNECTED` for several seconds before native ICE timeout. The camera dropped Viewer 1 with `MAX_CAPACITY_REACHED`.
+* **Remediation & Applied Implementation:**
+  1. Added [`WebRtcManager.hasPeer(peerId)`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/webrtc/WebRtcManager.kt#L745) to detect if an allocated peer connection already exists for `peerId`.
+  2. In [`CameraMonitorService.handleRemoteOffer`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/service/CameraMonitorService.kt#L306-L311), bypass the capacity rejection when `hasPeer(senderId)` is true, allowing the reconnecting peer's prior connection to be cleanly replaced:
+     ```kotlin
+     val isExistingPeer = app.webRtcManager.hasPeer(senderId)
+     if (app.webRtcManager.activeViewersCount.value >= 2 && !isExistingPeer) {
+         AppLogger.w(tag, "Rejecting connection from $senderId: Max 2 viewers reached")
+         sendSignalingMessageToViewer(senderId, SignalingMessage.Reject("MAX_CAPACITY_REACHED"))
+         return
+     }
+     ```
+* **Verification:**
+  - **Unit Tests:** Added `testReconnectingViewerBypassesCapacityRejection` in [`CameraStandbyStateTest.kt`](file:///E:/Antigravity/CamMonitor/app/src/test/java/com/a0soft/gphone/camonitor/service/CameraStandbyStateTest.kt#L152-L170).
+  - **Device Deployment:** Built and verified on Pixel 6 Pro & Pixel 8 Pro.
 
 ---
 
@@ -392,9 +399,16 @@ Additionally, MQTT signaling currently operates over unencrypted TCP port 1883 i
 ---
 
 ### B-08: Duplicate Flow Collectors on Service Re-Entry
-* **Location:** [`CameraMonitorService.kt:135-188`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/service/CameraMonitorService.kt#L135-L188)
-* **Description:** If `startStreaming()` is called while the service is already running, new flow collectors for `incomingMessages`, `dataChannelCommands`, and `activeViewersCount` are created without cancelling previous collectors, duplicating all event handlers.
-* **Remediation:** Guard `startStreaming()` with an `isStreamingActive` boolean flag or manage collection jobs in structured `Job?` references.
+* **Location:** [`CameraMonitorService.kt:49-220`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/service/CameraMonitorService.kt#L49-L220)
+* **Status:** **Resolved / Fixed**
+* **Description:** If `startStreaming()` was called while the service was already running (such as on Activity recreation, screen rotation, or `ServiceConnection` re-binds), new coroutine collectors for `signalingClient.incomingMessages`, `dataChannelCommands`, and `activeViewersCount` were spawned without cancelling previous collectors, duplicating all event handlers.
+* **Remediation & Applied Implementation:**
+  1. Added `isStreamingActive` guard in [`CameraMonitorService.startStreaming`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/service/CameraMonitorService.kt#L143-L148) returning early if streaming is already active while ensuring camera capture is alive.
+  2. Retained individual `Job?` references (`signalingJob`, `signalingClientJob`, `dataChannelJob`, `viewersCountJob`) and cancelled previous instances prior to re-launching.
+  3. Added [`stopStreaming()`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/service/CameraMonitorService.kt#L206) to cancel all collection jobs and reset service state cleanly upon teardown or `onDestroy()`.
+* **Verification:**
+  - **Unit Tests:** Added `testStartStreamingIdempotencyPreventsDuplicateCollectors` in [`CameraStandbyStateTest.kt`](file:///E:/Antigravity/CamMonitor/app/src/test/java/com/a0soft/gphone/camonitor/service/CameraStandbyStateTest.kt#L172-L199).
+  - **Device Deployment:** Built and verified on Pixel 6 Pro & Pixel 8 Pro.
 
 ---
 
