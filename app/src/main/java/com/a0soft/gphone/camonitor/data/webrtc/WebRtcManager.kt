@@ -641,7 +641,13 @@ class WebRtcManager(private val context: Context) {
         AppLogger.i(tag, "Remote audio track enabled: $enabled")
     }
 
+    val isViewerAudioTrackActive: Boolean get() = viewerAudioTrack != null
+
     fun startViewerAudioCapture(): AudioTrack? {
+        if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            AppLogger.w(tag, "Cannot start viewer audio capture: RECORD_AUDIO permission not granted")
+            return null
+        }
         val factory = peerConnectionFactory ?: run {
             AppLogger.e(tag, "Cannot start viewer audio capture: PeerConnectionFactory is null")
             return null

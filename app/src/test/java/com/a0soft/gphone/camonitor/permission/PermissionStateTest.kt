@@ -5,7 +5,7 @@ import org.junit.Test
 
 /**
  * Unit tests verifying permission state tracking, rationale dialog triggers,
- * permanent denial detection, and onResume auto-recovery flow for B-09.
+ * permanent denial detection, and onResume/reopen auto-recovery flow for B-09.
  */
 class PermissionStateTest {
 
@@ -17,6 +17,24 @@ class PermissionStateTest {
         var showRationaleDialog = false
         var isPermanentlyDenied = false
         var pendingAction: (() -> Unit)? = null
+        var appWentToBackground = false
+
+        fun checkStartupPermissions(required: List<String>) {
+            val needed = required.filter { it !in grantedPermissions }
+            if (needed.isNotEmpty()) {
+                deniedPermissions = needed
+                val permanentlyDenied = needed.any { it !in rationalePermissions }
+                isPermanentlyDenied = permanentlyDenied
+                if (permanentlyDenied) {
+                    showRationaleDialog = true
+                } else {
+                    onLauncherResult(needed.associateWith { it in grantedPermissions })
+                }
+            } else {
+                deniedPermissions = emptyList()
+                showRationaleDialog = false
+            }
+        }
 
         fun checkAndRequest(
             required: List<String>,
@@ -27,13 +45,12 @@ class PermissionStateTest {
                 onGranted()
             } else {
                 pendingAction = onGranted
+                deniedPermissions = needed
                 val permanentlyDenied = needed.any { it !in rationalePermissions }
-                if (permanentlyDenied && deniedPermissions.any { it in needed }) {
-                    deniedPermissions = needed
-                    isPermanentlyDenied = true
+                isPermanentlyDenied = permanentlyDenied
+                if (permanentlyDenied) {
                     showRationaleDialog = true
                 } else {
-                    // Simulate permission launcher result with current grantedPermissions state
                     onLauncherResult(needed.associateWith { it in grantedPermissions })
                 }
             }
@@ -54,8 +71,20 @@ class PermissionStateTest {
             }
         }
 
-        fun onResume() {
-            if (deniedPermissions.isNotEmpty()) {
+        fun onStop() {
+            appWentToBackground = true
+        }
+
+        fun onResume(required: List<String>) {
+            if (appWentToBackground) {
+                appWentToBackground = false
+                val hadPending = pendingAction
+                checkStartupPermissions(required)
+                if (deniedPermissions.isEmpty() && hadPending != null) {
+                    pendingAction = null
+                    hadPending.invoke()
+                }
+            } else if (deniedPermissions.isNotEmpty()) {
                 val stillDenied = deniedPermissions.filter { it !in grantedPermissions }
                 deniedPermissions = stillDenied
                 if (stillDenied.isEmpty()) {
@@ -66,6 +95,42 @@ class PermissionStateTest {
                 }
             }
         }
+    }
+
+    @Test
+    fun testStartupCheckWithDeniedPermissionsShowsRationaleDialog() {
+        val manager = FakePermissionManager(
+            grantedPermissions = emptySet(),
+            rationalePermissions = emptySet() // permanently denied on Pixel 8
+        )
+        manager.checkStartupPermissions(listOf("android.permission.CAMERA", "android.permission.RECORD_AUDIO"))
+
+        assertTrue("Opening app with missing permissions must show rationale dialog", manager.showRationaleDialog)
+        assertTrue("Permanent denial must route to Settings", manager.isPermanentlyDenied)
+        assertEquals(listOf("android.permission.CAMERA", "android.permission.RECORD_AUDIO"), manager.deniedPermissions)
+    }
+
+    @Test
+    fun testReopenAppAfterExitShowsRationaleDialogAgain() {
+        val manager = FakePermissionManager(
+            grantedPermissions = emptySet(),
+            rationalePermissions = emptySet()
+        )
+        // 1. App open -> shows dialog
+        manager.checkStartupPermissions(listOf("android.permission.CAMERA"))
+        assertTrue(manager.showRationaleDialog)
+
+        // 2. User taps Cancel on the dialog
+        manager.showRationaleDialog = false
+        assertFalse(manager.showRationaleDialog)
+
+        // 3. User exits app (goes to background)
+        manager.onStop()
+        assertTrue(manager.appWentToBackground)
+
+        // 4. User opens app again -> onResume re-evaluates startup permissions
+        manager.onResume(listOf("android.permission.CAMERA"))
+        assertTrue("Reopening app after exiting must show rationale dialog again", manager.showRationaleDialog)
     }
 
     @Test
@@ -85,27 +150,7 @@ class PermissionStateTest {
     }
 
     @Test
-    fun testMissingPermissionsDeferActionAndShowRationale() {
-        val manager = FakePermissionManager(
-            grantedPermissions = emptySet(),
-            rationalePermissions = setOf("android.permission.CAMERA")
-        )
-        var actionExecuted = false
-
-        manager.checkAndRequest(listOf("android.permission.CAMERA")) {
-            actionExecuted = true
-        }
-
-        assertFalse("Action must not execute when permissions are denied", actionExecuted)
-        assertTrue("Rationale dialog must be shown", manager.showRationaleDialog)
-        assertFalse("Transient denial must not be marked permanently denied", manager.isPermanentlyDenied)
-        assertEquals(listOf("android.permission.CAMERA"), manager.deniedPermissions)
-        assertNotNull("Pending action must be preserved", manager.pendingAction)
-    }
-
-    @Test
-    fun testPermanentDenialTriggersSettingsRoute() {
-        // When not in rationale permissions, shouldShowRequestPermissionRationale returns false (permanent denial)
+    fun testOnResumeAutoRecoveryWhenPermissionsGrantedInSettings() {
         val manager = FakePermissionManager(
             grantedPermissions = emptySet(),
             rationalePermissions = emptySet()
@@ -115,30 +160,15 @@ class PermissionStateTest {
         manager.checkAndRequest(listOf("android.permission.CAMERA")) {
             actionExecuted = true
         }
-
-        assertFalse("Action must not execute", actionExecuted)
-        assertTrue("Rationale dialog must be displayed", manager.showRationaleDialog)
-        assertTrue("Permanent denial flag must be true", manager.isPermanentlyDenied)
-    }
-
-    @Test
-    fun testOnResumeAutoRecoveryExecutesPendingAction() {
-        val manager = FakePermissionManager(
-            grantedPermissions = emptySet(),
-            rationalePermissions = setOf("android.permission.CAMERA")
-        )
-        var actionExecuted = false
-
-        manager.checkAndRequest(listOf("android.permission.CAMERA")) {
-            actionExecuted = true
-        }
-
         assertFalse(actionExecuted)
         assertTrue(manager.showRationaleDialog)
 
-        // User goes to Android App Settings and grants CAMERA permission, then returns (onResume)
+        // User goes to Settings, app goes to background
+        manager.onStop()
+        // User grants permission in Settings
         manager.grantedPermissions = setOf("android.permission.CAMERA")
-        manager.onResume()
+        // User returns to app
+        manager.onResume(listOf("android.permission.CAMERA"))
 
         assertTrue("Pending action must auto-execute on onResume once permissions are satisfied", actionExecuted)
         assertFalse("Rationale dialog must be dismissed", manager.showRationaleDialog)

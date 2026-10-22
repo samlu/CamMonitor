@@ -52,6 +52,7 @@ class MainActivity : ComponentActivity() {
     var showPermissionRationaleDialog by mutableStateOf(false)
     var isPermanentlyDenied by mutableStateOf(false)
     var pendingPermissionAction: (() -> Unit)? = null
+    private var appWentToBackground = false
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -90,7 +91,7 @@ class MainActivity : ComponentActivity() {
         currentLanguageTag = com.a0soft.gphone.camonitor.ui.common.LocaleHelper.getCurrentLanguageTag(this)
         enableEdgeToEdge()
 
-        requestRequiredPermissions()
+        checkStartupPermissions()
 
         setContent {
             CamMonitorTheme {
@@ -99,6 +100,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        appWentToBackground = true
     }
 
     override fun onResume() {
@@ -110,8 +116,16 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        // Auto-recover if user granted missing permissions in Android App Settings
-        if (deniedPermissions.isNotEmpty()) {
+        // Re-check permissions when reopening app from background
+        if (appWentToBackground) {
+            appWentToBackground = false
+            val hadPending = pendingPermissionAction
+            checkStartupPermissions()
+            if (deniedPermissions.isEmpty() && hadPending != null) {
+                pendingPermissionAction = null
+                hadPending.invoke()
+            }
+        } else if (deniedPermissions.isNotEmpty()) {
             val stillDenied = deniedPermissions.filter {
                 ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
             }
@@ -136,6 +150,27 @@ class MainActivity : ComponentActivity() {
         return permissions
     }
 
+    fun checkStartupPermissions() {
+        val needed = getCameraPermissions().filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (needed.isNotEmpty()) {
+            deniedPermissions = needed
+            val permanentlyDenied = needed.any { perm ->
+                !ActivityCompat.shouldShowRequestPermissionRationale(this, perm)
+            }
+            isPermanentlyDenied = permanentlyDenied
+            if (permanentlyDenied) {
+                showPermissionRationaleDialog = true
+            } else {
+                permissionLauncher.launch(needed.toTypedArray())
+            }
+        } else {
+            deniedPermissions = emptyList()
+            showPermissionRationaleDialog = false
+        }
+    }
+
     fun checkAndRequestPermissions(
         required: List<String>,
         onGranted: () -> Unit
@@ -147,26 +182,16 @@ class MainActivity : ComponentActivity() {
             onGranted()
         } else {
             pendingPermissionAction = onGranted
+            deniedPermissions = needed
             val permanentlyDenied = needed.any { perm ->
                 !ActivityCompat.shouldShowRequestPermissionRationale(this, perm)
             }
-            if (permanentlyDenied && deniedPermissions.any { it in needed }) {
-                deniedPermissions = needed
-                isPermanentlyDenied = true
+            isPermanentlyDenied = permanentlyDenied
+            if (permanentlyDenied) {
                 showPermissionRationaleDialog = true
             } else {
                 permissionLauncher.launch(needed.toTypedArray())
             }
-        }
-    }
-
-    private fun requestRequiredPermissions() {
-        val needed = getCameraPermissions().filter {
-            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
-        }
-
-        if (needed.isNotEmpty()) {
-            permissionLauncher.launch(needed.toTypedArray())
         }
     }
 

@@ -1,6 +1,20 @@
 package com.a0soft.gphone.camonitor.ui.viewer
 
 import android.view.ViewGroup
+import android.Manifest
+import android.app.Activity
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -114,11 +128,48 @@ fun ViewerModeScreen(
     var isCameraNightActive by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
+    val activity = context as? Activity
+    var showMicPermissionDialog by remember { mutableStateOf(false) }
+    var isMicPermanentlyDenied by remember { mutableStateOf(false) }
+    var reconnectTrigger by remember { mutableStateOf(0) }
+
+    val micPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            showMicPermissionDialog = false
+            reconnectTrigger++
+        } else {
+            isMicPermanentlyDenied = activity?.let {
+                !ActivityCompat.shouldShowRequestPermissionRationale(it, Manifest.permission.RECORD_AUDIO)
+            } ?: false
+            showMicPermissionDialog = true
+        }
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                val hasMic = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+                if (hasMic) {
+                    showMicPermissionDialog = false
+                    if (!webRtcManager.isViewerAudioTrackActive) {
+                        reconnectTrigger++
+                    }
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     var paBatteryInfo by remember { mutableStateOf<BatteryInfo?>(null) }
     var pbBatteryInfo by remember { mutableStateOf(BatteryHelper.getBatteryInfo(context)) }
 
     var surfaceRenderer by remember { mutableStateOf<SurfaceViewRenderer?>(null) }
-    var reconnectTrigger by remember { mutableStateOf(0) }
     var isUserExited by remember { mutableStateOf(false) }
 
     fun exitViewer() {
@@ -762,6 +813,15 @@ fun ViewerModeScreen(
                             .pointerInput(targetCamera?.deviceId) {
                                 detectTapGestures(
                                     onPress = {
+                                        val hasMic = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+                                        if (!hasMic) {
+                                            isMicPermanentlyDenied = activity?.let {
+                                                !ActivityCompat.shouldShowRequestPermissionRationale(it, Manifest.permission.RECORD_AUDIO)
+                                            } ?: false
+                                            showMicPermissionDialog = true
+                                            return@detectTapGestures
+                                        }
+
                                         isPttPressed = true
                                         val wasAudioEnabled = isAudioEnabled
                                         if (wasAudioEnabled) {
@@ -943,6 +1003,38 @@ fun ViewerModeScreen(
                         reconnectTrigger++
                     }) {
                         Text(stringResource(R.string.action_retry))
+                    }
+                }
+            )
+        }
+
+        if (showMicPermissionDialog) {
+            AlertDialog(
+                onDismissRequest = { showMicPermissionDialog = false },
+                title = { Text(stringResource(R.string.permission_dialog_title)) },
+                text = { Text(stringResource(R.string.permission_audio_reason)) },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            if (isMicPermanentlyDenied) {
+                                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                    data = Uri.fromParts("package", context.packageName, null)
+                                }
+                                context.startActivity(intent)
+                            } else {
+                                micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                            }
+                        }
+                    ) {
+                        Text(
+                            if (isMicPermanentlyDenied) stringResource(R.string.permission_open_settings)
+                            else stringResource(R.string.permission_grant)
+                        )
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showMicPermissionDialog = false }) {
+                        Text(stringResource(R.string.action_cancel))
                     }
                 }
             )

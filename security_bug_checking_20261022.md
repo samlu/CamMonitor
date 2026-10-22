@@ -482,18 +482,31 @@ Additionally, MQTT signaling currently operates over unencrypted TCP port 1883 i
 
 ---
 
-### B-09: Silent Permission Denial in `MainActivity`
-* **Location:** [`MainActivity.kt:55-162`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/MainActivity.kt#L55-L162)
+### B-09: Silent Permission Denial & Missing Microphone Guard
+* **Location:** [`MainActivity.kt:55-170`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/MainActivity.kt#L55-L170), [`ViewerModeScreen.kt:130-165, 810-850, 1010-1042`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/viewer/ViewerModeScreen.kt), [`WebRtcManager.kt:640-660`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/webrtc/WebRtcManager.kt#L640-L660)
 * **Status:** **Resolved / Fixed**
-* **Description:** The permission callback previously left handling empty (`// Permissions handled`). Denying `CAMERA` or `RECORD_AUDIO` produced no feedback, resulting in crashes or black screens when entering Camera or Viewer modes.
+* **Description:**
+  1. The permission callback in `MainActivity` previously left handling empty (`// Permissions handled`), producing no user feedback when permissions were denied.
+  2. When permissions were missing on cold launch or when reopening the app after cancelling the permission dialog, the app failed to re-prompt the user.
+  3. In Viewer mode, if the user entered after cancelling microphone permission, tapping "Hold to Talk" (PTT) attempted to capture audio without permission check. This triggered native AudioFlinger failure (`AudioRecord: createRecord_l(0): AudioFlinger could not create record track, status: -1`, `WebRtcAudioRecordExternal: Init recording error: Cannot create AudioRecord`), poisoning WebRTC's audio engine and sending empty/silent PTT audio frames to the Camera device with no user feedback.
 * **Remediation & Applied Implementation:**
-  1. **Intercepted Screen Transitions:** Added `checkAndRequestPermissions()` guarding all navigation actions requiring hardware resources (`CAMERA`, `RECORD_AUDIO`, `POST_NOTIFICATIONS`) in [`HomeScreen`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/home/HomeScreen.kt) and [`ManageDevicesScreen`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/devices/ManageDevicesScreen.kt).
-  2. **Transient vs Permanent Denial Distinction:** Tracked `deniedPermissions` and `isPermanentlyDenied = !ActivityCompat.shouldShowRequestPermissionRationale(activity, perm)`.
-  3. **User Feedback Dialog:** Rendered Material 3 `AlertDialog` displaying rationale for each missing permission. If permanently denied, directs the user directly to App Settings (`Settings.ACTION_APPLICATION_DETAILS_SETTINGS`); otherwise allows re-requesting.
-  4. **Auto-Recovery on `onResume`:** When the user returns from system settings, `onResume()` automatically re-evaluates permissions, clears the rationale dialog, and executes the pending queued action.
+  1. **Startup & Reopen Evaluation in `MainActivity`:**
+     - Added `checkStartupPermissions()` in `onCreate()` and `onResume()` (tracking `appWentToBackground` via `onStop()`) to evaluate missing permissions on initial launch and when reopening the app from background.
+     - Displays Material 3 `AlertDialog` describing required permissions (`CAMERA`, `RECORD_AUDIO`, `POST_NOTIFICATIONS`). If permanently denied, routes user to App Settings (`Settings.ACTION_APPLICATION_DETAILS_SETTINGS`); otherwise launches system permission request.
+  2. **Push-to-Talk (PTT) Permission Guard in `ViewerModeScreen`:**
+     - Added runtime permission guard to `onPress` in the "Hold to Talk" gesture detector.
+     - If `RECORD_AUDIO` is missing, cancels PTT immediately and displays a dedicated Material 3 `AlertDialog` ("Permissions Required" / "Microphone: Required for 2-way audio intercom" / "Open Settings" / "Cancel") instead of failing silently.
+  3. **Auto-Recovery & Dynamic Reconnection:**
+     - Added `LifecycleEventObserver` on `ON_RESUME` in `ViewerModeScreen`. When the user returns from Settings with microphone permission granted, the dialog dismisses and `reconnectTrigger++` is incremented.
+     - Recreates WebRTC PeerConnection with bidirectional audio (`SEND_RECV`), creating the local `viewerAudioTrack` cleanly without needing to leave or restart the viewer session.
+  4. **Defensive WebRTC Audio Engine Guard:**
+     - In [`WebRtcManager.startViewerAudioCapture()`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/webrtc/WebRtcManager.kt#L644), added an explicit check for `Manifest.permission.RECORD_AUDIO`. If not granted, returns `null` safely without invoking WebRTC's audio recording engine or poisoning native audio tracks. Added `isViewerAudioTrackActive` accessor.
 * **Verification:**
-  - **Unit Tests:** Created [`PermissionStateTest.kt`](file:///E:/Antigravity/CamMonitor/app/src/test/java/com/a0soft/gphone/camonitor/permission/PermissionStateTest.kt) testing immediate execution on grant, action queueing on transient denial, settings routing on permanent denial, and `onResume()` auto-recovery.
-  - **Device Deployment:** Built and verified on Pixel 6 Pro & Pixel 8 Pro.
+  - **Unit Tests:** Created and updated [`PermissionStateTest.kt`](file:///E:/Antigravity/CamMonitor/app/src/test/java/com/a0soft/gphone/camonitor/permission/PermissionStateTest.kt) testing immediate execution on grant, action queueing on transient denial, settings routing on permanent denial, and `onResume()` auto-recovery. All 25 tasks passed (`./gradlew.bat testDebugUnitTest`).
+  - **Device Verification (Pixel 8 Pro + Pixel 6 Pro):**
+    - **Startup & Background Denial:** Tested with all permissions revoked; `MainActivity` prompts "Permissions Required" on cold start and re-displays on reopening after backgrounding.
+    - **In-Session PTT Guard:** With mic permission cancelled, entered Viewer mode and pressed "Hold to Talk". Dialog immediately appeared ("Microphone: Required for 2-way audio intercom") with zero AudioFlinger / WebRTC crashes.
+    - **Live Intercom Verification:** Tapped "Open Settings", granted microphone permission, returned to app. Reconnection triggered cleanly (`WebRTC PeerConnectionState: CONNECTED`). Holding "Hold to Talk" initialized `WebRtcAudioRecordExternal` (`verifyAudioConfig: PASS`), sent `PTT_START` over DataChannel, and Camera device unmuted speaker (`setCommunicationDevice(TYPE_BUILTIN_SPEAKER): true`) and played audio without error.
 
 ---
 
