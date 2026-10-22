@@ -141,40 +141,35 @@ class MqttSignalingClient(
         activeClient = null
 
         val currentGen = ++clientGeneration
-        val brokers = listOf(
-            PRIMARY_BROKER_HOST to PRIMARY_BROKER_PORT,
-            SECONDARY_BROKER_HOST to SECONDARY_BROKER_PORT
-        )
+        val canonicalHost = PRIMARY_BROKER_HOST
+        val port = PRIMARY_BROKER_PORT
+        val candidates = resolveHostCandidates(canonicalHost)
+        AppLogger.i(tag, "Attempting TLS connection to $canonicalHost:$port (candidates=$candidates, gen=$currentGen)...")
 
-        for ((canonicalHost, port) in brokers) {
-            val candidates = resolveHostCandidates(canonicalHost)
-            AppLogger.i(tag, "Attempting TLS connection to $canonicalHost:$port (candidates=$candidates, gen=$currentGen)...")
-
-            for (targetHost in candidates) {
-                val success = try {
-                    withTimeoutOrNull(8_000L) {
-                        attemptConnect(
-                            host = targetHost,
-                            expectedHost = canonicalHost,
-                            port = port,
-                            useSsl = true,
-                            topic = topic,
-                            generation = currentGen
-                        )
-                    } ?: false
-                } catch (e: Exception) {
-                    AppLogger.w(tag, "TLS connection error for $targetHost ($canonicalHost): ${e.message}")
-                    false
-                }
-                if (success) {
-                    AppLogger.i(tag, "Successfully connected via TLS to $targetHost:$port (host=$canonicalHost, gen=$currentGen)")
-                    _isConnectedFlow.value = true
-                    return@withLock true
-                }
+        for (targetHost in candidates) {
+            val success = try {
+                withTimeoutOrNull(8_000L) {
+                    attemptConnect(
+                        host = targetHost,
+                        expectedHost = canonicalHost,
+                        port = port,
+                        useSsl = true,
+                        topic = topic,
+                        generation = currentGen
+                    )
+                } ?: false
+            } catch (e: Exception) {
+                AppLogger.w(tag, "TLS connection error for $targetHost ($canonicalHost): ${e.message}")
+                false
+            }
+            if (success) {
+                AppLogger.i(tag, "Successfully connected via TLS to $targetHost:$port (host=$canonicalHost, gen=$currentGen)")
+                _isConnectedFlow.value = true
+                return@withLock true
             }
         }
 
-        AppLogger.w(tag, "All TLS candidate connection attempts failed across brokers (gen=$currentGen)")
+        AppLogger.w(tag, "All TLS candidate connection attempts failed to $canonicalHost:$port (gen=$currentGen)")
         _isConnectedFlow.value = false
         return@withLock false
     }
@@ -358,8 +353,12 @@ class MqttSignalingClient(
                 if (decryptedJson != null) {
                     val message = SignalingMessage.fromJson(decryptedJson)
                     if (message != null) {
-                        // Enforce Proof-of-Possession on OTP-decrypted handshake messages
-                        if (usedOtpKey && (message is SignalingMessage.PairRequest || message is SignalingMessage.PairConfirm)) {
+                        // Enforce strict message type gating & Proof-of-Possession on OTP-decrypted messages
+                        if (usedOtpKey) {
+                            if (message !is SignalingMessage.PairRequest && message !is SignalingMessage.PairConfirm) {
+                                AppLogger.w(tag, "Security violation: Dropped non-handshake message [${message.javaClass.simpleName}] encrypted with OTP key from ${envelope.senderId}")
+                                return@launch
+                            }
                             val (claimedDeviceId, claimedPubKey) = when (message) {
                                 is SignalingMessage.PairRequest -> message.pbDeviceId to message.pbPublicKeyBase64
                                 is SignalingMessage.PairConfirm -> message.paDeviceId to message.paPublicKeyBase64

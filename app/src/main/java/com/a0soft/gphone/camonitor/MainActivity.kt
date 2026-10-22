@@ -1,6 +1,7 @@
 package com.a0soft.gphone.camonitor
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -66,9 +67,7 @@ class MainActivity : ComponentActivity() {
             action?.invoke()
         } else {
             deniedPermissions = denied
-            isPermanentlyDenied = denied.any { perm ->
-                !ActivityCompat.shouldShowRequestPermissionRationale(this@MainActivity, perm)
-            }
+            isPermanentlyDenied = denied.any { isPermanentlyDenied(it) }
             showPermissionRationaleDialog = true
         }
     }
@@ -150,19 +149,31 @@ class MainActivity : ComponentActivity() {
         return permissions
     }
 
+    fun isPermanentlyDenied(permission: String): Boolean {
+        val prefs = getSharedPreferences("cammonitor_prefs", Context.MODE_PRIVATE)
+        val hasRequested = prefs.getBoolean("has_requested_$permission", false)
+        return hasRequested && !ActivityCompat.shouldShowRequestPermissionRationale(this, permission)
+    }
+
+    fun markPermissionsRequested(permissions: List<String>) {
+        val prefs = getSharedPreferences("cammonitor_prefs", Context.MODE_PRIVATE)
+        prefs.edit().apply {
+            permissions.forEach { putBoolean("has_requested_$it", true) }
+        }.apply()
+    }
+
     fun checkStartupPermissions() {
         val needed = getCameraPermissions().filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }
         if (needed.isNotEmpty()) {
             deniedPermissions = needed
-            val permanentlyDenied = needed.any { perm ->
-                !ActivityCompat.shouldShowRequestPermissionRationale(this, perm)
-            }
+            val permanentlyDenied = needed.any { isPermanentlyDenied(it) }
             isPermanentlyDenied = permanentlyDenied
             if (permanentlyDenied) {
                 showPermissionRationaleDialog = true
             } else {
+                markPermissionsRequested(needed)
                 permissionLauncher.launch(needed.toTypedArray())
             }
         } else {
@@ -183,13 +194,12 @@ class MainActivity : ComponentActivity() {
         } else {
             pendingPermissionAction = onGranted
             deniedPermissions = needed
-            val permanentlyDenied = needed.any { perm ->
-                !ActivityCompat.shouldShowRequestPermissionRationale(this, perm)
-            }
+            val permanentlyDenied = needed.any { isPermanentlyDenied(it) }
             isPermanentlyDenied = permanentlyDenied
             if (permanentlyDenied) {
                 showPermissionRationaleDialog = true
             } else {
+                markPermissionsRequested(needed)
                 permissionLauncher.launch(needed.toTypedArray())
             }
         }
@@ -346,6 +356,7 @@ class MainActivity : ComponentActivity() {
                                 }
                                 startActivity(intent)
                             } else {
+                                markPermissionsRequested(deniedPermissions)
                                 permissionLauncher.launch(deniedPermissions.toTypedArray())
                             }
                         }

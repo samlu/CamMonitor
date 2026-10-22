@@ -105,7 +105,7 @@ fun CameraPairingScreen(
                     if (sent) {
                         AppLogger.i("CameraPairing", "PAIR_CONFIRM transmitted successfully to ${msg.pbDeviceId}")
                     }
-                    delay(500L)
+                    delay(1500L)
                     onPairingSuccess()
                 }
             }

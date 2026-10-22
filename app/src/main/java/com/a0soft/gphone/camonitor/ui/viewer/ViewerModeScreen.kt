@@ -3,6 +3,7 @@ package com.a0soft.gphone.camonitor.ui.viewer
 import android.view.ViewGroup
 import android.Manifest
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -129,9 +130,17 @@ fun ViewerModeScreen(
 
     val context = LocalContext.current
     val activity = context as? Activity
+    val prefs = remember { context.getSharedPreferences("cammonitor_prefs", Context.MODE_PRIVATE) }
     var showMicPermissionDialog by remember { mutableStateOf(false) }
     var isMicPermanentlyDenied by remember { mutableStateOf(false) }
     var reconnectTrigger by remember { mutableStateOf(0) }
+
+    fun checkIsMicPermanentlyDenied(): Boolean {
+        val hasRequested = prefs.getBoolean("has_requested_${Manifest.permission.RECORD_AUDIO}", false)
+        return hasRequested && (activity?.let {
+            !ActivityCompat.shouldShowRequestPermissionRationale(it, Manifest.permission.RECORD_AUDIO)
+        } ?: false)
+    }
 
     val micPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -140,9 +149,7 @@ fun ViewerModeScreen(
             showMicPermissionDialog = false
             reconnectTrigger++
         } else {
-            isMicPermanentlyDenied = activity?.let {
-                !ActivityCompat.shouldShowRequestPermissionRationale(it, Manifest.permission.RECORD_AUDIO)
-            } ?: false
+            isMicPermanentlyDenied = checkIsMicPermanentlyDenied()
             showMicPermissionDialog = true
         }
     }
@@ -815,10 +822,14 @@ fun ViewerModeScreen(
                                     onPress = {
                                         val hasMic = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
                                         if (!hasMic) {
-                                            isMicPermanentlyDenied = activity?.let {
-                                                !ActivityCompat.shouldShowRequestPermissionRationale(it, Manifest.permission.RECORD_AUDIO)
-                                            } ?: false
-                                            showMicPermissionDialog = true
+                                            val hasRequested = prefs.getBoolean("has_requested_${Manifest.permission.RECORD_AUDIO}", false)
+                                            if (!hasRequested) {
+                                                prefs.edit().putBoolean("has_requested_${Manifest.permission.RECORD_AUDIO}", true).apply()
+                                                micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                            } else {
+                                                isMicPermanentlyDenied = checkIsMicPermanentlyDenied()
+                                                showMicPermissionDialog = true
+                                            }
                                             return@detectTapGestures
                                         }
 
@@ -1022,6 +1033,7 @@ fun ViewerModeScreen(
                                 }
                                 context.startActivity(intent)
                             } else {
+                                prefs.edit().putBoolean("has_requested_${Manifest.permission.RECORD_AUDIO}", true).apply()
                                 micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                             }
                         }

@@ -227,7 +227,6 @@ class DefaultSecurityRepository(
         current.add(device)
 
         savePairedDevices(current)
-        clearPairingOtp()
         AppLogger.i("SecurityRepository", "Paired new device: ${device.name} (${device.deviceId}) [roleCount=${roleCount + 1}/$maxLimit]")
         return true
     }

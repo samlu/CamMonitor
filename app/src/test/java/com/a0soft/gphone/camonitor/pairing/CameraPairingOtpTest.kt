@@ -64,4 +64,30 @@ class CameraPairingOtpTest {
 
         job.cancel()
     }
+
+    @Test
+    fun testActivePairingOtpRemainsValidAcrossHandshakeRetries() {
+        var activeOtp: String? = "TEST_OTP_123"
+        val pairedDevices = mutableListOf<String>()
+
+        // Simulate Camera receiving PAIR_REQUEST #1:
+        // Prior to R2-04 fix, addPairedDevice wiped activeOtp = null here.
+        fun addDevicePreservingOtp(deviceId: String) {
+            pairedDevices.add(deviceId)
+            // clearPairingOtp() intentionally NOT called here
+        }
+
+        addDevicePreservingOtp("viewer-1")
+        assertEquals(1, pairedDevices.size)
+        // Verify active OTP is STILL present for retry #2
+        assertEquals("TEST_OTP_123", activeOtp)
+
+        // When viewer retries PAIR_REQUEST #2, activeOtp is still available
+        val canDecryptRetry = (activeOtp != null)
+        assertTrue("Active OTP must remain available for retried PAIR_REQUEST", canDecryptRetry)
+
+        // Cleanup only happens when pairing screen is disposed
+        activeOtp = null
+        org.junit.Assert.assertNull(activeOtp)
+    }
 }

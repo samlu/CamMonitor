@@ -9,7 +9,8 @@ data class PairingPayload(
     val ver: Int = 1,
     val deviceId: String,
     val name: String,
-    val secret: String // 256-bit Base64 OTP secret
+    val secret: String, // 256-bit Base64 OTP secret
+    val broker: String? = null
 ) {
     fun toJson(): String {
         return JSONObject().apply {
@@ -17,6 +18,7 @@ data class PairingPayload(
             put("deviceId", deviceId)
             put("name", name)
             put("secret", secret)
+            broker?.let { put("broker", it) }
         }.toString()
     }
 
@@ -28,7 +30,8 @@ data class PairingPayload(
                     ver = json.optInt("ver", 1),
                     deviceId = json.getString("deviceId"),
                     name = json.getString("name"),
-                    secret = json.getString("secret")
+                    secret = json.getString("secret"),
+                    broker = json.optString("broker").takeIf { it.isNotEmpty() }
                 )
             } catch (e: Exception) {
                 null

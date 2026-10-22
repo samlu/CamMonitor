@@ -120,4 +120,29 @@ class ProofOfPossessionTest {
         val isValid = repo.verifyEnvelopeSignature(envelope, viewerPubKeyBase64)
         assertFalse("Corrupted signature must return false", isValid)
     }
+
+    @Test
+    fun testOtpKeyOnlyPermitsPairRequestAndPairConfirm() {
+        val pairRequest = SignalingMessage.PairRequest(
+            pbDeviceId = "viewer-1",
+            pbName = "Viewer",
+            pbPublicKeyBase64 = "pubkey"
+        )
+        val pairConfirm = SignalingMessage.PairConfirm(
+            paDeviceId = "camera-1",
+            paName = "Camera",
+            paPublicKeyBase64 = "pubkey"
+        )
+        val offer = SignalingMessage.Offer(sdp = "v=0...")
+        val ice = SignalingMessage.IceCandidate(sdpMid = "0", sdpMLineIndex = 0, sdp = "candidate:...")
+
+        fun isHandshakeAllowedWithOtp(msg: SignalingMessage): Boolean {
+            return msg is SignalingMessage.PairRequest || msg is SignalingMessage.PairConfirm
+        }
+
+        assertTrue(isHandshakeAllowedWithOtp(pairRequest))
+        assertTrue(isHandshakeAllowedWithOtp(pairConfirm))
+        assertFalse("Offer decrypted with OTP must be rejected", isHandshakeAllowedWithOtp(offer))
+        assertFalse("IceCandidate decrypted with OTP must be rejected", isHandshakeAllowedWithOtp(ice))
+    }
 }

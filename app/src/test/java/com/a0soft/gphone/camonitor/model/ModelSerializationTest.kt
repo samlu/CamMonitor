@@ -27,6 +27,24 @@ class ModelSerializationTest {
         assertEquals(original.deviceId, parsed?.deviceId)
         assertEquals(original.name, parsed?.name)
         assertEquals(original.secret, parsed?.secret)
+        assertNull(parsed?.broker)
+    }
+
+    @Test
+    fun testPairingPayloadWithCustomBrokerSerialization() {
+        val original = PairingPayload(
+            ver = 1,
+            deviceId = "device-12345",
+            name = "Living Room Cam",
+            secret = "random-base64-otp-secret",
+            broker = "broker.hivemq.com"
+        )
+
+        val jsonStr = original.toJson()
+        val parsed = PairingPayload.fromJson(jsonStr)
+
+        assertNotNull(parsed)
+        assertEquals("broker.hivemq.com", parsed?.broker)
     }
 
     @Test
