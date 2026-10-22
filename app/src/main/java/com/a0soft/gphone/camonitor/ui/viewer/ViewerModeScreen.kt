@@ -160,6 +160,7 @@ fun ViewerModeScreen(
 
     // Connect to camera on launch and on reconnectTrigger
     LaunchedEffect(targetCamera, reconnectTrigger) {
+        val effectScope = this
         if (targetCamera == null) {
             connectionState = ViewerConnectionState.NoCamera
             AppLogger.w("ViewerMode", "No paired camera found in repository")
@@ -186,7 +187,7 @@ fun ViewerModeScreen(
             AppLogger.d("ViewerMode", "Forwarding local ICE candidate to camera: mid=${candidate.sdpMid}, type=$typeMatch")
             localIceCandidates.add(candidate)
             val iceMsg = SignalingMessage.IceCandidate(candidate.sdpMid, candidate.sdpMLineIndex, candidate.sdp)
-            coroutineScope.launch {
+            effectScope.launch {
                 val sent = signalingClient.sendSignalingMessage(targetCamera.deviceId, iceMsg, sharedKey)
                 AppLogger.d("ViewerMode", "Sent ICE candidate to camera (success=$sent, mid=${candidate.sdpMid})")
             }
@@ -232,7 +233,7 @@ fun ViewerModeScreen(
                                 AppLogger.i("ViewerMode", "Local Offer set successfully (+${setElapsed}ms), transmitting to camera: ${targetCamera.deviceId}")
                                 localOfferDesc = desc
                                 val offerMsg = SignalingMessage.Offer(desc.description)
-                                coroutineScope.launch {
+                                effectScope.launch {
                                     val sent = signalingClient.sendSignalingMessage(targetCamera.deviceId, offerMsg, sharedKey)
                                     AppLogger.i("ViewerMode", "Transmitted initial Offer to camera (success=$sent)")
                                 }
@@ -254,7 +255,7 @@ fun ViewerModeScreen(
         }, MediaConstraints())
 
         // Periodic Offer retry while waiting for camera to come online / answer
-        val retryJob = coroutineScope.launch {
+        val retryJob = effectScope.launch {
             var attempt = 1
             while (isActive && pc.remoteDescription == null) {
                 delay(3000L)
@@ -311,7 +312,7 @@ fun ViewerModeScreen(
 
                                     val candidatesSnapshot = ArrayList(localIceCandidates)
                                     AppLogger.i("ViewerMode", "Camera answered: transmitting ${candidatesSnapshot.size} local ICE candidates...")
-                                    coroutineScope.launch {
+                                    effectScope.launch {
                                         candidatesSnapshot.forEach { cand ->
                                             launch {
                                                 val iceMsg = SignalingMessage.IceCandidate(cand.sdpMid, cand.sdpMLineIndex, cand.sdp)

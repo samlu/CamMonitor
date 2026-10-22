@@ -33,7 +33,7 @@ Additionally, MQTT signaling currently operates over unencrypted TCP port 1883 i
 | **B-03** | Bug | WebRTC Reconnection Stalls via Stale Duplicate ICE Cache | **Fixed** (High) | [`WebRtcManager.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/webrtc/WebRtcManager.kt#L746-L758) |
 | **B-04** | Bug | Reconnecting Viewer Rejected via Stale Capacity Check | **Fixed** (High) | [`CameraMonitorService.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/service/CameraMonitorService.kt#L306-L311), [`WebRtcManager.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/webrtc/WebRtcManager.kt#L745) |
 | **B-05** | Bug | Ephemeral OTP Timer Dies After Initial 5 Minutes | **Fixed** (Medium) | [`CameraPairingScreen.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/pairing/CameraPairingScreen.kt#L60-L71) |
-| **B-06** | Concurrency | Coroutine Leak in Viewer Mode Retries | **Medium** | [`ViewerModeScreen.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/viewer/ViewerModeScreen.kt#L257-L281) |
+| **B-06** | Concurrency | Coroutine Leak in Viewer Mode Retries | **Fixed** (Medium) | [`ViewerModeScreen.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/viewer/ViewerModeScreen.kt#L163-L320) |
 | **B-07** | Concurrency | Unsynchronized Maps in `WebRtcManager` Callback Threads | **Medium** | [`WebRtcManager.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/webrtc/WebRtcManager.kt#L37-L39), [`#L66`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/webrtc/WebRtcManager.kt#L66) |
 | **B-08** | Bug | Duplicate Flow Collectors on Service Re-Entry | **Fixed** (Medium) | [`CameraMonitorService.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/service/CameraMonitorService.kt#L49-L220) |
 | **B-09** | Reliability | Silent Permission Denial in `MainActivity` | **Low** | [`MainActivity.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/MainActivity.kt#L39-L43) |
@@ -386,9 +386,34 @@ Additionally, MQTT signaling currently operates over unencrypted TCP port 1883 i
 ---
 
 ### B-06: Coroutine Leak in Viewer Mode Retries
-* **Location:** [`ViewerModeScreen.kt:257-281`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/viewer/ViewerModeScreen.kt#L257-L281)
-* **Description:** Inside `LaunchedEffect(targetCamera, reconnectTrigger)`, retries are launched via `coroutineScope.launch { ... }` instead of `launch { ... }`. When `reconnectTrigger` increments, previous retry jobs keep running for up to 45 seconds, sending old offers and old ICE candidates.
-* **Remediation:** Launch child jobs on the `CoroutineScope` of the `LaunchedEffect` block (`this.launch`), ensuring automatic cancellation when keys change.
+* **Location:** [`ViewerModeScreen.kt:163-320`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/viewer/ViewerModeScreen.kt#L163-L320)
+* **Status:** **Resolved / Fixed**
+* **Description:** Inside `LaunchedEffect(targetCamera, reconnectTrigger)`, asynchronous jobs for periodic offer retries (`retryJob`), initial offer dispatch, and ICE candidate trickles were launched using `coroutineScope.launch { ... }` instead of the `LaunchedEffect` coroutine scope. When `reconnectTrigger` incremented or `targetCamera` changed, Compose cancelled the `LaunchedEffect`, but the old `retryJob` remained active on the screen-level scope, continuing to loop for up to 45 seconds sending outdated offers and candidates from dead peer connections.
+* **Remediation & Applied Implementation:**
+  Scoped all session-bound child jobs within `LaunchedEffect(targetCamera, reconnectTrigger)` to `effectScope = this` rather than `coroutineScope`:
+  ```kotlin
+  LaunchedEffect(targetCamera, reconnectTrigger) {
+      val effectScope = this
+      ...
+      val pc = webRtcManager.createPeerConnection(targetCamera.deviceId) { candidate ->
+          ...
+          effectScope.launch {
+              signalingClient.sendSignalingMessage(targetCamera.deviceId, iceMsg, sharedKey)
+          }
+      }
+      ...
+      val retryJob = effectScope.launch {
+          var attempt = 1
+          while (isActive && pc.remoteDescription == null) {
+              delay(3000L)
+              ...
+          }
+      }
+  ```
+  When `reconnectTrigger` increments or the screen is disposed, `effectScope` cancellation immediately kills the retry loop and pending trickles from the old session.
+* **Verification:**
+  - **Unit Tests:** Created [`ViewerRetryLifecycleTest.kt`](file:///E:/Antigravity/CamMonitor/app/src/test/java/com/a0soft/gphone/camonitor/viewer/ViewerRetryLifecycleTest.kt) verifying that cancelling the parent effect scope terminates child retry loops immediately and that reconnect triggers spawn clean sessions without old loop interference.
+  - **Device Deployment:** Built and verified on Pixel 6 Pro & Pixel 8 Pro.
 
 ---
 
