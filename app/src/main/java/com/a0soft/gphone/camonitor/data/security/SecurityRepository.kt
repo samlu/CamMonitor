@@ -65,6 +65,11 @@ class DefaultSecurityRepository(
     private val timeProvider: TimeProvider
 ) : SecurityRepository {
 
+    companion object {
+        const val TIMESTAMP_TOLERANCE_MS = 120_000L // 2 minutes window for clock drift tolerance
+        const val NONCE_RETENTION_MS = 120_000L
+    }
+
     private val prefs: SharedPreferences by lazy {
         try {
             val masterKey = MasterKey.Builder(context)
@@ -294,8 +299,8 @@ class DefaultSecurityRepository(
 
         val now = timeProvider.currentTimeMillis()
 
-        // 1. Anti-Replay Timestamp Check (30 seconds window)
-        if (kotlin.math.abs(now - envelope.timestamp) > 30_000L) {
+        // 1. Anti-Replay Timestamp Check (120 seconds window for clock drift tolerance)
+        if (kotlin.math.abs(now - envelope.timestamp) > TIMESTAMP_TOLERANCE_MS) {
             AppLogger.w("SecurityRepository", "Envelope discarded: Timestamp expired (delta: ${now - envelope.timestamp}ms)")
             return null
         }
@@ -375,6 +380,6 @@ class DefaultSecurityRepository(
     }
 
     private fun cleanOldNonces(now: Long) {
-        seenNonces.entries.removeIf { now - it.value > 60_000L }
+        seenNonces.entries.removeIf { (now - it.value) > NONCE_RETENTION_MS }
     }
 }

@@ -30,8 +30,8 @@ class FakeSecurityRepository(
             return false
         }
         val now = timeProvider.currentTimeMillis()
-        // 1. Anti-Replay Timestamp Check (30 seconds window)
-        if (kotlin.math.abs(now - timestamp) > 30_000L) {
+        // 1. Anti-Replay Timestamp Check (120 seconds window for clock drift tolerance)
+        if (kotlin.math.abs(now - timestamp) > DefaultSecurityRepository.TIMESTAMP_TOLERANCE_MS) {
             return false
         }
         // 2. Anti-Replay Nonce Check (atomic reservation - S-04)
@@ -71,19 +71,28 @@ class AntiReplayTest {
     }
 
     @Test
-    fun testExpiredEnvelope_OlderThan30Seconds_Rejected() {
-        val oldTimestamp = fakeTimeProvider.currentTimeMillis() - 31_000L // 31 seconds ago
-        val nonce = "unique-nonce-2"
-        val passed = securityRepo.verifyEnvelope(oldTimestamp, nonce, "pb-1")
-        assertFalse("Envelope older than 30s must be rejected", passed)
+    fun testEnvelopeWithinExtendedDriftWindow_Passes() {
+        val past60s = fakeTimeProvider.currentTimeMillis() - 60_000L
+        assertTrue("Envelope with 60s past clock drift must be accepted", securityRepo.verifyEnvelope(past60s, "nonce-drift-past", "pb-1"))
+
+        val future60s = fakeTimeProvider.currentTimeMillis() + 60_000L
+        assertTrue("Envelope with 60s future clock drift must be accepted", securityRepo.verifyEnvelope(future60s, "nonce-drift-future", "pb-1"))
     }
 
     @Test
-    fun testFutureEnvelope_Beyond30Seconds_Rejected() {
-        val futureTimestamp = fakeTimeProvider.currentTimeMillis() + 35_000L
+    fun testExpiredEnvelope_OlderThan120Seconds_Rejected() {
+        val oldTimestamp = fakeTimeProvider.currentTimeMillis() - 121_000L // 121 seconds ago
+        val nonce = "unique-nonce-2"
+        val passed = securityRepo.verifyEnvelope(oldTimestamp, nonce, "pb-1")
+        assertFalse("Envelope older than 120s must be rejected", passed)
+    }
+
+    @Test
+    fun testFutureEnvelope_Beyond120Seconds_Rejected() {
+        val futureTimestamp = fakeTimeProvider.currentTimeMillis() + 125_000L
         val nonce = "unique-nonce-3"
         val passed = securityRepo.verifyEnvelope(futureTimestamp, nonce, "pb-1")
-        assertFalse("Future envelope beyond 30s must be rejected", passed)
+        assertFalse("Future envelope beyond 120s must be rejected", passed)
     }
 
     @Test

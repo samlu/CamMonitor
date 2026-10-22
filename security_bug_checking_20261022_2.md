@@ -38,9 +38,9 @@ The re-audit revealed **7 new issues** (2 Critical, 2 High, 2 Medium, 1 Low), in
 | **R2-02** | Architecture | Unbridged Multi-Broker Network Partition (HiveMQ vs EMQX) | **High** | **Resolved / Fixed** | [`SignalingClient.kt:144-175`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/signaling/SignalingClient.kt#L144-L175) |
 | **R2-03** | Security | Signature Bypass for Non-Handshake Messages Decrypted with OTP | **High** | **Resolved / Fixed** | [`SignalingClient.kt:360-375`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/signaling/SignalingClient.kt#L360-L375) |
 | **R2-04** | Bug / Network | Handshake Retry Failure via Premature `clearPairingOtp()` | **High** | **Resolved / Fixed** | [`SecurityRepository.kt:227`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/security/SecurityRepository.kt#L227), [`CameraPairingScreen.kt:85-103`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/pairing/CameraPairingScreen.kt#L85-L103) |
-| **R2-05** | Lifecycle | CameraX Terminal Destruction on `changeCaptureFormat()` | **Medium** | Open | [`CameraXVideoCapturer.kt:664-675`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/camera/CameraXVideoCapturer.kt#L664-L675) |
-| **R2-06** | Audio / UX | Unrestored Forcible Volume Override (85% Call Volume) | **Medium** | Open | [`AudioRoutingManager.kt:18-24`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/common/AudioRoutingManager.kt#L18-L24) |
-| **R2-07** | Reliability | Overly Strict 30s Window Without Clock Drift Tolerance | **Low** | Open | [`SecurityRepository.kt:292`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/security/SecurityRepository.kt#L292) |
+| **R2-05** | Lifecycle | CameraX Terminal Destruction on `changeCaptureFormat()` | **Medium** | **Resolved / Fixed** | [`CameraXVideoCapturer.kt:664-675`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/camera/CameraXVideoCapturer.kt#L664-L675) |
+| **R2-06** | Audio / UX | Unrestored Forcible Volume Override (85% Call Volume) | **Medium** | **Resolved / Fixed** | [`AudioRoutingManager.kt:18-24`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/common/AudioRoutingManager.kt#L18-L24) |
+| **R2-07** | Reliability | Overly Strict 30s Window Without Clock Drift Tolerance | **Low** | **Resolved / Fixed** | [`SecurityRepository.kt:292`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/security/SecurityRepository.kt#L292) |
 
 ---
 
@@ -174,7 +174,8 @@ The re-audit revealed **7 new issues** (2 Critical, 2 High, 2 Medium, 1 Low), in
 
 ### R2-05: CameraX Terminal Destruction on `changeCaptureFormat()`
 * **Severity:** **Medium**
-* **Location:** [`CameraXVideoCapturer.kt:664-675`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/camera/CameraXVideoCapturer.kt#L664-L675)
+* **Status:** **Resolved / Fixed**
+* **Location:** [`CameraXVideoCapturer.kt:644-675`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/camera/CameraXVideoCapturer.kt#L644-L675)
 * **Root Cause:**  
   In [`CameraXVideoCapturer`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/camera/CameraXVideoCapturer.kt#L673):
   ```kotlin
@@ -184,8 +185,10 @@ The re-audit revealed **7 new issues** (2 Critical, 2 High, 2 Medium, 1 Low), in
   ```
   When WebRTC renegotiates capture format via `changeCaptureFormat(w, h, fps)`, it invokes `stopCapture()` followed by `startCapture()`. `stopCapture()` moves `capturerLifecycleOwner` into `Lifecycle.State.DESTROYED`.
   In Android Jetpack Lifecycle and CameraX (`LifecycleCameraRepository.java`), binding to a `LifecycleOwner` in `DESTROYED` state throws `IllegalArgumentException: Trying to create LifecycleCamera with destroyed lifecycle`.
-* **Remediation:**  
-  Transition to `State.CREATED` during stop, or recreate `LifecycleRegistry` upon restarting:
+* **Remediation & Applied Implementation:**  
+  1. Updated `CapturerLifecycleOwner.stop()` to set `currentState = Lifecycle.State.CREATED` (which pauses and unbinds CameraX cleanly without permanent destruction).
+  2. Updated `CapturerLifecycleOwner.start()` to re-instantiate `lifecycleRegistry = LifecycleRegistry(this)` if it is ever in `DESTROYED` state before advancing to `RESUMED`.
+  3. Added an explicit `CapturerLifecycleOwner.destroy()` invoked only inside [`CameraXVideoCapturer.dispose()`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/camera/CameraXVideoCapturer.kt#L644) (dispatched to the main thread):
   ```kotlin
   private class CapturerLifecycleOwner : LifecycleOwner {
       private var lifecycleRegistry = LifecycleRegistry(this)
@@ -207,14 +210,18 @@ The re-audit revealed **7 new issues** (2 Critical, 2 High, 2 Medium, 1 Low), in
       }
   }
   ```
+* **Verification:**
+  - **Unit Tests:** Verified unit test suite passing (`25/25 tasks passed`).
+  - **Device Deployment:** Built and verified on Pixel 6 Pro (`192.168.100.107:5555`) & Pixel 8 Pro (`192.168.100.136:5555`).
 
 ---
 
 ### R2-06: Unrestored Forcible Volume Override (85% Call Volume)
 * **Severity:** **Medium**
-* **Location:** [`AudioRoutingManager.kt:18-24`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/common/AudioRoutingManager.kt#L18-L24)
+* **Status:** **Resolved / Fixed**
+* **Location:** [`AudioRoutingManager.kt:12-65`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/common/AudioRoutingManager.kt#L12-L65), [`ViewerModeScreen.kt:200-205, 1056-1065`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/viewer/ViewerModeScreen.kt#L200-L205)
 * **Root Cause:**  
-  [`AudioRoutingManager.routeToSpeaker`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/common/AudioRoutingManager.kt#L18) checks:
+  [`AudioRoutingManager.routeToSpeaker`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/common/AudioRoutingManager.kt#L18) previously checked:
   ```kotlin
   val maxVol = am.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL)
   val currentVol = am.getStreamVolume(AudioManager.STREAM_VOICE_CALL)
@@ -223,20 +230,50 @@ The re-audit revealed **7 new issues** (2 Critical, 2 High, 2 Medium, 1 Low), in
       am.setStreamVolume(AudioManager.STREAM_VOICE_CALL, targetVol, 0)
   }
   ```
-  Whenever Viewer mode opens, call volume is forcibly set to 85%, even if audio playback is muted (`isAudioEnabled == false`). Furthermore, `restoreNormalMode()` never restores the user's prior volume level.
-* **Remediation:**  
-  Save `previousVolume = currentVol` before modifying, and restore `am.setStreamVolume(STREAM_VOICE_CALL, previousVolume, 0)` in `restoreNormalMode()`. Only adjust volume when audio playback is actively enabled.
+  Whenever Viewer mode was opened, call volume was forcibly boosted to 85%, even if audio playback was muted (`isAudioEnabled == false`). Furthermore, `restoreNormalMode()` never restored the user's prior volume level upon exiting.
+* **Remediation & Applied Implementation:**  
+  1. Added `previousVoiceCallVolume` tracking in [`AudioRoutingManager`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/common/AudioRoutingManager.kt). The user's current volume is saved before applying any 85% boost:
+  ```kotlin
+  if (adjustVolume) {
+      val maxVol = am.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL)
+      val currentVol = am.getStreamVolume(AudioManager.STREAM_VOICE_CALL)
+      if (currentVol < maxVol * 0.7f) {
+          if (previousVoiceCallVolume == null) {
+              previousVoiceCallVolume = currentVol
+          }
+          val targetVol = (maxVol * 0.85f).toInt().coerceAtLeast(1)
+          am.setStreamVolume(AudioManager.STREAM_VOICE_CALL, targetVol, 0)
+      }
+  }
+  ```
+  2. Added `adjustVolume: Boolean = true` parameter to `routeToSpeaker()`.
+  3. In `restoreNormalMode()`, restored `am.setStreamVolume(STREAM_VOICE_CALL, savedVol, 0)` and reset `previousVoiceCallVolume = null`.
+  4. In [`ViewerModeScreen.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/viewer/ViewerModeScreen.kt), passed `adjustVolume = isAudioEnabled` during initial route in `DisposableEffect(Unit)`, and dynamically trigger volume boost in `LaunchedEffect(isAudioEnabled)` only when the user un-mutes audio playback.
+* **Verification:**
+  - **Unit Tests:** Verified unit test suite passing (`25/25 tasks passed`).
+  - **Device Deployment:** Built and verified on Pixel 6 Pro (`192.168.100.107:5555`) & Pixel 8 Pro (`192.168.100.136:5555`).
 
 ---
 
 ### R2-07: Overly Strict 30s Window Without Clock Drift Tolerance
 * **Severity:** **Low**
-* **Location:** [`SecurityRepository.kt:292`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/security/SecurityRepository.kt#L292)
+* **Status:** **Resolved / Fixed**
+* **Location:** [`SecurityRepository.kt:65-70, 298-305, 380-384`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/security/SecurityRepository.kt#L65-L70), [`AntiReplayTest.kt:30-40, 70-98`](file:///E:/Antigravity/CamMonitor/app/src/test/java/com/a0soft/gphone/camonitor/security/AntiReplayTest.kt#L30-L40)
 * **Root Cause:**  
-  `if (kotlin.math.abs(now - envelope.timestamp) > 30_000L) return null` rejects messages if the two devices have wall-clock skew exceeding 30 seconds.
-* **Remediation:**  
-  Because atomic nonce deduplication (S-04) is now active via `seenNonces.putIfAbsent`, the timestamp window can be expanded to 60,000ms–120,000ms with `cleanOldNonces(120_000L)` to accommodate devices on manual time settings.
+  `if (kotlin.math.abs(now - envelope.timestamp) > 30_000L) return null` rejected messages if the two devices had wall-clock skew exceeding 30 seconds.
+* **Remediation & Applied Implementation:**  
+  1. Defined canonical constants in [`DefaultSecurityRepository`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/security/SecurityRepository.kt#L68-L71): `TIMESTAMP_TOLERANCE_MS = 120_000L` (2 minutes) and `NONCE_RETENTION_MS = 120_000L`.
+  2. Updated [`DefaultSecurityRepository.verifyAndDecryptEnvelope`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/security/SecurityRepository.kt#L302) to use `TIMESTAMP_TOLERANCE_MS`.
+  3. Updated `cleanOldNonces()` to evict nonces older than `NONCE_RETENTION_MS` (120 seconds):
+  ```kotlin
+  private fun cleanOldNonces(now: Long) {
+      seenNonces.entries.removeIf { (now - it.value) > NONCE_RETENTION_MS }
+  }
+  ```
+* **Verification:**
+  - **Unit Tests:** Updated [`AntiReplayTest.kt`](file:///E:/Antigravity/CamMonitor/app/src/test/java/com/a0soft/gphone/camonitor/security/AntiReplayTest.kt) adding `testEnvelopeWithinExtendedDriftWindow_Passes` (+60s and -60s clock drift accepted), `testExpiredEnvelope_OlderThan120Seconds_Rejected` (121s rejected), and `testFutureEnvelope_Beyond120Seconds_Rejected` (125s rejected). All test suites passed cleanly.
+  - **Device Deployment:** Built and verified on Pixel 6 Pro (`192.168.100.107:5555`) & Pixel 8 Pro (`192.168.100.136:5555`).
 
 ---
 
-*Report written to `security_bug_checking_20261022_2.md`.*
+*Report updated and all 7 Round-2 vulnerabilities/bugs resolved.*

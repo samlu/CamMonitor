@@ -8,19 +8,25 @@ import com.a0soft.gphone.camonitor.log.AppLogger
 
 object AudioRoutingManager {
     private const val TAG = "AudioRoutingManager"
+    private var previousVoiceCallVolume: Int? = null
 
-    fun routeToSpeaker(context: Context) {
+    fun routeToSpeaker(context: Context, adjustVolume: Boolean = true) {
         val am = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
         try {
             am.mode = AudioManager.MODE_IN_COMMUNICATION
 
-            // Ensure voice call volume is adequately high for talkback/intercom
-            val maxVol = am.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL)
-            val currentVol = am.getStreamVolume(AudioManager.STREAM_VOICE_CALL)
-            if (currentVol < maxVol * 0.7f) {
-                val targetVol = (maxVol * 0.85f).toInt().coerceAtLeast(1)
-                am.setStreamVolume(AudioManager.STREAM_VOICE_CALL, targetVol, 0)
-                AppLogger.i(TAG, "Adjusted STREAM_VOICE_CALL volume: $currentVol -> $targetVol (max=$maxVol)")
+            if (adjustVolume) {
+                // Ensure voice call volume is adequately high for talkback/intercom
+                val maxVol = am.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL)
+                val currentVol = am.getStreamVolume(AudioManager.STREAM_VOICE_CALL)
+                if (currentVol < maxVol * 0.7f) {
+                    if (previousVoiceCallVolume == null) {
+                        previousVoiceCallVolume = currentVol
+                    }
+                    val targetVol = (maxVol * 0.85f).toInt().coerceAtLeast(1)
+                    am.setStreamVolume(AudioManager.STREAM_VOICE_CALL, targetVol, 0)
+                    AppLogger.i(TAG, "Adjusted STREAM_VOICE_CALL volume: $currentVol -> $targetVol (max=$maxVol, saved previous=$previousVoiceCallVolume)")
+                }
             }
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -47,6 +53,15 @@ object AudioRoutingManager {
     fun restoreNormalMode(context: Context) {
         val am = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
         try {
+            previousVoiceCallVolume?.let { savedVol ->
+                try {
+                    am.setStreamVolume(AudioManager.STREAM_VOICE_CALL, savedVol, 0)
+                    AppLogger.i(TAG, "Restored STREAM_VOICE_CALL volume to $savedVol")
+                } catch (e: Exception) {
+                    AppLogger.w(TAG, "Could not restore voice call volume: ${e.message}")
+                }
+                previousVoiceCallVolume = null
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 am.clearCommunicationDevice()
             }

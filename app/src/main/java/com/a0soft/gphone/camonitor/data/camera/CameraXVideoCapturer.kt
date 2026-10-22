@@ -643,6 +643,11 @@ class CameraXVideoCapturer(
 
     override fun dispose() {
         stopCapture()
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            capturerLifecycleOwner.destroy()
+        } else {
+            mainHandler.post { capturerLifecycleOwner.destroy() }
+        }
         surfaceTextureHelper = null
         capturerObserver = null
         AppLogger.i(tag, "CameraXVideoCapturer disposed")
@@ -662,14 +667,21 @@ class CameraXVideoCapturer(
     }
 
     private class CapturerLifecycleOwner : LifecycleOwner {
-        private val lifecycleRegistry = LifecycleRegistry(this)
+        private var lifecycleRegistry = LifecycleRegistry(this)
         override val lifecycle: Lifecycle get() = lifecycleRegistry
 
         fun start() {
+            if (lifecycleRegistry.currentState == Lifecycle.State.DESTROYED) {
+                lifecycleRegistry = LifecycleRegistry(this)
+            }
             lifecycleRegistry.currentState = Lifecycle.State.RESUMED
         }
 
         fun stop() {
+            lifecycleRegistry.currentState = Lifecycle.State.CREATED
+        }
+
+        fun destroy() {
             lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
         }
     }

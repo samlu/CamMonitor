@@ -199,6 +199,9 @@ fun ViewerModeScreen(
     // Sync audio playback enabled state to WebRTC manager
     LaunchedEffect(isAudioEnabled) {
         webRtcManager.setRemoteAudioEnabled(isAudioEnabled)
+        if (isAudioEnabled) {
+            AudioRoutingManager.routeToSpeaker(context, adjustVolume = true)
+        }
     }
 
     // Auto-hide controls timer
@@ -1054,7 +1057,7 @@ fun ViewerModeScreen(
     }
 
     DisposableEffect(Unit) {
-        AudioRoutingManager.routeToSpeaker(context)
+        AudioRoutingManager.routeToSpeaker(context, adjustVolume = isAudioEnabled)
         onDispose {
             webRtcManager.stopViewerAudioCapture()
             AudioRoutingManager.restoreNormalMode(context)
