@@ -87,6 +87,66 @@ class CameraStandbyStateTest {
     }
 
     @Test
+    fun testIncomingOfferAtT58CancelsInactivityTimerAndPreventsStop() = runTest {
+        val streamingState = MutableStateFlow(CameraStreamingState.WAITING_FOR_VIEWERS)
+        var cameraHardwareStopped = false
+        var inactivityJob: Job? = null
+
+        fun cancelTimer() {
+            inactivityJob?.cancel()
+            inactivityJob = null
+        }
+
+        fun startTimer() {
+            inactivityJob?.cancel()
+            inactivityJob = launch {
+                delay(60_000L)
+                cameraHardwareStopped = true
+                streamingState.value = CameraStreamingState.PAUSED_INACTIVITY
+            }
+        }
+
+        fun handleIncomingOffer() {
+            cancelTimer()
+            if (streamingState.value == CameraStreamingState.PAUSED_INACTIVITY) {
+                streamingState.value = CameraStreamingState.WAITING_FOR_VIEWERS
+                startTimer()
+            } else {
+                startTimer()
+            }
+        }
+
+        startTimer()
+
+        // Advance to 58s into the 60s countdown
+        advanceTimeBy(58_000L)
+        runCurrent()
+        assertFalse(cameraHardwareStopped)
+        assertEquals(CameraStreamingState.WAITING_FOR_VIEWERS, streamingState.value)
+
+        // Remote offer arrives at t=58s
+        handleIncomingOffer()
+
+        // Advance 5 more seconds (past the original 60s mark to t=63s)
+        advanceTimeBy(5_000L)
+        runCurrent()
+
+        // Camera must NOT be stopped because countdown was refreshed for incoming offer
+        assertFalse("Camera capture must not be stopped mid-handshake past original 60s timer", cameraHardwareStopped)
+        assertEquals(CameraStreamingState.WAITING_FOR_VIEWERS, streamingState.value)
+
+        // WebRTC handshake completes: viewer connects (active count = 1)
+        streamingState.value = CameraStreamingState.STREAMING
+        cancelTimer()
+
+        // Advance past 60s of new timer
+        advanceTimeBy(70_000L)
+        runCurrent()
+        assertFalse(cameraHardwareStopped)
+        assertEquals(CameraStreamingState.STREAMING, streamingState.value)
+    }
+
+    @Test
     fun testResumeStreamingFromPauseWhenOfferArrives() = runTest {
         val streamingState = MutableStateFlow(CameraStreamingState.PAUSED_INACTIVITY)
         var cameraHardwareStarted = false

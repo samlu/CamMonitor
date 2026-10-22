@@ -15,8 +15,26 @@ object AudioRoutingManager {
         try {
             am.mode = AudioManager.MODE_IN_COMMUNICATION
 
-            if (adjustVolume) {
-                // Ensure voice call volume is adequately high for talkback/intercom
+            val isHeadsetConnected = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                am.availableCommunicationDevices.any {
+                    it.type in listOf(
+                        AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+                        AudioDeviceInfo.TYPE_BLE_HEADSET,
+                        AudioDeviceInfo.TYPE_WIRED_HEADSET,
+                        AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+                        AudioDeviceInfo.TYPE_USB_HEADSET,
+                        AudioDeviceInfo.TYPE_USB_DEVICE,
+                        AudioDeviceInfo.TYPE_HEARING_AID
+                    )
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                am.isWiredHeadsetOn || am.isBluetoothScoOn
+            }
+
+            if (adjustVolume && !isHeadsetConnected) {
+                // Ensure voice call volume is adequately high for talkback/intercom,
+                // but avoid blasting user's ears if wearing headphones
                 val maxVol = am.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL)
                 val currentVol = am.getStreamVolume(AudioManager.STREAM_VOICE_CALL)
                 if (currentVol < maxVol * 0.7f) {
@@ -31,22 +49,43 @@ object AudioRoutingManager {
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 val devices = am.availableCommunicationDevices
-                val speaker = devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
-                if (speaker != null) {
-                    val success = am.setCommunicationDevice(speaker)
-                    AppLogger.i(TAG, "setCommunicationDevice(TYPE_BUILTIN_SPEAKER): $success")
+                val headset = devices.firstOrNull {
+                    it.type in listOf(
+                        AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+                        AudioDeviceInfo.TYPE_BLE_HEADSET,
+                        AudioDeviceInfo.TYPE_WIRED_HEADSET,
+                        AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+                        AudioDeviceInfo.TYPE_USB_HEADSET,
+                        AudioDeviceInfo.TYPE_USB_DEVICE,
+                        AudioDeviceInfo.TYPE_HEARING_AID
+                    )
+                }
+                if (headset != null) {
+                    val success = am.setCommunicationDevice(headset)
+                    AppLogger.i(TAG, "Routed audio to connected headset: ${headset.productName} (type=${headset.type}), success=$success")
                 } else {
-                    @Suppress("DEPRECATION")
-                    am.isSpeakerphoneOn = true
-                    AppLogger.i(TAG, "isSpeakerphoneOn set to true (fallback on API ${Build.VERSION.SDK_INT})")
+                    val speaker = devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+                    if (speaker != null) {
+                        val success = am.setCommunicationDevice(speaker)
+                        AppLogger.i(TAG, "setCommunicationDevice(TYPE_BUILTIN_SPEAKER): $success")
+                    } else {
+                        @Suppress("DEPRECATION")
+                        am.isSpeakerphoneOn = true
+                        AppLogger.i(TAG, "isSpeakerphoneOn set to true (fallback on API ${Build.VERSION.SDK_INT})")
+                    }
                 }
             } else {
                 @Suppress("DEPRECATION")
-                am.isSpeakerphoneOn = true
-                AppLogger.i(TAG, "isSpeakerphoneOn set to true")
+                if (!isHeadsetConnected) {
+                    am.isSpeakerphoneOn = true
+                    AppLogger.i(TAG, "isSpeakerphoneOn set to true")
+                } else {
+                    am.isSpeakerphoneOn = false
+                    AppLogger.i(TAG, "isSpeakerphoneOn kept false due to connected headset")
+                }
             }
         } catch (e: Exception) {
-            AppLogger.e(TAG, "Failed to route audio to speaker", e)
+            AppLogger.e(TAG, "Failed to route audio", e)
         }
     }
 

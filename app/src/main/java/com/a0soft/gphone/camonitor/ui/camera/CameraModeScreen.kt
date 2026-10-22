@@ -35,6 +35,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.a0soft.gphone.camonitor.R
+import com.a0soft.gphone.camonitor.log.AppLogger
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -115,9 +116,14 @@ fun CameraModeScreen(
 
         onDispose {
             context.unbindService(connection)
-            localSurfaceRenderer?.let {
-                app.webRtcManager.detachLocalRenderer(it)
-                it.release()
+            localSurfaceRenderer?.let { renderer ->
+                localSurfaceRenderer = null
+                app.webRtcManager.detachLocalRenderer(renderer)
+                try {
+                    renderer.release()
+                } catch (e: Exception) {
+                    AppLogger.w("CameraModeScreen", "Error releasing SurfaceViewRenderer in onDispose: ${e.message}")
+                }
             }
         }
     }
@@ -214,9 +220,13 @@ fun CameraModeScreen(
                     app.webRtcManager.attachLocalRenderer(renderer)
                 },
                 onRelease = { renderer ->
-                    app.webRtcManager.detachLocalRenderer(renderer)
-                    renderer.release()
                     localSurfaceRenderer = null
+                    app.webRtcManager.detachLocalRenderer(renderer)
+                    try {
+                        renderer.release()
+                    } catch (e: Exception) {
+                        AppLogger.w("CameraModeScreen", "Error releasing SurfaceViewRenderer in onRelease: ${e.message}")
+                    }
                 },
                 modifier = Modifier.fillMaxSize()
             )

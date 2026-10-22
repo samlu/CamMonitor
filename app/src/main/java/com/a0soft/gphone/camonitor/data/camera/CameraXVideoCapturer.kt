@@ -181,6 +181,26 @@ class CameraXVideoCapturer(
         this.surfaceTextureHelper = surfaceTextureHelper
         this.capturerObserver = capturerObserver
         AppLogger.i(tag, "CameraXVideoCapturer initialized with SurfaceTextureHelper")
+
+        // Pre-warm CameraX provider asynchronously without blocking
+        val mainExecutor = ContextCompat.getMainExecutor(context)
+        val providerFuture = ProcessCameraProvider.getInstance(context)
+        providerFuture.addListener({
+            try {
+                val provider = providerFuture.get()
+                this.cameraProvider = provider
+                val extManagerFuture = ExtensionsManager.getInstanceAsync(context, provider)
+                extManagerFuture.addListener({
+                    try {
+                        this.extensionsManager = extManagerFuture.get()
+                    } catch (e: Exception) {
+                        AppLogger.w(tag, "Pre-warm ExtensionsManager failed: ${e.message}")
+                    }
+                }, mainExecutor)
+            } catch (e: Exception) {
+                AppLogger.w(tag, "Pre-warm ProcessCameraProvider failed: ${e.message}")
+            }
+        }, mainExecutor)
     }
 
     override fun startCapture(width: Int, height: Int, framerate: Int) {
@@ -190,7 +210,7 @@ class CameraXVideoCapturer(
             return
         }
 
-        if (isCapturing.get()) {
+        if (!isCapturing.compareAndSet(false, true)) {
             AppLogger.w(tag, "startCapture called but already capturing")
             return
         }
@@ -199,86 +219,122 @@ class CameraXVideoCapturer(
         lastHeight = height
         lastFramerate = framerate
 
-        mainHandler.post {
-            try {
-                val initialRotation = getDeviceRotation()
-                currentTargetRotation = initialRotation
+        val mainExecutor = ContextCompat.getMainExecutor(context)
+        val cachedProvider = cameraProvider
+        val cachedExtManager = extensionsManager
 
-                // Start WebRTC listening to incoming OpenGL texture frames
-                helper.startListening { videoFrame ->
-                    val texBuffer = videoFrame.buffer as? TextureBufferImpl
-                    if (texBuffer != null) {
-                        val (texRot, frameRot) = when (currentTargetRotation) {
-                            Surface.ROTATION_90 -> Pair(-90, 0)
-                            Surface.ROTATION_270 -> Pair(90, 0)
-                            Surface.ROTATION_180 -> Pair(90, 90)
-                            else -> Pair(-90, 90) // Surface.ROTATION_0 (Portrait)
-                        }
-                        val modifiedBuffer = if (texRot != 0) {
-                            createTextureBufferWithModifiedTransformMatrix(
-                                texBuffer,
-                                textureRotationDegrees = texRot,
-                                newWidth = texBuffer.width,
-                                newHeight = texBuffer.height
-                            )
-                        } else {
-                            texBuffer.retain()
-                            texBuffer
-                        }
-                        val frame = VideoFrame(
-                            modifiedBuffer,
-                            frameRot,
-                            videoFrame.timestampNs
-                        )
-                        capturerObserver?.onFrameCaptured(frame)
-                        frame.release()
-                    } else {
-                        capturerObserver?.onFrameCaptured(videoFrame)
-                    }
-                }
-
-                val providerFuture = ProcessCameraProvider.getInstance(context)
-                val provider = providerFuture.get(3, TimeUnit.SECONDS)
-                this.cameraProvider = provider
-
-                val extManagerFuture = ExtensionsManager.getInstanceAsync(context, provider)
-                val extManager = extManagerFuture.get(3, TimeUnit.SECONDS)
-                this.extensionsManager = extManager
-
-                val baseSelector = CameraSelector.DEFAULT_BACK_CAMERA
-                val nightSupported = extManager.isExtensionAvailable(baseSelector, ExtensionMode.NIGHT)
-                this.isNightExtensionSupported = nightSupported
-
-                capturerLifecycleOwner.start()
-
-                when (nightModeSetting) {
-                    NightModeSetting.AUTO -> {
-                        if (preferNightMode) {
-                            startLightMonitoring()
-                        }
-                        val initialNight = preferNightMode && currentLux < LUX_THRESHOLD_NIGHT_ENTER
-                        bindCameraSession(enableNight = initialNight)
-                    }
-                    NightModeSetting.NIGHT -> {
-                        bindCameraSession(enableNight = true)
-                    }
-                    NightModeSetting.NORMAL -> {
-                        bindCameraSession(enableNight = false)
-                    }
-                }
-
-                isCapturing.set(true)
-                startOrientationMonitoring()
-                capturerObserver?.onCapturerStarted(true)
-                AppLogger.i(tag, "CameraX capture started: ${lastWidth}x${lastHeight}@${lastFramerate}fps, rotation=$initialRotation (nightActive=$isNightModeActive, currentLux=$currentLux)")
-            } catch (e: Exception) {
-                AppLogger.e(tag, "Error starting CameraX capture", e)
-                isCapturing.set(false)
-                stopOrientationMonitoring()
-                stopLightMonitoring()
-                capturerObserver?.onCapturerStarted(false)
-                onCameraError?.invoke(e.message ?: "CameraX startCapture failed")
+        if (cachedProvider != null && cachedExtManager != null) {
+            mainHandler.post {
+                proceedStartSession(cachedProvider, cachedExtManager, helper)
             }
+        } else {
+            val providerFuture = ProcessCameraProvider.getInstance(context)
+            providerFuture.addListener({
+                try {
+                    val provider = providerFuture.get()
+                    this.cameraProvider = provider
+                    val extManagerFuture = ExtensionsManager.getInstanceAsync(context, provider)
+                    extManagerFuture.addListener({
+                        try {
+                            val extManager = extManagerFuture.get()
+                            this.extensionsManager = extManager
+                            proceedStartSession(provider, extManager, helper)
+                        } catch (e: Exception) {
+                            AppLogger.e(tag, "ExtensionsManager initialization failed", e)
+                            isCapturing.set(false)
+                            capturerObserver?.onCapturerStarted(false)
+                            onCameraError?.invoke(e.message ?: "ExtensionsManager init failed")
+                        }
+                    }, mainExecutor)
+                } catch (e: Exception) {
+                    AppLogger.e(tag, "ProcessCameraProvider initialization failed", e)
+                    isCapturing.set(false)
+                    capturerObserver?.onCapturerStarted(false)
+                    onCameraError?.invoke(e.message ?: "ProcessCameraProvider init failed")
+                }
+            }, mainExecutor)
+        }
+    }
+
+    private fun proceedStartSession(
+        provider: ProcessCameraProvider,
+        extManager: ExtensionsManager,
+        helper: SurfaceTextureHelper
+    ) {
+        if (!isCapturing.get()) {
+            AppLogger.w(tag, "proceedStartSession cancelled: capturer was stopped before session started")
+            return
+        }
+        try {
+            val initialRotation = getDeviceRotation()
+            currentTargetRotation = initialRotation
+
+            // Start WebRTC listening to incoming OpenGL texture frames
+            helper.stopListening()
+            helper.startListening { videoFrame ->
+                val texBuffer = videoFrame.buffer as? TextureBufferImpl
+                if (texBuffer != null) {
+                    val (texRot, frameRot) = when (currentTargetRotation) {
+                        Surface.ROTATION_90 -> Pair(-90, 0)
+                        Surface.ROTATION_270 -> Pair(90, 0)
+                        Surface.ROTATION_180 -> Pair(90, 90)
+                        else -> Pair(-90, 90) // Surface.ROTATION_0 (Portrait)
+                    }
+                    val modifiedBuffer = if (texRot != 0) {
+                        createTextureBufferWithModifiedTransformMatrix(
+                            texBuffer,
+                            textureRotationDegrees = texRot,
+                            newWidth = texBuffer.width,
+                            newHeight = texBuffer.height
+                        )
+                    } else {
+                        texBuffer.retain()
+                        texBuffer
+                    }
+                    val frame = VideoFrame(
+                        modifiedBuffer,
+                        frameRot,
+                        videoFrame.timestampNs
+                    )
+                    capturerObserver?.onFrameCaptured(frame)
+                    frame.release()
+                } else {
+                    capturerObserver?.onFrameCaptured(videoFrame)
+                }
+            }
+
+            val baseSelector = CameraSelector.DEFAULT_BACK_CAMERA
+            val nightSupported = extManager.isExtensionAvailable(baseSelector, ExtensionMode.NIGHT)
+            this.isNightExtensionSupported = nightSupported
+
+            capturerLifecycleOwner.start()
+
+            when (nightModeSetting) {
+                NightModeSetting.AUTO -> {
+                    if (preferNightMode) {
+                        startLightMonitoring()
+                    }
+                    val initialNight = preferNightMode && currentLux < LUX_THRESHOLD_NIGHT_ENTER
+                    bindCameraSession(enableNight = initialNight)
+                }
+                NightModeSetting.NIGHT -> {
+                    bindCameraSession(enableNight = true)
+                }
+                NightModeSetting.NORMAL -> {
+                    bindCameraSession(enableNight = false)
+                }
+            }
+
+            startOrientationMonitoring()
+            capturerObserver?.onCapturerStarted(true)
+            AppLogger.i(tag, "CameraX capture started: ${lastWidth}x${lastHeight}@${lastFramerate}fps, rotation=$initialRotation (nightActive=$isNightModeActive, currentLux=$currentLux)")
+        } catch (e: Exception) {
+            AppLogger.e(tag, "Error starting CameraX capture", e)
+            isCapturing.set(false)
+            stopOrientationMonitoring()
+            stopLightMonitoring()
+            capturerObserver?.onCapturerStarted(false)
+            onCameraError?.invoke(e.message ?: "CameraX startCapture failed")
         }
     }
 

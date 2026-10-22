@@ -298,12 +298,16 @@ class CameraMonitorService : Service() {
         val startTime = System.currentTimeMillis()
         AppLogger.i(tag, "Processing WebRTC Offer from $senderId (activeViewers=${app.webRtcManager.activeViewersCount.value}, state=${_streamingState.value})")
 
+        // Cancel previous inactivity countdown so old timer does not kill camera mid-handshake
+        cancelInactivityTimer()
+
         // Auto-resume camera capture if paused due to inactivity
         if (_streamingState.value == CameraStreamingState.PAUSED_INACTIVITY) {
             AppLogger.i(tag, "Camera was in PAUSED_INACTIVITY; resuming capture before responding to Offer")
             resumeStreamingFromPause()
         } else {
             app.webRtcManager.startCameraCapture()
+            startInactivityTimer()
         }
 
         // Cap max 2 viewers (allow reconnecting existing peer)

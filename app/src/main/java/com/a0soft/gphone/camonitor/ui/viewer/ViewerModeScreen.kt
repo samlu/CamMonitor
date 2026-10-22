@@ -583,9 +583,13 @@ fun ViewerModeScreen(
                 )
             },
             onRelease = { renderer ->
-                webRtcManager.detachRemoteRenderer(renderer)
-                renderer.release()
                 surfaceRenderer = null
+                webRtcManager.detachRemoteRenderer(renderer)
+                try {
+                    renderer.release()
+                } catch (e: Exception) {
+                    AppLogger.w("ViewerModeScreen", "Error releasing SurfaceViewRenderer in onRelease: ${e.message}")
+                }
             },
             modifier = Modifier.size(viewWidth, viewHeight)
         )
@@ -1064,8 +1068,15 @@ fun ViewerModeScreen(
         onDispose {
             webRtcManager.stopViewerAudioCapture()
             AudioRoutingManager.restoreNormalMode(context)
-            surfaceRenderer?.let { webRtcManager.detachRemoteRenderer(it) }
-            surfaceRenderer?.release()
+            surfaceRenderer?.let { renderer ->
+                surfaceRenderer = null
+                webRtcManager.detachRemoteRenderer(renderer)
+                try {
+                    renderer.release()
+                } catch (e: Exception) {
+                    AppLogger.w("ViewerModeScreen", "Error releasing SurfaceViewRenderer in onDispose: ${e.message}")
+                }
+            }
         }
     }
 }
