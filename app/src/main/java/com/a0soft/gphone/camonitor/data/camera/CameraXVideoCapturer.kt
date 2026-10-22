@@ -594,8 +594,7 @@ class CameraXVideoCapturer(
         stopLightMonitoring()
         stopOrientationMonitoring()
 
-        val latch = CountDownLatch(1)
-        mainHandler.post {
+        val stopRunnable = Runnable {
             try {
                 capturerLifecycleOwner.stop()
                 cameraProvider?.unbindAll()
@@ -613,11 +612,26 @@ class CameraXVideoCapturer(
                 AppLogger.i(tag, "CameraX capture stopped cleanly")
             } catch (e: Exception) {
                 AppLogger.e(tag, "Error stopping CameraX capture", e)
-            } finally {
-                latch.countDown()
             }
         }
-        latch.await(2, TimeUnit.SECONDS)
+
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            stopRunnable.run()
+        } else {
+            val latch = CountDownLatch(1)
+            mainHandler.post {
+                try {
+                    stopRunnable.run()
+                } finally {
+                    latch.countDown()
+                }
+            }
+            try {
+                latch.await(2, TimeUnit.SECONDS)
+            } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt()
+            }
+        }
     }
 
     override fun changeCaptureFormat(width: Int, height: Int, framerate: Int) {

@@ -28,8 +28,8 @@ Additionally, MQTT signaling currently operates over unencrypted TCP port 1883 i
 | **S-03** | Security | Missing `recipientId` Validation in Envelope Verification | **Medium** | [`SecurityRepository.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/security/SecurityRepository.kt#L267-L327) |
 | **S-04** | Security | Non-Atomic Nonce Cache Race Condition | **Medium** | [`SecurityRepository.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/security/SecurityRepository.kt#L282-L325) |
 | **S-05** | Security | Key Pair Desync on Android 12+ KeyStore Fallback | **Medium** | [`SecurityRepository.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/security/SecurityRepository.kt#L109-L119) |
-| **B-01** | Bug | Multi-Role Whitelist Count Lockout | **Critical** | [`SecurityRepository.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/security/SecurityRepository.kt#L202-L206), [`ManageDevicesScreen.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/devices/ManageDevicesScreen.kt#L41-L42) |
-| **B-02** | Concurrency | Main-Thread Deadlock / 2000ms Freeze in `stopCapture()` | **Critical** | [`CameraXVideoCapturer.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/camera/CameraXVideoCapturer.kt#L597-L621) |
+| **B-01** | Bug | Multi-Role Whitelist Count Lockout | **Fixed** (Critical) | [`SecurityRepository.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/security/SecurityRepository.kt#L212-L225), [`ManageDevicesScreen.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/devices/ManageDevicesScreen.kt#L41-L42) |
+| **B-02** | Concurrency | Main-Thread Deadlock / 2000ms Freeze in `stopCapture()` | **Fixed** (Critical) | [`CameraXVideoCapturer.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/camera/CameraXVideoCapturer.kt#L597-L634) |
 | **B-03** | Bug | WebRTC Reconnection Stalls via Stale Duplicate ICE Cache | **High** | [`WebRtcManager.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/webrtc/WebRtcManager.kt#L400), [`#L699-L704`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/webrtc/WebRtcManager.kt#L699-L704) |
 | **B-04** | Bug | Reconnecting Viewer Rejected via Stale Capacity Check | **High** | [`CameraMonitorService.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/service/CameraMonitorService.kt#L274-L278) |
 | **B-05** | Bug | Ephemeral OTP Timer Dies After Initial 5 Minutes | **Medium** | [`CameraPairingScreen.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/pairing/CameraPairingScreen.kt#L60-L68) |
@@ -187,41 +187,43 @@ Additionally, MQTT signaling currently operates over unencrypted TCP port 1883 i
 ## 4. Detailed Functional Bugs & Concurrency Issues
 
 ### B-01: Multi-Role Whitelist Count Lockout (Critical)
-* **Location:** [`SecurityRepository.kt:202-206`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/security/SecurityRepository.kt#L202-L206), [`ManageDevicesScreen.kt:41-42`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/devices/ManageDevicesScreen.kt#L41-L42)
-* **Description:** `addPairedDevice` checks the total device count instead of the role-specific count:
+* **Location:** [`SecurityRepository.kt:212-225`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/security/SecurityRepository.kt#L212-L225), [`ManageDevicesScreen.kt:41-42`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/devices/ManageDevicesScreen.kt#L41-L42)
+* **Status:** **Resolved / Fixed**
+* **Description:** `addPairedDevice` previously checked the total whitelist size across all devices instead of role-scoped counts:
   ```kotlin
   val current = getPairedDevices().toMutableList()
   if (current.size >= maxLimit && current.none { it.deviceId == device.deviceId }) {
       return false
   }
   ```
-  If a phone has paired with 2 cameras as a viewer (`current.size == 2`) and is then started in Camera mode to pair a viewer (`maxLimit = MAX_PAIRED_VIEWERS = 2`), `current.size >= 2` evaluates to `true`. The device rejects all viewer pairing attempts.
-* **Remediation:**
-  ```kotlin
-  // In SecurityRepository.kt
-  override fun addPairedDevice(device: PairedDevice, maxLimit: Int): Boolean {
-      val current = getPairedDevices().toMutableList()
-      val roleCount = if (device.role != null) current.count { it.role == device.role } else current.size
-      if (roleCount >= maxLimit && current.none { it.deviceId == device.deviceId }) {
-          AppLogger.w("SecurityRepository", "Cannot add paired device: Max limit $maxLimit reached for role ${device.role}")
-          return false
-      }
-      current.removeAll { it.deviceId == device.deviceId }
-      current.add(device)
-      savePairedDevices(current)
-      clearPairingOtp()
-      return true
-  }
-
-  // In ManageDevicesScreen.kt
-  val canPairViewer = securityRepo.getPairedViewers().size < SecurityRepository.MAX_PAIRED_VIEWERS
-  val canPairCamera = securityRepo.getPairedCameras().size < SecurityRepository.MAX_PAIRED_CAMERAS
-  ```
+  If a phone had paired with 2 cameras as a viewer (`current.size == 2`) and was then switched to Camera mode to pair a viewer (`maxLimit = MAX_PAIRED_VIEWERS = 2`), `current.size >= 2` evaluated to `true`. The device rejected all viewer pairing attempts. Similarly, `ManageDevicesScreen.kt` checked `pairedList.size` against role limits rather than role-specific device counts.
+* **Remediation & Applied Implementation:**
+  1. Updated [`DefaultSecurityRepository.addPairedDevice`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/security/SecurityRepository.kt#L212-L225) to scope whitelist count checks to `device.role`:
+     ```kotlin
+     val roleCount = when (device.role) {
+         "CAMERA" -> current.count { it.role != "VIEWER" }
+         "VIEWER" -> current.count { it.role != "CAMERA" }
+         else -> current.size
+     }
+     if (roleCount >= maxLimit && current.none { it.deviceId == device.deviceId }) {
+         AppLogger.w("SecurityRepository", "Cannot add paired device: Max $maxLimit devices reached for role ${device.role ?: "ALL"}")
+         return false
+     }
+     ```
+  2. Updated [`ManageDevicesScreen.kt`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/ui/devices/ManageDevicesScreen.kt#L41-L42) to calculate pairing availability using role-filtered queries:
+     ```kotlin
+     val canPairViewer = pairedList.count { it.role != "CAMERA" } < SecurityRepository.MAX_PAIRED_VIEWERS
+     val canPairCamera = pairedList.count { it.role != "VIEWER" } < SecurityRepository.MAX_PAIRED_CAMERAS
+     ```
+* **Verification:**
+  - **Unit Tests:** Updated fake repository in [`MultiCameraPairingTest.kt`](file:///E:/Antigravity/CamMonitor/app/src/test/java/com/a0soft/gphone/camonitor/security/MultiCameraPairingTest.kt#L29-L36) and added `testMultiRolePairingCoexistence()` verifying that 8 cameras and 2 viewers can pair and coexist concurrently, reject their respective 9th/3rd additions, and allow in-place device updates.
+  - **Device Deployment:** Built and verified on Pixel 6 Pro & Pixel 8 Pro.
 
 ---
 
 ### B-02: Main-Thread Deadlock / 2000ms Freeze in `stopCapture()` (Critical)
-* **Location:** [`CameraXVideoCapturer.kt:597-621`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/camera/CameraXVideoCapturer.kt#L597-L621)
+* **Location:** [`CameraXVideoCapturer.kt:597-634`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/data/camera/CameraXVideoCapturer.kt#L597-L634)
+* **Status:** **Resolved / Fixed**
 * **Description:**
   ```kotlin
   val latch = CountDownLatch(1)
@@ -230,8 +232,9 @@ Additionally, MQTT signaling currently operates over unencrypted TCP port 1883 i
   }
   latch.await(2, TimeUnit.SECONDS)
   ```
-  [`CameraMonitorService`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/service/CameraMonitorService.kt#L216) executes `stopCameraCapture()` on `Dispatchers.Main` when the 60-second inactivity timer fires or when `onDestroy()` runs. Because `stopCapture()` is called on the Main Thread, `latch.await()` blocks the Main Looper, preventing the posted block from running. The UI freezes for exactly 2.0 seconds until `await()` times out.
-* **Remediation:**
+  [`CameraMonitorService`](file:///E:/Antigravity/CamMonitor/app/src/main/java/com/a0soft/gphone/camonitor/service/CameraMonitorService.kt#L216) executes `stopCameraCapture()` on `Dispatchers.Main` when the 60-second inactivity timer fires or when service stops. Because `stopCapture()` was called directly on the Main Thread, `latch.await(2, TimeUnit.SECONDS)` blocked the Main Looper, preventing the posted block from executing. The UI was blocked for 2.0 seconds until `await()` timed out.
+* **Remediation & Applied Implementation:**
+  Moved stop operations into a dedicated `stopRunnable` and branched on `Looper.myLooper() == Looper.getMainLooper()`. When called from the Main thread, it executes synchronously with 0ms delay. When invoked from a background thread, it posts to `mainHandler` and awaits up to 2 seconds with `InterruptedException` handling:
   ```kotlin
   val stopRunnable = Runnable {
       try {
@@ -245,6 +248,7 @@ Additionally, MQTT signaling currently operates over unencrypted TCP port 1883 i
           _isNightModeActiveFlow.value = false
           onNightModeChanged?.invoke(false)
           capturerObserver?.onCapturerStopped()
+          AppLogger.i(tag, "CameraX capture stopped cleanly")
       } catch (e: Exception) {
           AppLogger.e(tag, "Error stopping CameraX capture", e)
       }
@@ -255,11 +259,22 @@ Additionally, MQTT signaling currently operates over unencrypted TCP port 1883 i
   } else {
       val latch = CountDownLatch(1)
       mainHandler.post {
-          try { stopRunnable.run() } finally { latch.countDown() }
+          try {
+              stopRunnable.run()
+          } finally {
+              latch.countDown()
+          }
       }
-      latch.await(2, TimeUnit.SECONDS)
+      try {
+          latch.await(2, TimeUnit.SECONDS)
+      } catch (e: InterruptedException) {
+          Thread.currentThread().interrupt()
+      }
   }
   ```
+* **Verification:**
+  - **Unit Tests:** `testDebugUnitTest` passed cleanly.
+  - **Device Deployment:** Installed and validated on Pixel 6 Pro & Pixel 8 Pro.
 
 ---
 

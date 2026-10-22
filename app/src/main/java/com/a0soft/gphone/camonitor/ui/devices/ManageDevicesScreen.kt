@@ -38,8 +38,8 @@ fun ManageDevicesScreen(
     var deviceToRevoke by remember { mutableStateOf<PairedDevice?>(null) }
     var showPairOptionsDialog by remember { mutableStateOf(false) }
 
-    val canPairViewer = pairedList.size < SecurityRepository.MAX_PAIRED_VIEWERS
-    val canPairCamera = pairedList.size < SecurityRepository.MAX_PAIRED_CAMERAS
+    val canPairViewer = pairedList.count { it.role != "CAMERA" } < SecurityRepository.MAX_PAIRED_VIEWERS
+    val canPairCamera = pairedList.count { it.role != "VIEWER" } < SecurityRepository.MAX_PAIRED_CAMERAS
 
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,

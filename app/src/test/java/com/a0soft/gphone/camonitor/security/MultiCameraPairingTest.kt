@@ -27,7 +27,12 @@ class MultiCameraTestSecurityRepository : SecurityRepository {
     override fun getPairedDevices(): List<PairedDevice> = pairedDevices.toList()
 
     override fun addPairedDevice(device: PairedDevice, maxLimit: Int): Boolean {
-        if (pairedDevices.size >= maxLimit && pairedDevices.none { it.deviceId == device.deviceId }) {
+        val roleCount = when (device.role) {
+            "CAMERA" -> pairedDevices.count { it.role != "VIEWER" }
+            "VIEWER" -> pairedDevices.count { it.role != "CAMERA" }
+            else -> pairedDevices.size
+        }
+        if (roleCount >= maxLimit && pairedDevices.none { it.deviceId == device.deviceId }) {
             return false
         }
         pairedDevices.removeAll { it.deviceId == device.deviceId }
@@ -194,5 +199,80 @@ class MultiCameraPairingTest {
         assertTrue(viewers.any { it.deviceId == "viewer-1" })
         assertTrue(viewers.any { it.deviceId == "legacy-1" })
         assertFalse(viewers.any { it.deviceId == "cam-1" })
+    }
+
+    @Test
+    fun testMultiRolePairingCoexistence() {
+        // Pair 8 cameras
+        for (i in 1..8) {
+            val camera = PairedDevice(
+                deviceId = "camera-id-$i",
+                name = "Camera $i",
+                publicKeyBase64 = "pubKeyCam$i",
+                pairedTimestamp = System.currentTimeMillis(),
+                role = "CAMERA"
+            )
+            val added = repository.addPairedDevice(camera, maxLimit = SecurityRepository.MAX_PAIRED_CAMERAS)
+            assertTrue("Camera $i should pair successfully", added)
+        }
+
+        // Pair 2 viewers on same repository without being blocked by camera count
+        for (i in 1..2) {
+            val viewer = PairedDevice(
+                deviceId = "viewer-id-$i",
+                name = "Viewer $i",
+                publicKeyBase64 = "pubKeyView$i",
+                pairedTimestamp = System.currentTimeMillis(),
+                role = "VIEWER"
+            )
+            val added = repository.addPairedDevice(viewer, maxLimit = SecurityRepository.MAX_PAIRED_VIEWERS)
+            assertTrue("Viewer $i should pair successfully even though 8 cameras exist", added)
+        }
+
+        // Both roles coexist up to their individual limits
+        assertEquals(10, repository.getPairedDevices().size)
+        assertEquals(8, repository.getPairedCameras().size)
+        assertEquals(2, repository.getPairedViewers().size)
+
+        // 9th camera rejected
+        val camera9 = PairedDevice(
+            deviceId = "camera-id-9",
+            name = "Camera 9",
+            publicKeyBase64 = "pubKeyCam9",
+            pairedTimestamp = System.currentTimeMillis(),
+            role = "CAMERA"
+        )
+        assertFalse(repository.addPairedDevice(camera9, maxLimit = SecurityRepository.MAX_PAIRED_CAMERAS))
+
+        // 3rd viewer rejected
+        val viewer3 = PairedDevice(
+            deviceId = "viewer-id-3",
+            name = "Viewer 3",
+            publicKeyBase64 = "pubKeyView3",
+            pairedTimestamp = System.currentTimeMillis(),
+            role = "VIEWER"
+        )
+        assertFalse(repository.addPairedDevice(viewer3, maxLimit = SecurityRepository.MAX_PAIRED_VIEWERS))
+
+        // Updating existing camera or viewer succeeds
+        val updatedCam = PairedDevice(
+            deviceId = "camera-id-1",
+            name = "Camera 1 Renamed",
+            publicKeyBase64 = "pubKeyCam1",
+            pairedTimestamp = System.currentTimeMillis(),
+            role = "CAMERA"
+        )
+        assertTrue(repository.addPairedDevice(updatedCam, maxLimit = SecurityRepository.MAX_PAIRED_CAMERAS))
+        assertEquals("Camera 1 Renamed", repository.getPairedDevice("camera-id-1")?.name)
+
+        val updatedViewer = PairedDevice(
+            deviceId = "viewer-id-2",
+            name = "Viewer 2 Renamed",
+            publicKeyBase64 = "pubKeyView2",
+            pairedTimestamp = System.currentTimeMillis(),
+            role = "VIEWER"
+        )
+        assertTrue(repository.addPairedDevice(updatedViewer, maxLimit = SecurityRepository.MAX_PAIRED_VIEWERS))
+        assertEquals("Viewer 2 Renamed", repository.getPairedDevice("viewer-id-2")?.name)
     }
 }

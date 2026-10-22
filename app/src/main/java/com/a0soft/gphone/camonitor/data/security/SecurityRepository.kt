@@ -211,8 +211,13 @@ class DefaultSecurityRepository(
 
     override fun addPairedDevice(device: PairedDevice, maxLimit: Int): Boolean {
         val current = getPairedDevices().toMutableList()
-        if (current.size >= maxLimit && current.none { it.deviceId == device.deviceId }) {
-            AppLogger.w("SecurityRepository", "Cannot add paired device: Max $maxLimit devices reached")
+        val roleCount = when (device.role) {
+            "CAMERA" -> current.count { it.role != "VIEWER" }
+            "VIEWER" -> current.count { it.role != "CAMERA" }
+            else -> current.size
+        }
+        if (roleCount >= maxLimit && current.none { it.deviceId == device.deviceId }) {
+            AppLogger.w("SecurityRepository", "Cannot add paired device: Max $maxLimit devices reached for role ${device.role ?: "ALL"}")
             return false
         }
         current.removeAll { it.deviceId == device.deviceId }
@@ -220,7 +225,7 @@ class DefaultSecurityRepository(
 
         savePairedDevices(current)
         clearPairingOtp()
-        AppLogger.i("SecurityRepository", "Paired new device: ${device.name} (${device.deviceId}) [count=${current.size}/$maxLimit]")
+        AppLogger.i("SecurityRepository", "Paired new device: ${device.name} (${device.deviceId}) [roleCount=${roleCount + 1}/$maxLimit]")
         return true
     }
 
