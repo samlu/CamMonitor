@@ -309,8 +309,27 @@ class CameraMonitorService : Service() {
         val startTime = System.currentTimeMillis()
         AppLogger.i(tag, "Processing WebRTC Offer from $senderId (activeViewers=${app.webRtcManager.activeViewersCount.value}, state=${_streamingState.value})")
 
+        // Cap max 2 viewers (allow reconnecting existing peer)
+        val isExistingPeer = app.webRtcManager.hasPeer(senderId)
+        if (app.webRtcManager.activeViewersCount.value >= 2 && !isExistingPeer) {
+            AppLogger.w(tag, "Rejecting connection from $senderId: Max 2 viewers reached")
+            sendSignalingMessageToViewer(senderId, SignalingMessage.Reject("MAX_CAPACITY_REACHED"))
+            return
+        }
+
         // Cancel previous inactivity countdown so old timer does not kill camera mid-handshake
         cancelInactivityTimer()
+
+        // Fast pre-answer ACK when camera sensor is sleeping/inactive so viewer knows camera is waking up
+        val isWakingSensor = _streamingState.value == CameraStreamingState.PAUSED_INACTIVITY ||
+            !app.webRtcManager.isCameraCaptureActive
+        if (isWakingSensor) {
+            AppLogger.i(tag, "Sending immediate CameraWaking ACK to $senderId while sensor initializes")
+            sendSignalingMessageToViewer(
+                senderId,
+                SignalingMessage.CameraWaking(cameraName = app.securityRepository.getDeviceName())
+            )
+        }
 
         // Auto-resume camera capture if paused due to inactivity
         if (_streamingState.value == CameraStreamingState.PAUSED_INACTIVITY) {
@@ -319,14 +338,6 @@ class CameraMonitorService : Service() {
         } else {
             app.webRtcManager.startCameraCapture()
             startInactivityTimer()
-        }
-
-        // Cap max 2 viewers (allow reconnecting existing peer)
-        val isExistingPeer = app.webRtcManager.hasPeer(senderId)
-        if (app.webRtcManager.activeViewersCount.value >= 2 && !isExistingPeer) {
-            AppLogger.w(tag, "Rejecting connection from $senderId: Max 2 viewers reached")
-            sendSignalingMessageToViewer(senderId, SignalingMessage.Reject("MAX_CAPACITY_REACHED"))
-            return
         }
 
         val pc = app.webRtcManager.createPeerConnection(senderId) { candidate ->

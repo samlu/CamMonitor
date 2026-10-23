@@ -98,6 +98,16 @@ class ModelSerializationTest {
         assertEquals(answerWithName.sdp, parsedAnswerWithName?.sdp)
         assertEquals("Kitchen Cam", parsedAnswerWithName?.cameraName)
         assertEquals(24, parsedAnswerWithName?.fps)
+
+        val wakingWithName = SignalingMessage.CameraWaking(cameraName = "Baby Room Cam")
+        val parsedWakingWithName = SignalingMessage.fromJson(wakingWithName.toJson()) as? SignalingMessage.CameraWaking
+        assertNotNull(parsedWakingWithName)
+        assertEquals("Baby Room Cam", parsedWakingWithName?.cameraName)
+
+        val wakingWithoutName = SignalingMessage.CameraWaking()
+        val parsedWakingWithoutName = SignalingMessage.fromJson(wakingWithoutName.toJson()) as? SignalingMessage.CameraWaking
+        assertNotNull(parsedWakingWithoutName)
+        assertNull(parsedWakingWithoutName?.cameraName)
     }
 
     @Test

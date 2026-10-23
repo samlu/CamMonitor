@@ -5,6 +5,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.a0soft.gphone.camonitor.data.model.ControlCommand
 import com.a0soft.gphone.camonitor.data.model.SignalingMessage
+import com.a0soft.gphone.camonitor.data.model.ViewerConnectionProgress
+import com.a0soft.gphone.camonitor.data.model.ViewerConnectionStep
 import com.a0soft.gphone.camonitor.data.security.CryptoUtils
 import com.a0soft.gphone.camonitor.ui.common.BatteryHelper
 import kotlinx.coroutines.*
@@ -214,6 +216,24 @@ class DeviceConnectionInstrumentedTest {
 
         val isLive = withContext(Dispatchers.IO) { connectionEstablished.await(20, TimeUnit.SECONDS) }
         assertTrue("Live WebRTC connection must reach CONNECTED state", isLive)
+
+        // Verify Typical Connect Duration recording and retrieval in SecurityRepository
+        securityRepo.recordConnectDurationMs(targetCamera.deviceId, 1150L)
+        val typicalMs = securityRepo.getTypicalConnectDurationMs(targetCamera.deviceId)
+        assertNotNull("Typical connect duration should be stored for paired camera", typicalMs)
+        assertTrue("Typical connect duration must be within valid bounds", typicalMs!! in 100L..30_000L)
+
+        val progress = ViewerConnectionProgress(
+            currentStep = ViewerConnectionStep.STARTING_VIDEO,
+            step1DurationMs = 150L,
+            step2DurationMs = 400L,
+            step3DurationMs = 300L,
+            typicalConnectMs = typicalMs
+        )
+        assertTrue(progress.isStepCompleted(ViewerConnectionStep.CONNECTING_NETWORK))
+        assertTrue(progress.isStepCompleted(ViewerConnectionStep.REACHING_CAMERA))
+        assertTrue(progress.isStepCompleted(ViewerConnectionStep.ESTABLISHING_LINK))
+        assertTrue(progress.isStepActive(ViewerConnectionStep.STARTING_VIDEO))
 
         // Test DataChannel commands with live camera
         delay(1000L)

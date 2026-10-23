@@ -80,6 +80,25 @@
     <string name="viewer_reconnect_prompt">鏡頭連線中斷。正在自動重新連線，或輕觸立即重試。</string>
     <string name="viewer_reconnect_now">立即重新連線</string>
     <string name="viewer_symmetric_nat_desc">P2P 直接連線因電信商對稱型 NAT 失敗。請將裝置連線至 Wi-Fi 或相同的區域網路。</string>
+    <string name="viewer_connecting_to_title">正在連線至 %1$s</string>
+    <string name="viewer_usually_connects_in">通常於 ~%1$s 秒內完成連線</string>
+    <string name="viewer_step_network_active">正在連線至網路...</string>
+    <string name="viewer_step_network_done">已連線至網路</string>
+    <string name="viewer_step_camera_active">正在呼叫鏡頭...</string>
+    <string name="viewer_step_camera_waking">正在喚醒鏡頭...</string>
+    <string name="viewer_step_camera_done">鏡頭已回應</string>
+    <string name="viewer_step_camera_pending">呼叫鏡頭</string>
+    <string name="viewer_step_link_active">正在建立加密連線...</string>
+    <string name="viewer_step_link_done">已建立加密連線</string>
+    <string name="viewer_step_link_pending">建立加密連線</string>
+    <string name="viewer_step_video_active">正在啟動即時影像...</string>
+    <string name="viewer_step_video_done">即時影像已就緒</string>
+    <string name="viewer_step_video_pending">啟動即時影像</string>
+    <string name="viewer_step_duration_sec">%1$s秒</string>
+    <string name="viewer_reaching_attempt_countdown">第 %1$d/%2$d 次嘗試 · 剩餘 %3$d 秒</string>
+    <string name="viewer_reaching_slow_hint">連線時間較平時長 — 請確認鏡頭手機已開機並連上網路。</string>
+    <string name="viewer_status_camera_timeout">鏡頭未回應（%1$d 秒）</string>
+    <string name="viewer_camera_timeout_desc">請確認鏡頭手機已開機、連上網路，並處於鏡頭模式。</string>
 
     <!-- Camera Pairing Screen -->
     <string name="camera_pairing_title">配對新觀看端</string>

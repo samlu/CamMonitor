@@ -156,6 +156,10 @@ sealed class SignalingMessage {
         val reason: String
     ) : SignalingMessage()
 
+    data class CameraWaking(
+        val cameraName: String? = null
+    ) : SignalingMessage()
+
     fun toJson(): String {
         val json = JSONObject()
         when (this) {
@@ -191,6 +195,10 @@ sealed class SignalingMessage {
                 json.put("type", "REJECT")
                 json.put("reason", reason)
             }
+            is CameraWaking -> {
+                json.put("type", "CAMERA_WAKING")
+                cameraName?.let { json.put("cameraName", it) }
+            }
         }
         return json.toString()
     }
@@ -222,11 +230,82 @@ sealed class SignalingMessage {
                         sdp = json.getString("sdp")
                     )
                     "REJECT" -> Reject(reason = json.getString("reason"))
+                    "CAMERA_WAKING" -> CameraWaking(
+                        cameraName = json.optString("cameraName").takeIf { it.isNotEmpty() }
+                    )
                     else -> null
                 }
             } catch (e: Exception) {
                 null
             }
+        }
+    }
+}
+
+/**
+ * Real-time connection stages for Viewer Mode connection progress telemetry.
+ */
+enum class ViewerConnectionStep {
+    CONNECTING_NETWORK,
+    REACHING_CAMERA,
+    ESTABLISHING_LINK,
+    STARTING_VIDEO
+}
+
+/**
+ * Immutable snapshot of the Viewer's 4-step connection pipeline and bounded countdown state.
+ */
+data class ViewerConnectionProgress(
+    val currentStep: ViewerConnectionStep = ViewerConnectionStep.CONNECTING_NETWORK,
+    val step1DurationMs: Long? = null,
+    val step2DurationMs: Long? = null,
+    val step3DurationMs: Long? = null,
+    val step4DurationMs: Long? = null,
+    val attempt: Int = 1,
+    val maxAttempts: Int = DEFAULT_MAX_ATTEMPTS,
+    val remainingTimeoutSec: Int = DEFAULT_TIMEOUT_SEC,
+    val totalTimeoutSec: Int = DEFAULT_TIMEOUT_SEC,
+    val isCameraWakingUp: Boolean = false,
+    val typicalConnectMs: Long? = null
+) {
+    fun isStepCompleted(step: ViewerConnectionStep): Boolean = currentStep.ordinal > step.ordinal
+
+    fun isStepActive(step: ViewerConnectionStep): Boolean = currentStep == step
+
+    fun stepDurationMs(step: ViewerConnectionStep): Long? = when (step) {
+        ViewerConnectionStep.CONNECTING_NETWORK -> step1DurationMs
+        ViewerConnectionStep.REACHING_CAMERA -> step2DurationMs
+        ViewerConnectionStep.ESTABLISHING_LINK -> step3DurationMs
+        ViewerConnectionStep.STARTING_VIDEO -> step4DurationMs
+    }
+
+    fun elapsedWaitSec(): Int = (totalTimeoutSec - remainingTimeoutSec).coerceAtLeast(0)
+
+    fun shouldShowCountdown(): Boolean =
+        currentStep == ViewerConnectionStep.REACHING_CAMERA &&
+            (elapsedWaitSec() >= COUNTDOWN_REVEAL_AFTER_SEC || attempt > 1)
+
+    fun shouldShowSlowHint(): Boolean =
+        currentStep == ViewerConnectionStep.REACHING_CAMERA &&
+            !isCameraWakingUp &&
+            elapsedWaitSec() >= SLOW_HINT_AFTER_SEC
+
+    fun timeoutProgressFraction(): Float {
+        if (totalTimeoutSec <= 0) return 0f
+        return remainingTimeoutSec.coerceIn(0, totalTimeoutSec).toFloat() / totalTimeoutSec.toFloat()
+    }
+
+    companion object {
+        const val DEFAULT_TIMEOUT_SEC = 15
+        const val DEFAULT_MAX_ATTEMPTS = 5
+        const val OFFER_RETRY_INTERVAL_MS = 3_000L
+        const val COUNTDOWN_REVEAL_AFTER_SEC = 2
+        const val SLOW_HINT_AFTER_SEC = 5
+        const val FIRST_FRAME_FALLBACK_TIMEOUT_MS = 1_500L
+
+        fun formatDurationSec(durationMs: Long): String {
+            val clampedMs = durationMs.coerceAtLeast(100L)
+            return String.format(java.util.Locale.US, "%.1f", clampedMs / 1000.0)
         }
     }
 }

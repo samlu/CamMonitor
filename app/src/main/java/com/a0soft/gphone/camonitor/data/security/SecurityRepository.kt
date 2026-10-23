@@ -58,6 +58,8 @@ interface SecurityRepository {
     fun setViewerAudioPlaybackEnabled(enabled: Boolean)
     fun getNightModeSetting(): com.a0soft.gphone.camonitor.data.model.NightModeSetting = com.a0soft.gphone.camonitor.data.model.NightModeSetting.AUTO
     fun setNightModeSetting(setting: com.a0soft.gphone.camonitor.data.model.NightModeSetting) {}
+    fun getTypicalConnectDurationMs(cameraDeviceId: String): Long? = null
+    fun recordConnectDurationMs(cameraDeviceId: String, durationMs: Long) {}
 }
 
 class DefaultSecurityRepository(
@@ -68,6 +70,14 @@ class DefaultSecurityRepository(
     companion object {
         const val TIMESTAMP_TOLERANCE_MS = 120_000L // 2 minutes window for clock drift tolerance
         const val NONCE_RETENTION_MS = 120_000L
+        const val MAX_CONNECT_DURATION_SAMPLES = 3
+        const val MIN_VALID_CONNECT_DURATION_MS = 100L
+        const val MAX_VALID_CONNECT_DURATION_MS = 30_000L
+
+        fun updateConnectDurationSamples(existing: List<Long>, newDurationMs: Long): List<Long> {
+            val clamped = newDurationMs.coerceIn(MIN_VALID_CONNECT_DURATION_MS, MAX_VALID_CONNECT_DURATION_MS)
+            return (existing + clamped).takeLast(MAX_CONNECT_DURATION_SAMPLES)
+        }
     }
 
     private val prefs: SharedPreferences by lazy {
@@ -240,6 +250,7 @@ class DefaultSecurityRepository(
         val current = getPairedDevices().toMutableList()
         current.removeAll { it.deviceId == deviceId }
         savePairedDevices(current)
+        prefs.edit().remove("connect_durations_$deviceId").apply()
         AppLogger.i("SecurityRepository", "Removed paired device: $deviceId")
     }
 
@@ -377,6 +388,21 @@ class DefaultSecurityRepository(
     override fun setNightModeSetting(setting: com.a0soft.gphone.camonitor.data.model.NightModeSetting) {
         prefs.edit().putString("night_mode_setting", setting.name).apply()
         AppLogger.i("SecurityRepository", "Night mode setting persisted: $setting")
+    }
+
+    override fun getTypicalConnectDurationMs(cameraDeviceId: String): Long? {
+        val raw = prefs.getString("connect_durations_$cameraDeviceId", null) ?: return null
+        val samples = raw.split(",").mapNotNull { it.trim().toLongOrNull() }
+        if (samples.isEmpty()) return null
+        return samples.sum() / samples.size
+    }
+
+    override fun recordConnectDurationMs(cameraDeviceId: String, durationMs: Long) {
+        val raw = prefs.getString("connect_durations_$cameraDeviceId", null)
+        val existing = raw?.split(",")?.mapNotNull { it.trim().toLongOrNull() } ?: emptyList()
+        val updated = updateConnectDurationSamples(existing, durationMs)
+        prefs.edit().putString("connect_durations_$cameraDeviceId", updated.joinToString(",")).apply()
+        AppLogger.i("SecurityRepository", "Recorded connect duration for $cameraDeviceId: ${durationMs}ms (rolling avg=${updated.sum() / updated.size}ms)")
     }
 
     private fun cleanOldNonces(now: Long) {

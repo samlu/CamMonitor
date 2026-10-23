@@ -388,11 +388,21 @@ Every signaling envelope sent over the public MQTT broker is structured as:
      * Persistence: The audio playback state is persistently saved in secure preferences (`viewer_audio_playback_enabled`) and restored automatically across app sessions. WebRTC incoming audio track enabled state is synchronized immediately on connection.
 
 #### 5.4.5 Connection & Error State Overlays
-* **Connecting / Reconnecting State:**
-  * Centered semi-transparent scrim with `CircularProgressIndicator` and text: `"Connecting to camera..."` / `"Reconnecting (Attempt 2/5)..."`.
+* **Center 4-Step Live Connection Progress Card (`ViewerConnectionProgressCard`):**
+  * Rendered in the center of the Viewer screen while connecting (`Connecting`, `WaitingResponse`, `StartingStream`), replacing generic spinners or artificial percentage jumps with real-time, human-readable protocol telemetry:
+    * **Header:** `"Connecting to <Camera Name>"` + optional rolling-average historical duration subtitle (`"Usually connects in ~1.2s"`, computed from the last 3 successful connections per camera stored via `SecurityRepository.recordConnectDurationMs()`).
+    * **4-Step Real-Time Checklist (`ViewerConnectionStep`):**
+      1. **Step 1 (`CONNECTING_NETWORK`):** `"Connecting to network..."` $\to$ `[✓] Connected to network (<duration>s)` upon `SignalingClient.startListening()` completion.
+      2. **Step 2 (`REACHING_CAMERA`):** `"Reaching camera..."` (or `"Waking up camera..."` when PA sends an immediate `CAMERA_WAKING` fast ACK while resuming from `PAUSED_INACTIVITY` standby) $\to$ `[✓] Camera responded (<duration>s)` upon receiving `SignalingMessage.Answer`.
+         * **Bounded 15-Second Countdown & Retry Bar:** Capped at `5` attempts (`3s` interval = `15s` timeout). After `2s` elapsed (or on attempt $\ge 2$), reveals `"Attempt <n>/5 · <remaining>s left"` with a depleting `LinearProgressIndicator`. If elapsed time reaches `5s` without a `CAMERA_WAKING` ACK, displays helper hint: `"Taking longer than usual — check if the camera phone is online."`
+      3. **Step 3 (`ESTABLISHING_LINK`):** `"Establishing secure link..."` $\to$ `[✓] Secure link established (<duration>s)` upon `PeerConnectionState.CONNECTED`.
+      4. **Step 4 (`STARTING_VIDEO`):** `"Starting live video..."` $\to$ `[✓] Live video ready` and transitions to `Live` immediately upon `SurfaceViewRenderer.onFirstFrameRendered()` (with a `1500ms` safety fallback after `PeerConnectionState.CONNECTED`).
+* **Camera Timeout State (`ViewerConnectionState.CameraTimeout`):**
+  * If the 15-second countdown expires without receiving an Answer from PA, transitions to `CameraTimeout(15)`:
+    * Displays center card with `Icons.Default.TimerOff`, title `"Camera did not respond (15s)"`, description `"Check that the camera phone is powered on, connected to the internet, and in Camera Mode."`, and a `"Reconnect Now"` button (plus automatic background retry after 10s).
 * **Automatic Disconnect Recovery:**
   * When `PeerConnectionState.DISCONNECTED` occurs, an automatic reconnection attempt is scheduled after 3 seconds (if user hasn't explicitly navigated back).
-  * When MQTT signaling client restores broker connection (`isConnectedFlow` becomes `true`) while in `Disconnected` or `Connection Failed` state, viewer instantly triggers an automated camera reconnection handshake.
+  * When MQTT signaling client restores broker connection (`isConnectedFlow` becomes `true`) while in `Disconnected`, `Connection Failed`, or `CameraTimeout` state, viewer instantly triggers an automated camera reconnection handshake.
 * **Center Disconnection / Connection Failed Card:**
   * Elevated centered card surface (`SurfaceContainerHigh` at 92% opacity) rendered when connection is dropped or failed:
     * `Icons.Default.CloudOff` icon in sunset red.
@@ -634,11 +644,16 @@ flowchart TD
 * `testCameraMode_MaxViewersReached_RejectsThirdConnection()`: Connects 2 viewers $\to$ verifies 3rd connection receives `REJECT_MAX_CAPACITY`.
 * `testCameraMode_Rename_BroadcastsDataChannelCommand()`: Renames camera $\to$ verifies JSON `{"cmd":"RENAME"}` sent to all active viewers.
 
-#### 8.2.3 DataChannel & Control Unit Tests (`test/datachannel/`, `test/camera/`, & `test/model/`)
+#### 8.2.3 DataChannel, Connection Progress, & Control Unit Tests (`test/viewer/`, `test/camera/`, & `test/model/`)
 * `testDataChannelCommandParser_ValidTorchCommand_ParsesCorrectly()`: Verifies `TORCH` true/false parsing.
 * `testDataChannelCommandParser_ValidPttCommands_TogglesAudioTrack()`: Verifies `PTT_START` and `PTT_STOP` parse to correct audio states.
 * `testBatteryCommandSerialization()`: Verifies `BATTERY` JSON serialization/deserialization (percentage and charging boolean) and `QUERY_BATTERY`.
 * `testSetNightModeAndReportSerialization()`: Verifies `SET_NIGHT_MODE` (mode string) and `NIGHT_MODE_REPORT` (mode string and active boolean) JSON serialization and deserialization.
+* `testCameraWakingSignalingSerialization()`: Verifies `CAMERA_WAKING` fast ACK signaling message JSON serialization and deserialization.
+* `testFourStepPipelineProgressionAndCompletionStates()`: Verifies `ViewerConnectionStep` transitions (`CONNECTING_NETWORK` $\to$ `REACHING_CAMERA` $\to$ `ESTABLISHING_LINK` $\to$ `STARTING_VIDEO`) and per-step elapsed duration formatting.
+* `testCountdownAndSlowHintVisibilityThresholds()`: Verifies countdown bar reveals at $\ge 2$s elapsed and slow-connection hint reveals at $\ge 5$s (and is suppressed when `isCameraWakingUp` is true).
+* `testRollingConnectDurationAverageCalculation()`: Verifies 3-sample rolling average calculation and `[100ms, 30_000ms]` clamping in `DefaultSecurityRepository.updateConnectDurationSamples()`.
+* `testBounded15SecondCountdownAndMax5AttemptsLifecycle()`: Verifies virtual time progression across 5 retry attempts (`3s` intervals) and deterministic timeout transition at `15s`.
 * `testNightModeThreshold_HysteresisAndDebounce()`: Verifies ambient light sensor triggers Night mode when illuminance drops strictly below 10 lux and exits when rising above 25 lux, with 1500ms debounce preventing jitter.
 * `testBatteryHelperFormatPercentage()`: Verifies battery text formatting with charging indicator (e.g., `"85%⚡"`, `"42%"`, `"--%"`).
 * `testRotationState_TapRotateButton_IncrementsBy90Degrees()`: Verifies sequence $0^\circ \to 90^\circ \to 180^\circ \to 270^\circ \to 0^\circ$.

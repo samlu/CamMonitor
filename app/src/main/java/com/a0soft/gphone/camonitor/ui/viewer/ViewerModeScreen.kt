@@ -49,12 +49,15 @@ import com.a0soft.gphone.camonitor.R
 import com.a0soft.gphone.camonitor.data.model.ControlCommand
 import com.a0soft.gphone.camonitor.data.model.NightModeSetting
 import com.a0soft.gphone.camonitor.data.model.SignalingMessage
+import com.a0soft.gphone.camonitor.data.model.ViewerConnectionProgress
+import com.a0soft.gphone.camonitor.data.model.ViewerConnectionStep
 import com.a0soft.gphone.camonitor.data.security.CryptoUtils
 import com.a0soft.gphone.camonitor.log.AppLogger
 import com.a0soft.gphone.camonitor.ui.common.AudioRoutingManager
 import com.a0soft.gphone.camonitor.ui.common.BatteryHelper
 import com.a0soft.gphone.camonitor.ui.common.BatteryInfo
 import com.a0soft.gphone.camonitor.ui.theme.StatusLive
+import androidx.compose.ui.text.font.FontWeight
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -66,6 +69,7 @@ sealed interface ViewerConnectionState {
     object InitFailed : ViewerConnectionState
     object WaitingResponse : ViewerConnectionState
     object StartingStream : ViewerConnectionState
+    data class CameraTimeout(val timeoutSec: Int = ViewerConnectionProgress.DEFAULT_TIMEOUT_SEC) : ViewerConnectionState
     data class Rejected(val reason: String) : ViewerConnectionState
     object Live : ViewerConnectionState
     object Failed : ViewerConnectionState
@@ -94,6 +98,16 @@ fun ViewerModeScreen(
 
     var cameraName by remember { mutableStateOf(targetCamera?.name ?: "") }
     var connectionState by remember { mutableStateOf<ViewerConnectionState>(ViewerConnectionState.Connecting) }
+    var connectionProgress by remember {
+        mutableStateOf(
+            ViewerConnectionProgress(
+                typicalConnectMs = targetCamera?.let { securityRepo.getTypicalConnectDurationMs(it.deviceId) }
+            )
+        )
+    }
+    var connectStartTimeMs by remember { mutableStateOf(System.currentTimeMillis()) }
+    var stepStartTimeMs by remember { mutableStateOf(System.currentTimeMillis()) }
+    var hasRenderedFirstFrame by remember { mutableStateOf(false) }
     var rotationDegrees by remember { mutableStateOf(0f) }
     var isAspectFit by remember { mutableStateOf(true) }
     var videoAspectRatio by remember { mutableStateOf<Float?>(null) }
@@ -112,6 +126,7 @@ fun ViewerModeScreen(
         ViewerConnectionState.InitFailed -> stringResource(R.string.viewer_status_init_failed)
         ViewerConnectionState.WaitingResponse -> stringResource(R.string.viewer_status_waiting_response)
         ViewerConnectionState.StartingStream -> stringResource(R.string.viewer_status_starting_stream)
+        is ViewerConnectionState.CameraTimeout -> stringResource(R.string.viewer_status_camera_timeout, s.timeoutSec)
         is ViewerConnectionState.Rejected -> stringResource(R.string.viewer_status_camera_rejected, s.reason)
         ViewerConnectionState.Live -> stringResource(R.string.viewer_status_live, streamFps)
         ViewerConnectionState.Failed -> stringResource(R.string.viewer_status_connection_failed)
@@ -121,6 +136,21 @@ fun ViewerModeScreen(
     val isConnecting = connectionState is ViewerConnectionState.Connecting ||
         connectionState is ViewerConnectionState.StartingStream ||
         connectionState is ViewerConnectionState.WaitingResponse
+
+    fun completeConnectionToLive() {
+        if (connectionState is ViewerConnectionState.Live) return
+        val now = System.currentTimeMillis()
+        val step4Dur = (now - stepStartTimeMs).coerceAtLeast(50L)
+        val totalDur = (now - connectStartTimeMs).coerceAtLeast(100L)
+        connectionProgress = connectionProgress.copy(
+            step4DurationMs = connectionProgress.step4DurationMs ?: step4Dur
+        )
+        targetCamera?.let { cam ->
+            securityRepo.recordConnectDurationMs(cam.deviceId, totalDur)
+        }
+        connectionState = ViewerConnectionState.Live
+        AppLogger.i("ViewerMode", "Stream transitioned to LIVE (totalConnectDuration=${totalDur}ms)")
+    }
     var isAudioEnabled by remember { mutableStateOf(securityRepo.isViewerAudioPlaybackEnabled()) }
     var isTorchActive by remember { mutableStateOf(false) }
     var isPttPressed by remember { mutableStateOf(false) }
@@ -231,12 +261,28 @@ fun ViewerModeScreen(
 
         webRtcManager.closePeer(targetCamera.deviceId)
         surfaceRenderer?.let { webRtcManager.attachRemoteRenderer(it) }
-        connectionState = ViewerConnectionState.Connecting
-
         val startTime = System.currentTimeMillis()
+        connectStartTimeMs = startTime
+        stepStartTimeMs = startTime
+        hasRenderedFirstFrame = false
+        connectionState = ViewerConnectionState.Connecting
+        connectionProgress = ViewerConnectionProgress(
+            currentStep = ViewerConnectionStep.CONNECTING_NETWORK,
+            typicalConnectMs = securityRepo.getTypicalConnectDurationMs(targetCamera.deviceId)
+        )
+
         AppLogger.i("ViewerMode", "Starting WebRTC connection to camera: ${targetCamera.name} (${targetCamera.deviceId}) (trigger=$reconnectTrigger)")
         val isMqttListening = signalingClient.startListening()
-        AppLogger.i("ViewerMode", "Signaling client startListening completed (connected=$isMqttListening)")
+        val afterMqttTime = System.currentTimeMillis()
+        val step1Dur = (afterMqttTime - stepStartTimeMs).coerceAtLeast(50L)
+        stepStartTimeMs = afterMqttTime
+        connectionProgress = connectionProgress.copy(
+            currentStep = ViewerConnectionStep.REACHING_CAMERA,
+            step1DurationMs = step1Dur,
+            attempt = 1,
+            remainingTimeoutSec = ViewerConnectionProgress.DEFAULT_TIMEOUT_SEC
+        )
+        AppLogger.i("ViewerMode", "Signaling client startListening completed (connected=$isMqttListening, step1=${step1Dur}ms)")
 
         val remotePubKey = CryptoUtils.publicKeyFromBase64(targetCamera.publicKeyBase64)
         val sharedKey = CryptoUtils.deriveEcdhKey(securityRepo.getKeyPair().private, remotePubKey)
@@ -317,17 +363,39 @@ fun ViewerModeScreen(
 
         val isRemoteDescriptionSet = java.util.concurrent.atomic.AtomicBoolean(false)
 
-        // Periodic Offer retry while waiting for camera to come online / answer
+        // Bounded 15-second countdown ticker while reaching camera
+        val countdownJob = effectScope.launch {
+            var remaining = ViewerConnectionProgress.DEFAULT_TIMEOUT_SEC
+            while (isActive && !isRemoteDescriptionSet.get() && remaining > 0) {
+                delay(1000L)
+                if (!isRemoteDescriptionSet.get()) {
+                    remaining--
+                    connectionProgress = connectionProgress.copy(remainingTimeoutSec = remaining)
+                }
+            }
+            if (isActive && !isRemoteDescriptionSet.get() && remaining <= 0) {
+                AppLogger.w("ViewerMode", "Camera did not respond within ${ViewerConnectionProgress.DEFAULT_TIMEOUT_SEC}s; transitioning to CameraTimeout")
+                connectionState = ViewerConnectionState.CameraTimeout(ViewerConnectionProgress.DEFAULT_TIMEOUT_SEC)
+                delay(10_000L)
+                if (isActive && !isUserExited && connectionState is ViewerConnectionState.CameraTimeout) {
+                    AppLogger.i("ViewerMode", "Auto-retrying after CameraTimeout...")
+                    reconnectTrigger++
+                }
+            }
+        }
+
+        // Periodic Offer retry while waiting for camera to come online / answer (bounded to maxAttempts)
         val retryJob = effectScope.launch {
             var attempt = 1
-            while (isActive && !isRemoteDescriptionSet.get()) {
-                delay(3000L)
+            while (isActive && !isRemoteDescriptionSet.get() && attempt < ViewerConnectionProgress.DEFAULT_MAX_ATTEMPTS) {
+                delay(ViewerConnectionProgress.OFFER_RETRY_INTERVAL_MS)
                 val offer = localOfferDesc.get()
-                if (!isRemoteDescriptionSet.get() && offer != null) {
+                if (!isRemoteDescriptionSet.get() && offer != null && connectionState !is ViewerConnectionState.CameraTimeout) {
                     attempt++
+                    connectionProgress = connectionProgress.copy(attempt = attempt)
                     val elapsed = System.currentTimeMillis() - startTime
                     val candidatesSnapshot = ArrayList(localIceCandidates)
-                    AppLogger.i("ViewerMode", "Waiting for camera answer (+${elapsed}ms); re-transmitting Offer (attempt #$attempt) and ${candidatesSnapshot.size} local ICE candidates...")
+                    AppLogger.i("ViewerMode", "Waiting for camera answer (+${elapsed}ms); re-transmitting Offer (attempt #$attempt/${ViewerConnectionProgress.DEFAULT_MAX_ATTEMPTS}) and ${candidatesSnapshot.size} local ICE candidates...")
                     val offerMsg = SignalingMessage.Offer(offer.description)
                     val sent = signalingClient.sendSignalingMessage(targetCamera.deviceId, offerMsg, sharedKey)
                     AppLogger.i("ViewerMode", "Re-transmitted Offer (attempt #$attempt, sent=$sent)")
@@ -338,7 +406,7 @@ fun ViewerModeScreen(
                             AppLogger.d("ViewerMode", "Re-transmitted candidate to camera (success=$candSent, mid=${cand.sdpMid})")
                         }
                     }
-                    if (attempt >= 15 && webRtcManager.getPeerConnectionState(targetCamera.deviceId) == PeerConnection.PeerConnectionState.NEW) {
+                    if (attempt >= 2 && webRtcManager.getPeerConnectionState(targetCamera.deviceId) == PeerConnection.PeerConnectionState.NEW) {
                         connectionState = ViewerConnectionState.WaitingResponse
                     }
                 }
@@ -349,9 +417,25 @@ fun ViewerModeScreen(
         signalingClient.incomingMessages.collect { (senderId, msg) ->
             if (senderId == targetCamera.deviceId) {
                 when (msg) {
-                    is SignalingMessage.Answer -> {
+                    is SignalingMessage.CameraWaking -> {
                         val elapsed = System.currentTimeMillis() - startTime
-                        AppLogger.i("ViewerMode", "Received remote Answer from camera (+${elapsed}ms, SDP size=${msg.sdp.length} chars). Applying to PeerConnection...")
+                        AppLogger.i("ViewerMode", "Received CameraWaking ACK from camera (+${elapsed}ms)")
+                        msg.cameraName?.let { newName ->
+                            cameraName = newName
+                        }
+                        connectionProgress = connectionProgress.copy(isCameraWakingUp = true)
+                    }
+                    is SignalingMessage.Answer -> {
+                        val now = System.currentTimeMillis()
+                        val elapsed = now - startTime
+                        val step2Dur = (now - stepStartTimeMs).coerceAtLeast(50L)
+                        stepStartTimeMs = now
+                        connectionProgress = connectionProgress.copy(
+                            currentStep = ViewerConnectionStep.ESTABLISHING_LINK,
+                            step2DurationMs = step2Dur,
+                            isCameraWakingUp = false
+                        )
+                        AppLogger.i("ViewerMode", "Received remote Answer from camera (+${elapsed}ms, step2=${step2Dur}ms, SDP size=${msg.sdp.length} chars). Applying to PeerConnection...")
                         msg.cameraName?.let { newName ->
                             cameraName = newName
                             val existing = securityRepo.getPairedDevice(targetCamera.deviceId) ?: targetCamera
@@ -364,6 +448,7 @@ fun ViewerModeScreen(
                             AppLogger.i("ViewerMode", "Received stream FPS from Answer: $newFps fps")
                         }
                         retryJob.cancel()
+                        countdownJob.cancel()
                         val answerDesc = SessionDescription(SessionDescription.Type.ANSWER, msg.sdp)
                         pc.setRemoteDescription(object : SdpObserver {
                             override fun onSetSuccess() {
@@ -372,7 +457,9 @@ fun ViewerModeScreen(
                                     val setElapsed = System.currentTimeMillis() - startTime
                                     AppLogger.i("ViewerMode", "Remote Answer applied successfully (+${setElapsed}ms). Draining buffered candidates...")
                                     webRtcManager.drainRemoteIceCandidates(targetCamera.deviceId)
-                                    connectionState = ViewerConnectionState.StartingStream
+                                    if (connectionState !is ViewerConnectionState.Live) {
+                                        connectionState = ViewerConnectionState.StartingStream
+                                    }
 
                                     val candidatesSnapshot = ArrayList(localIceCandidates)
                                     AppLogger.i("ViewerMode", "Camera answered: transmitting ${candidatesSnapshot.size} local ICE candidates...")
@@ -404,6 +491,7 @@ fun ViewerModeScreen(
                         val elapsed = System.currentTimeMillis() - startTime
                         AppLogger.w("ViewerMode", "Camera rejected connection (+${elapsed}ms): ${msg.reason}")
                         retryJob.cancel()
+                        countdownJob.cancel()
                         connectionState = ViewerConnectionState.Rejected(msg.reason)
                     }
                     else -> {}
@@ -468,8 +556,29 @@ fun ViewerModeScreen(
             AppLogger.i("ViewerMode", "WebRTC PeerConnectionState changed to: $state")
             when (state) {
                 PeerConnection.PeerConnectionState.CONNECTED -> {
-                    connectionState = ViewerConnectionState.Live
+                    val now = System.currentTimeMillis()
+                    val step3Dur = (now - stepStartTimeMs).coerceAtLeast(50L)
+                    stepStartTimeMs = now
+                    connectionProgress = connectionProgress.copy(
+                        currentStep = ViewerConnectionStep.STARTING_VIDEO,
+                        step1DurationMs = connectionProgress.step1DurationMs ?: 100L,
+                        step2DurationMs = connectionProgress.step2DurationMs ?: 200L,
+                        step3DurationMs = step3Dur
+                    )
                     hasSymmetricNatError = false
+                    if (hasRenderedFirstFrame) {
+                        completeConnectionToLive()
+                    } else {
+                        coroutineScope.launch {
+                            delay(ViewerConnectionProgress.FIRST_FRAME_FALLBACK_TIMEOUT_MS)
+                            if (!isUserExited &&
+                                targetCamera != null &&
+                                webRtcManager.getPeerConnectionState(targetCamera.deviceId) == PeerConnection.PeerConnectionState.CONNECTED
+                            ) {
+                                completeConnectionToLive()
+                            }
+                        }
+                    }
                     targetCamera?.let { cam ->
                         coroutineScope.launch {
                             delay(500L)
@@ -479,7 +588,11 @@ fun ViewerModeScreen(
                         }
                     }
                 }
-                PeerConnection.PeerConnectionState.CONNECTING -> connectionState = ViewerConnectionState.Connecting
+                PeerConnection.PeerConnectionState.CONNECTING -> {
+                    if (connectionState !is ViewerConnectionState.StartingStream) {
+                        connectionState = ViewerConnectionState.Connecting
+                    }
+                }
                 PeerConnection.PeerConnectionState.FAILED -> {
                     connectionState = ViewerConnectionState.Failed
                     hasSymmetricNatError = true
@@ -506,7 +619,12 @@ fun ViewerModeScreen(
     // Auto-reconnect when signaling reconnects after a network drop
     LaunchedEffect(Unit) {
         signalingClient.isConnectedFlow.collect { connected ->
-            if (connected && !isUserExited && (connectionState is ViewerConnectionState.Disconnected || connectionState is ViewerConnectionState.Failed)) {
+            if (connected &&
+                !isUserExited &&
+                (connectionState is ViewerConnectionState.Disconnected ||
+                    connectionState is ViewerConnectionState.Failed ||
+                    connectionState is ViewerConnectionState.CameraTimeout)
+            ) {
                 AppLogger.i("ViewerMode", "Signaling restored, triggering camera reconnect")
                 reconnectTrigger++
             }
@@ -556,6 +674,14 @@ fun ViewerModeScreen(
                     init(webRtcManager.eglBase.eglBaseContext, object : RendererCommon.RendererEvents {
                         override fun onFirstFrameRendered() {
                             AppLogger.d("ViewerMode", "First remote frame rendered")
+                            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                hasRenderedFirstFrame = true
+                                if (connectionProgress.currentStep == ViewerConnectionStep.STARTING_VIDEO ||
+                                    (targetCamera != null && webRtcManager.getPeerConnectionState(targetCamera.deviceId) == PeerConnection.PeerConnectionState.CONNECTED)
+                                ) {
+                                    completeConnectionToLive()
+                                }
+                            }
                         }
 
                         override fun onFrameResolutionChanged(vw: Int, vh: Int, rot: Int) {
@@ -963,12 +1089,29 @@ fun ViewerModeScreen(
             }
         }
 
-        // Center Reconnect Overlay when Disconnected or Failed
-        if (connectionState is ViewerConnectionState.Disconnected || connectionState is ViewerConnectionState.Failed) {
+        // Center 4-Step Live Connection Progress Card when Connecting
+        if (isConnecting) {
+            ViewerConnectionProgressCard(
+                cameraName = displayName,
+                progress = connectionProgress,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(horizontal = 24.dp)
+                    .widthIn(max = 360.dp)
+            )
+        }
+
+        // Center Reconnect / Timeout Overlay when Disconnected, Failed, or CameraTimeout
+        if (connectionState is ViewerConnectionState.Disconnected ||
+            connectionState is ViewerConnectionState.Failed ||
+            connectionState is ViewerConnectionState.CameraTimeout
+        ) {
+            val isTimeout = connectionState is ViewerConnectionState.CameraTimeout
             Surface(
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .padding(32.dp),
+                    .padding(32.dp)
+                    .widthIn(max = 360.dp),
                 shape = RoundedCornerShape(16.dp),
                 color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f)
             ) {
@@ -978,7 +1121,7 @@ fun ViewerModeScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.CloudOff,
+                        imageVector = if (isTimeout) Icons.Default.TimerOff else Icons.Default.CloudOff,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.error,
                         modifier = Modifier.size(48.dp)
@@ -986,10 +1129,12 @@ fun ViewerModeScreen(
                     Text(
                         text = connectionStatus,
                         style = MaterialTheme.typography.titleMedium,
-                        color = Color.White
+                        color = Color.White,
+                        textAlign = TextAlign.Center
                     )
                     Text(
-                        text = stringResource(R.string.viewer_reconnect_prompt),
+                        text = if (isTimeout) stringResource(R.string.viewer_camera_timeout_desc)
+                        else stringResource(R.string.viewer_reconnect_prompt),
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.LightGray,
                         textAlign = TextAlign.Center
@@ -1079,6 +1224,173 @@ fun ViewerModeScreen(
                     renderer.release()
                 } catch (e: Exception) {
                     AppLogger.w("ViewerModeScreen", "Error releasing SurfaceViewRenderer in onDispose: ${e.message}")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ViewerConnectionProgressCard(
+    cameraName: String,
+    progress: ViewerConnectionProgress,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 22.dp, vertical = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.viewer_connecting_to_title, cameraName),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White,
+                    textAlign = TextAlign.Center
+                )
+                progress.typicalConnectMs?.let { typicalMs ->
+                    Text(
+                        text = stringResource(
+                            R.string.viewer_usually_connects_in,
+                            ViewerConnectionProgress.formatDurationSec(typicalMs)
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.LightGray,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(2.dp))
+
+            ViewerConnectionStep.entries.forEach { step ->
+                val isCompleted = progress.isStepCompleted(step)
+                val isActive = progress.isStepActive(step)
+                val durationMs = progress.stepDurationMs(step)
+
+                val stepText = when (step) {
+                    ViewerConnectionStep.CONNECTING_NETWORK -> when {
+                        isCompleted -> stringResource(R.string.viewer_step_network_done)
+                        else -> stringResource(R.string.viewer_step_network_active)
+                    }
+                    ViewerConnectionStep.REACHING_CAMERA -> when {
+                        isCompleted -> stringResource(R.string.viewer_step_camera_done)
+                        isActive && progress.isCameraWakingUp -> stringResource(R.string.viewer_step_camera_waking)
+                        isActive -> stringResource(R.string.viewer_step_camera_active)
+                        else -> stringResource(R.string.viewer_step_camera_pending)
+                    }
+                    ViewerConnectionStep.ESTABLISHING_LINK -> when {
+                        isCompleted -> stringResource(R.string.viewer_step_link_done)
+                        isActive -> stringResource(R.string.viewer_step_link_active)
+                        else -> stringResource(R.string.viewer_step_link_pending)
+                    }
+                    ViewerConnectionStep.STARTING_VIDEO -> when {
+                        isCompleted -> stringResource(R.string.viewer_step_video_done)
+                        isActive -> stringResource(R.string.viewer_step_video_active)
+                        else -> stringResource(R.string.viewer_step_video_pending)
+                    }
+                }
+
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier.size(20.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            when {
+                                isCompleted -> Icon(
+                                    imageVector = Icons.Default.CheckCircle,
+                                    contentDescription = null,
+                                    tint = StatusLive,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                isActive -> CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                else -> Icon(
+                                    imageVector = Icons.Default.RadioButtonUnchecked,
+                                    contentDescription = null,
+                                    tint = Color.Gray.copy(alpha = 0.55f),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+
+                        Text(
+                            text = stepText,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = if (isActive) FontWeight.Medium else FontWeight.Normal,
+                            color = when {
+                                isCompleted -> Color.White.copy(alpha = 0.9f)
+                                isActive -> Color.White
+                                else -> Color.Gray
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        if (isCompleted && durationMs != null) {
+                            Text(
+                                text = stringResource(
+                                    R.string.viewer_step_duration_sec,
+                                    ViewerConnectionProgress.formatDurationSec(durationMs)
+                                ),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = StatusLive
+                            )
+                        }
+                    }
+
+                    if (step == ViewerConnectionStep.REACHING_CAMERA && progress.shouldShowCountdown()) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 30.dp, top = 4.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = stringResource(
+                                    R.string.viewer_reaching_attempt_countdown,
+                                    progress.attempt,
+                                    progress.maxAttempts,
+                                    progress.remainingTimeoutSec
+                                ),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            LinearProgressIndicator(
+                                progress = { progress.timeoutProgressFraction() },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(4.dp),
+                                color = MaterialTheme.colorScheme.primary,
+                                trackColor = Color.DarkGray
+                            )
+                            if (progress.shouldShowSlowHint()) {
+                                Text(
+                                    text = stringResource(R.string.viewer_reaching_slow_hint),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.LightGray
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }

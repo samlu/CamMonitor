@@ -80,6 +80,25 @@
     <string name="viewer_reconnect_prompt">Camera connection lost. Auto-reconnecting or tap to retry now.</string>
     <string name="viewer_reconnect_now">Reconnect Now</string>
     <string name="viewer_symmetric_nat_desc">Direct P2P traversal failed due to Carrier Symmetric NAT. Please connect devices to Wi-Fi or the same local network.</string>
+    <string name="viewer_connecting_to_title">Connecting to %1$s</string>
+    <string name="viewer_usually_connects_in">Usually connects in ~%1$ss</string>
+    <string name="viewer_step_network_active">Connecting to network...</string>
+    <string name="viewer_step_network_done">Connected to network</string>
+    <string name="viewer_step_camera_active">Reaching camera...</string>
+    <string name="viewer_step_camera_waking">Waking up camera...</string>
+    <string name="viewer_step_camera_done">Camera responded</string>
+    <string name="viewer_step_camera_pending">Reach camera</string>
+    <string name="viewer_step_link_active">Establishing secure link...</string>
+    <string name="viewer_step_link_done">Secure link established</string>
+    <string name="viewer_step_link_pending">Establish secure link</string>
+    <string name="viewer_step_video_active">Starting live video...</string>
+    <string name="viewer_step_video_done">Live video ready</string>
+    <string name="viewer_step_video_pending">Start live video</string>
+    <string name="viewer_step_duration_sec">%1$ss</string>
+    <string name="viewer_reaching_attempt_countdown">Attempt %1$d/%2$d · %3$ds left</string>
+    <string name="viewer_reaching_slow_hint">Taking longer than usual — check if the camera phone is online.</string>
+    <string name="viewer_status_camera_timeout">Camera did not respond (%1$ds)</string>
+    <string name="viewer_camera_timeout_desc">Check that the camera phone is powered on, connected to the internet, and in Camera Mode.</string>
 
     <!-- Camera Pairing Screen -->
     <string name="camera_pairing_title">Pair New Viewer</string>
