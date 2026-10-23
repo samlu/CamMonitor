@@ -8,7 +8,7 @@ CamMonitor is a peer-to-peer camera monitoring Android application running acros
 * **Testability & Quality Assurance:** Architected for 100% deterministic testability with interface-driven abstraction layers, fake implementations, Coroutine `TestDispatcher` time control, and comprehensive Unit, Integration, and Compose UI test suites.
 * **Platform & SDK Targets:**
   * **Application ID / Package Name:** `com.a0soft.gphone.camonitor`
-  * **Current App Version:** `1.0.4` (`versionCode = 5`)
+  * **Current App Version:** `1.0.5` (`versionCode = 6`)
   * **Minimum SDK (`minSdk`):** `28` (Android 9 Pie)
   * **Target SDK (`targetSdk`):** `37` (Android 17)
   * **Compile SDK (`compileSdk`):** `37`
@@ -113,8 +113,16 @@ Every signaling envelope sent over the public MQTT broker is structured as:
 * **DTLS-SRTP Fingerprint Verification:**
   * WebRTC media is encrypted end-to-end via DTLS-SRTP.
   * The DTLS certificate fingerprint is embedded within the authenticated and signed SDP offer/answer.
-* **DataChannel Command Authentication:**
-  * Remote commands (`TORCH`, `PTT`, `RENAME`, `BATTERY`, `QUERY_BATTERY`, `SET_NIGHT_MODE`, `NIGHT_MODE_REPORT`) are only accepted on DataChannels belonging to authenticated WebRTC PeerConnections established via the verified signaling handshake.
+* **Role-Based Access Control & Whitelist Filtering:**
+  * **Camera (PA):** Verifies that incoming signaling messages originate exclusively from devices in `getPairedViewers()`.
+  * **Viewer (PB):** Resolves target cameras exclusively from `getPairedCameras()`.
+* **Gated Remote Intercom Audio:**
+  * Incoming viewer `AudioTrack`s on Camera (PA) are initialized in the **disabled** state (`track.setEnabled(false)`).
+  * Audio is enabled dynamically only upon verified receipt of `ControlCommand.PttStart` and routed to speaker.
+  * Multi-viewer PTT states are tracked per peer (`activePttPeers = ConcurrentHashMap.newKeySet<String>()`), ensuring one viewer's release does not clobber another viewer's active intercom session. PTT state is purged on peer disconnection or close.
+* **DataChannel Command Authentication & State Synchronization:**
+  * Remote commands (`TORCH`, `TORCH_REPORT`, `PTT`, `RENAME`, `BATTERY`, `QUERY_BATTERY`, `SET_NIGHT_MODE`, `NIGHT_MODE_REPORT`, `FPS_REPORT`) are only accepted on DataChannels belonging to authenticated WebRTC PeerConnections established via the verified signaling handshake.
+  * Flashlight status is bidirectionally synchronized: PA dispatches `TORCH_REPORT` on DataChannel open, in response to `QUERY_BATTERY`, and immediately upon local or remote torch toggles.
 
 ### 2.6 Revocation & Unpairing
 * Both devices provide device unpairing options:
@@ -130,9 +138,11 @@ Every signaling envelope sent over the public MQTT broker is structured as:
 ## 3. Persistent Diagnostics & File Logging System
 
 ### 3.1 Architecture & Storage
-* **Location:** Written to application-specific internal/external storage:
-  `context.getExternalFilesDir("logs")/cammonitor.log`
-  *(Accessible without root via USB/ADB or through the app's in-app share sheet).*
+* **Location:** Written exclusively to application-specific sandboxed internal storage:
+  `context.filesDir/logs/cammonitor.log`
+  *(Protected from world/MTP access on Android 9+; accessible through the in-app log viewer and system share sheet).*
+  * Any legacy external logs under `context.getExternalFilesDir("logs")` are automatically purged on startup.
+* **Thread-Safe StateFlow:** In-memory diagnostic logs are updated atomically using a Compare-And-Swap (CAS) loop via `_logsFlow.update { ... }`.
 * **Rolling Policy:**
   * Max file size: **2 MB** per file.
   * File rotation: Keeps up to **3 rolling backups** (`cammonitor.log`, `cammonitor.1.log`, `cammonitor.2.log`).
@@ -442,7 +452,7 @@ Every signaling envelope sent over the public MQTT broker is structured as:
 * **Header Branding:**
   * App Icon: Layered vector squircle (96dp, dark background `#121212` with cyan/emerald foreground).
   * App Title: `"CamMonitor"` (HeadlineMedium, bold).
-  * Version String: `"Version 1.0.4"` (`BuildConfig.VERSION_NAME`, BodyLarge, muted outline color).
+  * Version String: `"Version 1.0.5"` (`BuildConfig.VERSION_NAME`, BodyLarge, muted outline color).
 * **Application Summary Card (`ElevatedCard`):**
   * Short Description: Multi-line overview emphasizing zero-account, P2P encryption, OLED power management, and 2-way talkback.
   * Open Source Notice: License declaration (Apache License 2.0).
@@ -650,4 +660,42 @@ flowchart TD
   * `testSwitchToTraditionalChineseUpdatesApplicationStrings()`: Dynamically switches language to Traditional Chinese on UI thread and asserts `CamMonitorApp.instance.getString()` returns translated strings (`"系統記錄"`, `"啟動鏡頭模式"`, etc.).
   * `testSwitchToEnglishUpdatesApplicationStrings()`: Dynamically switches language to English and asserts `CamMonitorApp.instance.getString()` immediately updates to English (`"System Logs"`, `"Start Camera Mode"`, etc.).
   * `testTargetLocaleResolution()`: Verifies `LocaleHelper.getTargetLocale()` correctly resolves corresponding `Locale` instances across language states.
+
+#### 8.2.6 Real-Device Hardware & Inter-Device Instrumented Test Suites (`androidTest/`)
+* **Live MQTT TLS Signaling Tests (`SignalingClientInstrumentedTest.kt`):**
+  * `testSignalingClientConnectsAndDisconnectsOverTls()`: Connects to public HiveMQ MQTT broker over TLS (`broker.hivemq.com:8883`), verifies state transition to connected, and executes clean graceful disconnect.
+  * `testSignalingClientSendEncryptedOffer()`: Generates software EC P-256 keypair, derives ECDH shared key, encrypts WebRTC Offer in authenticated AES-GCM envelope, publishes to broker, and verifies TLS dispatch.
+* **WebRTC Native Hardware & Loopback Tests (`WebRtcManagerInstrumentedTest.kt`):**
+  * `testWebRtcInitializationAndHardwareCapture()`: Verifies native WebRTC JNI initialization (`EglBase`, `PeerConnectionFactory`), camera capture startup via CameraX, viewer microphone audio track creation, and clean teardown.
+  * `testWebRtcPeerConnectionAndDataChannelLoopback()`: Executes a dual-peer connection on the physical device hardware, exchanges local Offer/Answer, verifies transition to `CONNECTED`, opens DataChannel `"cmd"`, and transfers JSON `ControlCommand.TorchReport`.
+* **CameraX Video Capture & Hardware Sensor Tests (`CameraXVideoCapturerTest.kt`):**
+  * `testCameraXVideoCapturerStartsAndCapturesFrames()`: Verifies real video sensor capture delivering non-null frames with positive width/height, verifies frame rotation calculations, and asserts hardware torch toggling.
+  * `testCameraXVideoCapturerDynamicRotation()`: Tests display orientation transformations and relative rotation compensation.
+* **End-to-End Live Inter-Device Connection Tests (`DeviceConnectionInstrumentedTest.kt`):**
+  * `testLiveDeviceHardwareAndBatteryReporting()`: Validates device battery status reporting and hardware flashlight capabilities.
+  * `testLiveEndToEndDeviceWebRtcAndDataChannel()`: When running across paired devices (Viewer on Pixel 8 <-> Camera on Pixel 6):
+    * Dispatches Unified Plan SDP Offer over MQTT with periodic re-transmission until remote camera Answer is received.
+    * Verifies WebRTC connection transitions to `CONNECTED`.
+    * Validates bidirectional DataChannel message exchange:
+      - Sends `ControlCommand.QueryBattery` $\to$ asserts received `ControlCommand.Battery` with valid percentage (`0..100`).
+      - Sends `ControlCommand.Torch(true)` $\to$ asserts received `ControlCommand.TorchReport(true)`.
+      - Sends `ControlCommand.Torch(false)` $\to$ asserts received `ControlCommand.TorchReport(false)`.
+      - Tests Push-to-Talk `PttStart` and `PttStop`.
+    * Cleans up all peer and signaling resources upon completion.
+
+---
+
+## 8.3 Automated Multi-Device Test Runner (`scripts/run_real_device_tests.py`)
+To validate regression-free operation between physical devices, an automated test runner script orchestrates testing over ADB:
+1. **Device Discovery:** Identifies attached devices (`Pixel 6 Pro: 192.168.100.107:5555` as Camera, `Pixel 8 Pro: 192.168.100.136:5555` as Viewer).
+2. **Setup:** Wakes both devices and launches Pixel 6 into Camera Mode (listening on MQTT).
+3. **Instrumented Test Execution:** Executes `am instrument` across both devices running all 11 instrumented test suites.
+4. **Live Functional E2E Verification:**
+   - Launches Pixel 8 into Viewer Mode and establishes WebRTC media streaming with Pixel 6.
+   - Verifies remote video track reception and frame rendering.
+   - Verifies real-time battery reporting over DataChannel.
+   - Toggles torch from Viewer and verifies Camera flashlight state synchronization.
+   - Triggers Push-to-Talk intercom from Viewer and verifies Camera speaker talkback routing.
+5. **Report Generation:** Summarizes test results with pass/fail metrics.
+
 
