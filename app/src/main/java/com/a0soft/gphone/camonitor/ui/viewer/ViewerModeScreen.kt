@@ -83,12 +83,12 @@ fun ViewerModeScreen(
     val signalingClient = app.signalingClient
     val webRtcManager = app.webRtcManager
 
-    val pairedDevices = remember { securityRepo.getPairedDevices() }
+    val pairedCameras = remember { securityRepo.getPairedCameras() }
     val targetCamera = remember(selectedDeviceId) {
         if (selectedDeviceId != null) {
-            securityRepo.getPairedDevice(selectedDeviceId) ?: pairedDevices.firstOrNull()
+            pairedCameras.find { it.deviceId == selectedDeviceId } ?: pairedCameras.firstOrNull()
         } else {
-            pairedDevices.firstOrNull()
+            pairedCameras.firstOrNull()
         }
     }
 
@@ -280,7 +280,7 @@ fun ViewerModeScreen(
 
         webRtcManager.createDataChannelForSender(targetCamera.deviceId)
 
-        var localOfferDesc: SessionDescription? = null
+        val localOfferDesc = java.util.concurrent.atomic.AtomicReference<SessionDescription?>(null)
 
         pc.createOffer(object : SdpObserver {
             override fun onCreateSuccess(desc: SessionDescription) {
@@ -292,7 +292,7 @@ fun ViewerModeScreen(
                             try {
                                 val setElapsed = System.currentTimeMillis() - startTime
                                 AppLogger.i("ViewerMode", "Local Offer set successfully (+${setElapsed}ms), transmitting to camera: ${targetCamera.deviceId}")
-                                localOfferDesc = desc
+                                localOfferDesc.set(desc)
                                 val offerMsg = SignalingMessage.Offer(desc.description)
                                 effectScope.launch {
                                     val sent = signalingClient.sendSignalingMessage(targetCamera.deviceId, offerMsg, sharedKey)
@@ -315,15 +315,15 @@ fun ViewerModeScreen(
             override fun onSetFailure(err: String?) {}
         }, MediaConstraints())
 
-        var isRemoteDescriptionSet = false
+        val isRemoteDescriptionSet = java.util.concurrent.atomic.AtomicBoolean(false)
 
         // Periodic Offer retry while waiting for camera to come online / answer
         val retryJob = effectScope.launch {
             var attempt = 1
-            while (isActive && !isRemoteDescriptionSet) {
+            while (isActive && !isRemoteDescriptionSet.get()) {
                 delay(3000L)
-                val offer = localOfferDesc
-                if (!isRemoteDescriptionSet && offer != null) {
+                val offer = localOfferDesc.get()
+                if (!isRemoteDescriptionSet.get() && offer != null) {
                     attempt++
                     val elapsed = System.currentTimeMillis() - startTime
                     val candidatesSnapshot = ArrayList(localIceCandidates)
@@ -367,7 +367,7 @@ fun ViewerModeScreen(
                         val answerDesc = SessionDescription(SessionDescription.Type.ANSWER, msg.sdp)
                         pc.setRemoteDescription(object : SdpObserver {
                             override fun onSetSuccess() {
-                                isRemoteDescriptionSet = true
+                                isRemoteDescriptionSet.set(true)
                                 try {
                                     val setElapsed = System.currentTimeMillis() - startTime
                                     AppLogger.i("ViewerMode", "Remote Answer applied successfully (+${setElapsed}ms). Draining buffered candidates...")
@@ -441,6 +441,10 @@ fun ViewerModeScreen(
                     streamFps = cmd.fps
                     webRtcManager.setRemoteFps(cmd.fps)
                     AppLogger.i("ViewerMode", "Received FpsReport from camera: ${cmd.fps} fps")
+                }
+                is ControlCommand.TorchReport -> {
+                    isTorchActive = cmd.enabled
+                    AppLogger.i("ViewerMode", "Received TorchReport from camera: enabled=${cmd.enabled}")
                 }
                 else -> {}
             }

@@ -43,8 +43,8 @@ class CameraMonitorService : Service() {
     private val _streamingState = MutableStateFlow(CameraStreamingState.IDLE)
     val streamingState: StateFlow<CameraStreamingState> = _streamingState.asStateFlow()
 
-    private val _isPttReceiving = MutableStateFlow(false)
-    val isPttReceiving: StateFlow<Boolean> = _isPttReceiving.asStateFlow()
+    val isPttReceiving: StateFlow<Boolean>
+        get() = CamMonitorApp.instance.webRtcManager.isPttReceiving
 
     private var isStreamingActive = false
     private var signalingJob: Job? = null
@@ -62,7 +62,17 @@ class CameraMonitorService : Service() {
     override fun onBind(intent: Intent?): IBinder = binder
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        AppLogger.i(tag, "CameraMonitorService onStartCommand")
+        AppLogger.i(tag, "CameraMonitorService onStartCommand (intent=${intent != null}, isStreamingActive=$isStreamingActive)")
+        val hasCam = androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        val hasMic = androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (!hasCam || !hasMic) {
+            AppLogger.w(tag, "Missing CAMERA or RECORD_AUDIO permission in onStartCommand; stopping service")
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        startStreaming()
         return START_STICKY
     }
 
@@ -270,8 +280,9 @@ class CameraMonitorService : Service() {
     private suspend fun observeSignaling(app: CamMonitorApp) {
         AppLogger.i(tag, "Signaling observer started, listening for incoming WebRTC messages")
         app.signalingClient.incomingMessages.collect { (senderId, message) ->
-            if (!app.securityRepository.isDeviceWhitelisted(senderId)) {
-                AppLogger.w(tag, "Ignoring signaling from non-whitelisted sender: $senderId (${message.javaClass.simpleName})")
+            val isAuthorizedViewer = app.securityRepository.getPairedViewers().any { it.deviceId == senderId }
+            if (!isAuthorizedViewer) {
+                AppLogger.w(tag, "Ignoring signaling from unauthorized/non-viewer sender: $senderId (${message.javaClass.simpleName})")
                 return@collect
             }
 
@@ -384,9 +395,9 @@ class CameraMonitorService : Service() {
 
     private fun sendSignalingMessageToViewer(viewerId: String, msg: SignalingMessage) {
         val app = CamMonitorApp.instance
-        val viewer = app.securityRepository.getPairedDevice(viewerId)
+        val viewer = app.securityRepository.getPairedViewers().firstOrNull { it.deviceId == viewerId }
         if (viewer == null) {
-            AppLogger.w(tag, "Cannot send ${msg.javaClass.simpleName} to $viewerId: Viewer not found in paired list")
+            AppLogger.w(tag, "Cannot send ${msg.javaClass.simpleName} to $viewerId: Viewer not found in paired viewers list")
             return
         }
         val remotePubKey = com.a0soft.gphone.camonitor.data.security.CryptoUtils.publicKeyFromBase64(viewer.publicKeyBase64)
@@ -403,16 +414,20 @@ class CameraMonitorService : Service() {
         when (cmd) {
             is ControlCommand.Torch -> {
                 app.torchManager.setTorch(cmd.enabled)
+                app.webRtcManager.broadcastDataChannelCommand(
+                    ControlCommand.TorchReport(app.torchManager.isTorchOn.value)
+                )
+            }
+            is ControlCommand.TorchReport -> {
+                // Not handled by camera sender
             }
             is ControlCommand.PttStart -> {
                 AppLogger.i(tag, "Viewer $peerId started Push-to-Talk")
-                _isPttReceiving.value = true
                 com.a0soft.gphone.camonitor.ui.common.AudioRoutingManager.routeToSpeaker(this)
                 app.webRtcManager.onPttCommand(peerId, true)
             }
             is ControlCommand.PttStop -> {
                 AppLogger.i(tag, "Viewer $peerId stopped Push-to-Talk")
-                _isPttReceiving.value = false
                 app.webRtcManager.onPttCommand(peerId, false)
             }
             is ControlCommand.SetNightMode -> {
@@ -457,6 +472,9 @@ class CameraMonitorService : Service() {
                 )
                 app.webRtcManager.broadcastDataChannelCommand(
                     ControlCommand.FpsReport(app.webRtcManager.streamFps.value)
+                )
+                app.webRtcManager.broadcastDataChannelCommand(
+                    ControlCommand.TorchReport(app.torchManager.isTorchOn.value)
                 )
             }
             is ControlCommand.FpsReport -> {

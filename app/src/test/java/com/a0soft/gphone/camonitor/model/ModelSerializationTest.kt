@@ -147,6 +147,16 @@ class ModelSerializationTest {
         val parsedFpsReport = ControlCommand.fromJson(fpsReport.toJson())
         assertTrue(parsedFpsReport is ControlCommand.FpsReport)
         assertEquals(24, (parsedFpsReport as ControlCommand.FpsReport).fps)
+
+        val torchReportOn = ControlCommand.TorchReport(enabled = true)
+        val parsedTorchReportOn = ControlCommand.fromJson(torchReportOn.toJson())
+        assertTrue(parsedTorchReportOn is ControlCommand.TorchReport)
+        assertTrue((parsedTorchReportOn as ControlCommand.TorchReport).enabled)
+
+        val torchReportOff = ControlCommand.TorchReport(enabled = false)
+        val parsedTorchReportOff = ControlCommand.fromJson(torchReportOff.toJson())
+        assertTrue(parsedTorchReportOff is ControlCommand.TorchReport)
+        assertFalse((parsedTorchReportOff as ControlCommand.TorchReport).enabled)
     }
 
     @Test

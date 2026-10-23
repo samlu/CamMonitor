@@ -242,6 +242,7 @@ enum class NightModeSetting {
 
 sealed class ControlCommand {
     data class Torch(val enabled: Boolean) : ControlCommand()
+    data class TorchReport(val enabled: Boolean) : ControlCommand()
     object PttStart : ControlCommand()
     object PttStop : ControlCommand()
     data class Rename(val name: String) : ControlCommand()
@@ -256,6 +257,10 @@ sealed class ControlCommand {
         when (this) {
             is Torch -> {
                 json.put("cmd", "TORCH")
+                json.put("enabled", enabled)
+            }
+            is TorchReport -> {
+                json.put("cmd", "TORCH_REPORT")
                 json.put("enabled", enabled)
             }
             is PttStart -> json.put("cmd", "PTT_START")
@@ -293,6 +298,7 @@ sealed class ControlCommand {
                 val json = JSONObject(jsonStr)
                 when (json.getString("cmd")) {
                     "TORCH" -> Torch(enabled = json.getBoolean("enabled"))
+                    "TORCH_REPORT" -> TorchReport(enabled = json.getBoolean("enabled"))
                     "PTT_START" -> PttStart
                     "PTT_STOP" -> PttStop
                     "RENAME" -> Rename(name = json.getString("name"))

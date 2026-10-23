@@ -65,6 +65,9 @@ class WebRtcManager(private val context: Context) {
     private var remoteVideoTrack: VideoTrack? = null
     private var remoteAudioTrack: AudioTrack? = null
     private val remoteAudioTracks = java.util.concurrent.ConcurrentHashMap<String, AudioTrack>()
+    private val activePttPeers = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val _isPttReceiving = MutableStateFlow(false)
+    val isPttReceiving: StateFlow<Boolean> = _isPttReceiving.asStateFlow()
     private var isRemoteAudioEnabled = false
     private var remoteRenderer: SurfaceViewRenderer? = null
     @Volatile
@@ -208,6 +211,9 @@ class WebRtcManager(private val context: Context) {
             }
         }
         capturer.setNightModeSetting(_nightModeSetting.value)
+        try {
+            capturer.setTorch(com.a0soft.gphone.camonitor.CamMonitorApp.instance.torchManager.isTorchOn.value)
+        } catch (_: Exception) {}
         cameraXCapturer = capturer
         _isNightModeActive.value = capturer.isNightModeActive
         videoCapturer = capturer
@@ -310,6 +316,11 @@ class WebRtcManager(private val context: Context) {
     fun stopCameraCapture() {
         try {
             isCameraCapturing = false
+            activePttPeers.clear()
+            _isPttReceiving.value = false
+            try {
+                com.a0soft.gphone.camonitor.CamMonitorApp.instance.torchManager.resetState()
+            } catch (_: Exception) {}
             peerConnections.values.forEach { it.dispose() }
             peerConnections.clear()
             dataChannels.values.forEach { it.dispose() }
@@ -430,6 +441,17 @@ class WebRtcManager(private val context: Context) {
                 AppLogger.i(tag, "ConnectionChange for $peerId: $newState")
                 peerConnectionStates[peerId] = newState
                 _connectionState.value = newState
+                if (newState == PeerConnection.PeerConnectionState.DISCONNECTED ||
+                    newState == PeerConnection.PeerConnectionState.FAILED ||
+                    newState == PeerConnection.PeerConnectionState.CLOSED
+                ) {
+                    if (activePttPeers.remove(peerId)) {
+                        _isPttReceiving.value = activePttPeers.isNotEmpty()
+                        try {
+                            remoteAudioTracks[peerId]?.setEnabled(false)
+                        } catch (_: Throwable) {}
+                    }
+                }
                 updateActiveViewersCount()
             }
 
@@ -457,9 +479,12 @@ class WebRtcManager(private val context: Context) {
                     remoteAudioTrack = track
                     val isCamera = localVideoTrack != null
                     if (isCamera) {
-                        track.setEnabled(true)
-                        com.a0soft.gphone.camonitor.ui.common.AudioRoutingManager.routeToSpeaker(context)
-                        AppLogger.i(tag, "Camera (PA) enabled remote AudioTrack from viewer $peerId and routed to speaker")
+                        val isPeerPttActive = activePttPeers.contains(peerId)
+                        track.setEnabled(isPeerPttActive)
+                        if (isPeerPttActive) {
+                            com.a0soft.gphone.camonitor.ui.common.AudioRoutingManager.routeToSpeaker(context)
+                        }
+                        AppLogger.i(tag, "Camera (PA) received remote AudioTrack from viewer $peerId (initially enabled=$isPeerPttActive)")
                     } else {
                         track.setEnabled(isRemoteAudioEnabled)
                         AppLogger.i(tag, "Viewer (PB) remote AudioTrack enabled: $isRemoteAudioEnabled")
@@ -546,6 +571,16 @@ class WebRtcManager(private val context: Context) {
                         AppLogger.i(tag, "Sent initial NightModeReport on DataChannel open to $peerId: mode=${modeCmd.mode}, active=${modeCmd.isNightActive}")
                     } catch (e: Exception) {
                         AppLogger.e(tag, "Failed to send initial NightModeReport command", e)
+                    }
+
+                    try {
+                        val torchEnabled = com.a0soft.gphone.camonitor.CamMonitorApp.instance.torchManager.isTorchOn.value
+                        val torchCmd = ControlCommand.TorchReport(torchEnabled)
+                        val bytes = torchCmd.toJson().toByteArray(Charsets.UTF_8)
+                        dc.send(DataChannel.Buffer(ByteBuffer.wrap(bytes), false))
+                        AppLogger.i(tag, "Sent initial TorchReport on DataChannel open to $peerId: enabled=$torchEnabled")
+                    } catch (e: Exception) {
+                        AppLogger.e(tag, "Failed to send initial TorchReport command", e)
                     }
                 }
             }
@@ -694,12 +729,22 @@ class WebRtcManager(private val context: Context) {
     }
 
     fun onPttCommand(peerId: String, isStart: Boolean) {
-        val track = remoteAudioTracks[peerId] ?: remoteAudioTrack
-        track?.setEnabled(isStart)
+        if (isStart) {
+            activePttPeers.add(peerId)
+        } else {
+            activePttPeers.remove(peerId)
+        }
+        _isPttReceiving.value = activePttPeers.isNotEmpty()
+        val track = remoteAudioTracks[peerId]
+        try {
+            track?.setEnabled(isStart)
+        } catch (e: Throwable) {
+            AppLogger.w(tag, "Failed setting enabled=$isStart on remoteAudioTrack for $peerId: ${e.message}")
+        }
         if (isStart) {
             com.a0soft.gphone.camonitor.ui.common.AudioRoutingManager.routeToSpeaker(context)
         }
-        AppLogger.i(tag, "onPttCommand: peerId=$peerId, isStart=$isStart, trackId=${track?.id()}")
+        AppLogger.i(tag, "onPttCommand: peerId=$peerId, isStart=$isStart, activePttCount=${activePttPeers.size}, trackId=${track?.id()}")
     }
 
     private val remoteDescriptionSetPeers = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
@@ -787,14 +832,17 @@ class WebRtcManager(private val context: Context) {
                 addedRemoteIceCandidates[peerId] = freshSet
             }
         }
+        if (activePttPeers.remove(peerId)) {
+            _isPttReceiving.value = activePttPeers.isNotEmpty()
+        }
         dataChannels.remove(peerId)?.dispose()
         peerConnections.remove(peerId)?.dispose()
-        remoteVideoTrack?.removeSink(remoteVideoSink)
-        remoteVideoTrack = null
-        remoteAudioTracks.remove(peerId)
-        if (remoteAudioTrack == null || remoteAudioTracks.isEmpty()) {
-            remoteAudioTrack = null
+        if (localVideoTrack == null || peerConnections.isEmpty()) {
+            remoteVideoTrack?.removeSink(remoteVideoSink)
+            remoteVideoTrack = null
         }
+        remoteAudioTracks.remove(peerId)
+        remoteAudioTrack = remoteAudioTracks.values.firstOrNull()
         updateActiveViewersCount()
         AppLogger.i(tag, "Closed WebRTC connection with $peerId")
     }
@@ -802,6 +850,8 @@ class WebRtcManager(private val context: Context) {
     fun closeAll() {
         peerConnectionStates.clear()
         remoteDescriptionSetPeers.clear()
+        activePttPeers.clear()
+        _isPttReceiving.value = false
         stopCameraCapture()
         stopViewerAudioCapture()
         pendingRemoteIceCandidates.clear()

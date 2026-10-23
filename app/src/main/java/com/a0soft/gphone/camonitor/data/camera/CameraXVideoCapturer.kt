@@ -412,6 +412,10 @@ class CameraXVideoCapturer(
 
         val mainExecutor = ContextCompat.getMainExecutor(context)
         newPreview.setSurfaceProvider(mainExecutor) { request ->
+            if (!isCapturing.get()) {
+                request.willNotProvideSurface()
+                return@setSurfaceProvider
+            }
             val res = request.resolution
             AppLogger.i(tag, "CameraX Surface requested: ${res.width}x${res.height} (night=$enableNight)")
             helper.setTextureSize(res.width, res.height)
@@ -428,6 +432,10 @@ class CameraXVideoCapturer(
             }
             request.provideSurface(newSurface, mainExecutor) { result ->
                 AppLogger.d(tag, "CameraX Surface closed/invalidated: ${result.resultCode}")
+                if (this.surface === newSurface) {
+                    this.surface = null
+                }
+                newSurface.release()
             }
         }
 
@@ -722,13 +730,18 @@ class CameraXVideoCapturer(
 
     fun setTorch(enabled: Boolean): Boolean {
         isTorchActive = enabled
-        val control = camera?.cameraControl ?: run {
-            AppLogger.w(tag, "Cannot toggle torch: CameraControl is null")
-            return false
+        val control = camera?.cameraControl
+        if (control != null) {
+            control.enableTorch(enabled)
+            AppLogger.i(tag, "Torch toggled via CameraControl: enabled=$enabled")
+            return true
         }
-        control.enableTorch(enabled)
-        AppLogger.i(tag, "Torch toggled via CameraControl: enabled=$enabled")
-        return true
+        if (isCapturing.get()) {
+            AppLogger.i(tag, "CameraControl not yet bound; stored isTorchActive=$enabled to apply on bind")
+            return true
+        }
+        AppLogger.w(tag, "Cannot toggle torch: CameraControl is null and capturer not capturing")
+        return false
     }
 
     private class CapturerLifecycleOwner : LifecycleOwner {

@@ -60,4 +60,8 @@ class TorchManager(private val context: Context) {
             AppLogger.e(tag, "Failed to toggle torch mode via CameraManager", e)
         }
     }
+
+    fun resetState() {
+        _isTorchOn.value = false
+    }
 }

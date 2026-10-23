@@ -1,4 +1,4 @@
-﻿package com.a0soft.gphone.camonitor.log
+package com.a0soft.gphone.camonitor.log
 
 import android.content.Context
 import android.util.Log
@@ -11,6 +11,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileWriter
@@ -32,7 +33,11 @@ object AppLogger {
     private var activeLogFile: File? = null
 
     fun init(context: Context) {
-        val dir = context.getExternalFilesDir("logs") ?: File(context.filesDir, "logs")
+        try {
+            context.getExternalFilesDir("logs")?.deleteRecursively()
+        } catch (_: Exception) {}
+
+        val dir = File(context.filesDir, "logs")
         if (!dir.exists()) {
             dir.mkdirs()
         }
@@ -74,14 +79,14 @@ object AppLogger {
             message = message
         )
 
-        // Update in-memory flow for Compose UI
-        val current = _logsFlow.value
-        val updated = if (current.size >= MAX_MEMORY_LOGS) {
-            current.drop(1) + entry
-        } else {
-            current + entry
+        // Update in-memory flow for Compose UI atomically
+        _logsFlow.update { current ->
+            if (current.size >= MAX_MEMORY_LOGS) {
+                current.drop(1) + entry
+            } else {
+                current + entry
+            }
         }
-        _logsFlow.value = updated
 
         // Queue for disk persistence
         logChannel.trySend(entry)
