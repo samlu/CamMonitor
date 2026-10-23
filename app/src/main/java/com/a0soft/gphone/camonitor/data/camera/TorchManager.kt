@@ -17,6 +17,7 @@ class TorchManager(private val context: Context) {
     val isTorchOn: StateFlow<Boolean> = _isTorchOn.asStateFlow()
 
     private var backCameraId: String? = null
+    val hasFlash: Boolean get() = backCameraId != null
 
     init {
         findBackCamera()

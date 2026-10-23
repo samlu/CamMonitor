@@ -22,11 +22,13 @@ class WebRtcManager(private val context: Context) {
     private val tag = "WebRtcManager"
 
     val eglBase: EglBase = EglBase.create()
-    private var peerConnectionFactory: PeerConnectionFactory? = null
+    var peerConnectionFactory: PeerConnectionFactory? = null
+        private set
 
     // Sender state (PA)
     private var videoSource: VideoSource? = null
     private var localVideoTrack: VideoTrack? = null
+    val activeLocalVideoTrack: VideoTrack? get() = localVideoTrack
     private var audioSource: AudioSource? = null
     private var localAudioTrack: AudioTrack? = null
     private var videoCapturer: VideoCapturer? = null
@@ -123,6 +125,7 @@ class WebRtcManager(private val context: Context) {
 
     @Volatile
     private var isCameraCapturing = false
+    val isCameraCaptureActive: Boolean get() = isCameraCapturing
     var onCameraUnexpectedClosed: (() -> Unit)? = null
     private var cameraXCapturer: com.a0soft.gphone.camonitor.data.camera.CameraXVideoCapturer? = null
 
