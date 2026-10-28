@@ -895,6 +895,22 @@ fun ViewerModeScreen(
                                 }
                             }
 
+                            // Switch Camera Lens (Front / Back) Button
+                            IconButton(onClick = {
+                                if (targetCamera != null) {
+                                    webRtcManager.sendDataChannelCommand(
+                                        targetCamera.deviceId,
+                                        ControlCommand.SwitchLens
+                                    )
+                                }
+                            }) {
+                                Icon(
+                                    imageVector = Icons.Default.Cameraswitch,
+                                    contentDescription = stringResource(R.string.cd_switch_lens),
+                                    tint = Color.White
+                                )
+                            }
+
                             // Torch Button
                             IconButton(onClick = {
                                 if (targetCamera != null) {

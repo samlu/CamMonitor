@@ -1,0 +1,1242 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>CamMonitor 監控攝影機｜手機即時 P2P 鏡頭與觀看系統</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.3.5/mqtt.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+  <style>
+    :root {
+      --bg: #0b1120;
+      --card: #151f32;
+      --accent: #10b981;
+      --blue: #3b82f6;
+      --warn: #f59e0b;
+      --danger: #ef4444;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft JhengHei", sans-serif;
+      overflow-x: hidden;
+    }
+
+    #home-screen {
+      min-height: 100vh;
+      max-width: 560px;
+      margin: 0 auto;
+      padding: 18px 16px 40px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .app-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .app-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .app-title h1 {
+      font-size: 20px;
+      font-weight: 800;
+    }
+    .badge-p2p {
+      background: rgba(16, 185, 129, 0.16);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 99px;
+      white-space: nowrap;
+    }
+
+    .role-card {
+      background: var(--card);
+      border: 1.5px solid rgba(255, 255, 255, 0.12);
+      border-radius: 16px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .role-card.native-card {
+      border-color: rgba(16, 185, 129, 0.65);
+      background: linear-gradient(145deg, rgba(16, 185, 129, 0.18), rgba(15, 23, 42, 0.96));
+      box-shadow: 0 8px 28px rgba(16, 185, 129, 0.15);
+    }
+    .role-card.view-card {
+      border-color: rgba(59, 130, 246, 0.45);
+      background: linear-gradient(145deg, rgba(59, 130, 246, 0.12), rgba(21, 31, 50, 0.95));
+    }
+    .role-card.cam-card {
+      border-color: rgba(148, 163, 184, 0.35);
+    }
+    .role-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .role-head h2 {
+      font-size: 17px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .role-desc {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.48;
+    }
+    .input-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    input[type="text"] {
+      flex: 1;
+      background: #090e1a;
+      border: 1px solid #334155;
+      color: #fff;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 14px;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+    button, .btn-link {
+      border: none;
+      border-radius: 11px;
+      padding: 11px 15px;
+      font-size: 14px;
+      font-weight: 800;
+      cursor: pointer;
+      color: #fff;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      text-decoration: none;
+    }
+    button:active, .btn-link:active {
+      transform: scale(0.97);
+    }
+    .btn-cam {
+      background: linear-gradient(135deg, #10b981, #059669);
+      box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+    }
+    .btn-view {
+      background: linear-gradient(135deg, #3b82f6, #2563eb);
+      box-shadow: 0 4px 14px rgba(59, 130, 246, 0.35);
+    }
+    .btn-outline {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      font-size: 12.5px;
+      padding: 9px 12px;
+    }
+
+    .native-cam-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(0, 0, 0, 0.42);
+      border: 1px solid rgba(52, 211, 153, 0.4);
+      border-radius: 12px;
+      padding: 11px 13px;
+      gap: 8px;
+    }
+
+    .apk-card {
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      border-radius: 16px;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .apk-card h3 {
+      font-size: 14.5px;
+      color: #fbbf24;
+    }
+    .btn-apk {
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      color: #000;
+      font-weight: 900;
+    }
+
+    /* ================= 鏡頭與觀看畫面 ================= */
+    #camera-screen, #viewer-screen {
+      position: fixed;
+      inset: 0;
+      background: #000;
+      z-index: 40;
+      display: none;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    #cam-local-video, #remote-video {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #000;
+      z-index: 1;
+      transition: transform 0.25s ease, filter 0.25s ease;
+    }
+    .hud-top {
+      position: relative;
+      z-index: 10;
+      background: linear-gradient(180deg, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0) 100%);
+      padding: calc(env(safe-area-inset-top, 8px) + 8px) 14px 18px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .hud-pill {
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 99px;
+      padding: 5px 11px;
+      font-size: 12px;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .dot-live {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: pulse 1.2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(1.4); }
+    }
+    .hud-bottom {
+      position: relative;
+      z-index: 10;
+      background: linear-gradient(0deg, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0) 100%);
+      padding: 20px 14px calc(env(safe-area-inset-bottom, 10px) + 10px);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .hud-btn {
+      background: rgba(30, 41, 59, 0.88);
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      color: #fff;
+      padding: 9px 13px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .hud-btn.active {
+      background: var(--warn);
+      color: #000;
+      border-color: var(--warn);
+    }
+    .hud-btn.danger {
+      background: rgba(239, 68, 68, 0.88);
+      border-color: #ef4444;
+    }
+    .night-boost {
+      filter: brightness(2.1) contrast(1.25) saturate(0.85) !important;
+    }
+    #oled-black-overlay {
+      position: fixed;
+      inset: 0;
+      background: #000;
+      z-index: 80;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: rgba(255, 255, 255, 0.18);
+      font-size: 13px;
+      cursor: pointer;
+    }
+    #pair-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      background: rgba(2, 6, 23, 0.9);
+      backdrop-filter: blur(8px);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+    }
+    .pair-box {
+      background: #1e293b;
+      border: 1.5px solid rgba(16, 185, 129, 0.5);
+      border-radius: 18px;
+      padding: 20px 18px;
+      width: min(92vw, 380px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      text-align: center;
+    }
+    #qrcode-wrap {
+      background: #fff;
+      padding: 14px;
+      border-radius: 12px;
+      display: inline-block;
+    }
+    .pin-code-display {
+      font-size: 28px;
+      font-weight: 900;
+      letter-spacing: 5px;
+      color: #34d399;
+      background: rgba(0, 0, 0, 0.45);
+      padding: 6px 18px;
+      border-radius: 10px;
+      border: 1px dashed rgba(52, 211, 153, 0.5);
+    }
+  </style>
+</head>
+<body>
+
+  <div id="home-screen">
+    <div class="app-header">
+      <div class="app-title">
+        <span style="font-size:26px;">🛡️</span>
+        <div>
+          <h1>CamMonitor 監控中心</h1>
+          <div style="font-size:12px;color:var(--muted);">支援直接監看 Android 原生 App 鏡頭（iPhone / 電腦免裝 App）</div>
+        </div>
+      </div>
+      <span class="badge-p2p">E2EE 加密直連</span>
+    </div>
+
+    <!-- 區塊 1：已配對的 Android 原生 App 鏡頭 (CamMonitor-A0B9) -->
+    <div class="role-card native-card">
+      <div class="role-head">
+        <h2>📡 已配對的 Android 原生鏡頭</h2>
+        <span style="font-size:12px;color:#34d399;font-weight:800;">✅ 金鑰已驗證</span>
+      </div>
+      <div class="role-desc">
+        您剛才拍照傳來的 <b>CamMonitor-A0B9</b>（<code>android-adb</code> 手機）已完成 ECDSA/ECDH 加密配對並進入鏡頭模式！用 iPhone 或電腦點下方按鈕即可直接連線監看與遙控：
+      </div>
+
+      <div id="native-cams-list"></div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:2px;">
+        <label class="btn-link btn-outline" style="flex:1;cursor:pointer;">
+          📷 拍 QR Code 配對其他 Android 鏡頭
+          <input type="file" accept="image/*" style="display:none;" onchange="handleQrImageUpload(event)" />
+        </label>
+      </div>
+      <div id="qr-pair-status" style="font-size:12px;color:#fbbf24;display:none;"></div>
+    </div>
+
+    <!-- 區塊 2：Web 簡易 6 位數配對觀看 -->
+    <div class="role-card view-card">
+      <div class="role-head">
+        <h2>📺 網頁版配對碼監看</h2>
+        <span style="font-size:12px;color:#60a5fa;font-weight:700;">跨手機／電腦</span>
+      </div>
+      <div class="input-row">
+        <input type="text" id="join-pin-input" placeholder="輸入網頁版鏡頭 6 位數配對碼" maxlength="12" style="letter-spacing:2px;font-weight:800;text-align:center;" />
+        <button class="btn-view" onclick="connectByPinInput()">🔗 連線</button>
+      </div>
+      <div id="saved-cams-box"></div>
+    </div>
+
+    <!-- 區塊 3：把當前手機當作網頁版鏡頭 -->
+    <div class="role-card cam-card">
+      <div class="role-head">
+        <h2>📷 把這支手機當網頁版鏡頭</h2>
+        <span style="font-size:12px;color:var(--muted);">iPhone 也能當鏡頭</span>
+      </div>
+      <div class="input-row">
+        <input type="text" id="cam-name-input" placeholder="鏡頭名稱（如：書房、客廳）" maxlength="24" />
+        <button class="btn-cam" onclick="startCameraMode()">啟動鏡頭</button>
+      </div>
+    </div>
+
+    <!-- 區塊 4：Android 原生 APK 下載 -->
+    <div class="apk-card">
+      <h3>🤖 Android 原生 App 版（samlu/CamMonitor v1.0.6）</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <a class="btn-link btn-apk" href="/cammonitor/CamMonitor-v1.0.6.apk" download="CamMonitor-v1.0.6.apk" style="flex:1;">
+          📥 下載 Android APK (v1.0.6)
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 鏡頭端畫面 (Web Camera Mode) ================= -->
+  <div id="camera-screen" onclick="resetOledTimer()">
+    <video id="cam-local-video" autoplay playsinline muted></video>
+    <audio id="cam-intercom-audio" autoplay></audio>
+
+    <div class="hud-top">
+      <div class="hud-pill">
+        <span class="dot-live"></span>
+        <span id="cam-hud-title">鏡頭待命中</span>
+      </div>
+      <div class="hud-pill" id="cam-hud-stats">720p · 觀看端 0/2 · 🔋 --%</div>
+    </div>
+
+    <div class="hud-bottom">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="hud-btn" onclick="event.stopPropagation(); enableOledBlackScreen()">🌙 熄屏省電</button>
+        <button class="hud-btn" onclick="event.stopPropagation(); switchCameraFacing()">🔄 切換前後鏡頭</button>
+        <button class="hud-btn" id="btn-cam-torch" onclick="event.stopPropagation(); toggleLocalTorch()">🔦 手電筒</button>
+        <button class="hud-btn" onclick="event.stopPropagation(); showPairingModal()">📱 配對碼</button>
+      </div>
+      <button class="hud-btn danger" onclick="event.stopPropagation(); stopCameraMode()">⏹ 退出鏡頭</button>
+    </div>
+  </div>
+
+  <div id="pair-modal" onclick="hidePairingModal()">
+    <div class="pair-box" onclick="event.stopPropagation()">
+      <h3 style="color:#34d399;font-size:18px;">🔗 掃描 QR Code 或輸入配對碼</h3>
+      <div id="qrcode-wrap"></div>
+      <div class="pin-code-display" id="cam-pin-display">------</div>
+      <div style="display:flex;gap:8px;width:100%;">
+        <button class="btn-outline" style="flex:1;" onclick="copyShareUrl()">📋 複製監看網址</button>
+        <button class="btn-cam" style="flex:1;" onclick="hidePairingModal()">✅ 關閉</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="oled-black-overlay" onclick="disableOledBlackScreen()">
+    <div style="text-align:center;line-height:1.8;">
+      <div>🌙 CamMonitor 省電防烙印運行中</div>
+      <div style="font-size:11px;">（輕觸螢幕任意位置即可喚醒畫面）</div>
+    </div>
+  </div>
+
+  <!-- ================= 觀看端畫面 (Viewer Mode - 支援原生 Android 與 Web 鏡頭) ================= -->
+  <div id="viewer-screen">
+    <video id="remote-video" autoplay playsinline muted ondblclick="toggleVideoScale()"></video>
+
+    <div class="hud-top">
+      <div style="display:flex;align-items:center;gap:6px;">
+        <button class="hud-btn" style="padding:6px 10px;" onclick="stopViewerMode()">⬅ 返回</button>
+        <div class="hud-pill">
+          <span class="dot-live" id="viewer-status-dot" style="background:#f59e0b;"></span>
+          <span id="viewer-cam-title">連線中...</span>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        <div class="hud-pill" id="viewer-battery-pill">📷 鏡頭 --% ｜ 📱 本機 --%</div>
+        <button class="hud-btn" id="btn-switch-lens" onclick="switchRemoteLens()" style="border-color:rgba(52,211,153,0.6);background:rgba(6,78,59,0.85);">🔄 翻轉鏡頭</button>
+        <button class="hud-btn" id="btn-night-mode" onclick="cycleNightMode()">🌙 夜間：自動</button>
+        <button class="hud-btn" id="btn-remote-torch" onclick="toggleRemoteTorch()">🔦 手電筒</button>
+      </div>
+    </div>
+
+    <div class="hud-bottom">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="hud-btn" onclick="rotateViewerVideo()">🔃 旋轉 90°</button>
+        <button class="hud-btn" id="btn-scale-mode" onclick="toggleVideoScale()">📐 配合螢幕</button>
+        <button class="hud-btn" id="btn-mute-remote" onclick="toggleRemoteMute()">🔇 點此開聲音</button>
+      </div>
+
+      <button class="hud-btn" id="btn-ptt"
+        onmousedown="startPttTalk()" onmouseup="stopPttTalk()"
+        ontouchstart="event.preventDefault(); startPttTalk()" ontouchend="event.preventDefault(); stopPttTalk()"
+        style="background:linear-gradient(135deg,#2563eb,#1d4ed8);padding:11px 18px;">
+        🎙️ 按住對講 (PTT)
+      </button>
+    </div>
+  </div>
+
+  <script>
+    // ==================== 預設已配對的 android-adb 原生鏡頭金鑰 ====================
+    const DEFAULT_NATIVE_CRED = null; // Pair your own camera via QR / JSON
+
+    const STORAGE_NATIVE_CREDS = "cammonitor_native_creds_v1793229058";
+    const BROKERS = [
+      "wss://broker.hivemq.com:8884/mqtt",
+      "wss://broker.emqx.io:8084/mqtt"
+    ];
+    const RTC_CONFIG = {
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:stun1.l.google.com:19302" }
+      ]
+    };
+
+    const STORAGE_CAM_PIN = "cammonitor_my_cam_pin_v1";
+    const STORAGE_CAM_NAME = "cammonitor_my_cam_name_v1";
+    const STORAGE_SAVED_CAMS = "cammonitor_saved_cams_v1";
+
+    let mqttClient = null;
+    let currentBrokerIdx = 0;
+    let myClientId = "cm_" + Math.random().toString(36).slice(2, 10);
+
+    // 狀態變數
+    let isCameraMode = false;
+    let camPin = "";
+    let camName = "客廳鏡頭";
+    let localStream = null;
+    let currentFacingMode = "environment";
+    let torchEnabled = false;
+    let camPeers = {};
+    let oledTimeout = null;
+
+    let isViewerMode = false;
+    let isNativeAndroidViewer = false;
+    let activeNativeCred = null;
+    let targetCamPin = "";
+    let viewerPc = null;
+    let viewerDc = null;
+    let pttStream = null;
+    let videoRotation = 0;
+    let videoFillMode = false;
+    let nightModeIdx = 0; // 0: AUTO, 1: NIGHT, 2: NORMAL
+    let remoteTorchOn = false;
+    let remoteCameraBattery = "--%";
+    let localBatteryStr = "--%";
+    let nativeOfferRetryTimer = null;
+
+    // ==================== WebCrypto 與 ASN.1 DER 轉換工具（相容 Android Keystore ECDSA / AES-GCM） ====================
+    function b64ToBytes(b64) {
+      const bin = atob(b64);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      return arr;
+    }
+
+    function bytesToB64(bytes) {
+      let bin = "";
+      const u8 = new Uint8Array(bytes);
+      for (let i = 0; i < u8.length; i++) bin += String.fromCharCode(u8[i]);
+      return btoa(bin);
+    }
+
+    // 將 WebCrypto ECDSA 輸出的 64-byte IEEE P1363 (r || s) 轉為 Java SHA256withECDSA 要求的 ASN.1 DER
+    function p1363ToDer(sigBytes) {
+      const r = sigBytes.slice(0, 32);
+      const s = sigBytes.slice(32, 64);
+      function encodeInt(buf) {
+        let i = 0;
+        while (i < buf.length - 1 && buf[i] === 0) i++;
+        let slice = buf.slice(i);
+        if (slice[0] & 0x80) {
+          const padded = new Uint8Array(slice.length + 1);
+          padded[0] = 0x00;
+          padded.set(slice, 1);
+          slice = padded;
+        }
+        const out = new Uint8Array(2 + slice.length);
+        out[0] = 0x02;
+        out[1] = slice.length;
+        out.set(slice, 2);
+        return out;
+      }
+      const rDer = encodeInt(r);
+      const sDer = encodeInt(s);
+      const seq = new Uint8Array(2 + rDer.length + sDer.length);
+      seq[0] = 0x30;
+      seq[1] = rDer.length + sDer.length;
+      seq.set(rDer, 2);
+      seq.set(sDer, 2 + rDer.length);
+      return seq;
+    }
+
+    // 將 Java ASN.1 DER 簽章轉為 WebCrypto verify 要求的 64-byte IEEE P1363
+    function derToP1363(derBytes) {
+      let offset = 2;
+      if (derBytes[1] & 0x80) offset += (derBytes[1] & 0x7f);
+      const rLen = derBytes[offset + 1];
+      let r = derBytes.slice(offset + 2, offset + 2 + rLen);
+      offset += 2 + rLen;
+      const sLen = derBytes[offset + 1];
+      let s = derBytes.slice(offset + 2, offset + 2 + sLen);
+      while (r.length > 32 && r[0] === 0) r = r.slice(1);
+      while (s.length > 32 && s[0] === 0) s = s.slice(1);
+      const out = new Uint8Array(64);
+      out.set(r, 32 - r.length);
+      out.set(s, 64 - s.length);
+      return out;
+    }
+
+    async function customHkdfSha256(secretBytes, infoStr, length = 32) {
+      const hmacKey = await crypto.subtle.importKey(
+        "raw",
+        secretBytes,
+        { name: "HMAC", hash: "SHA-256" },
+        false,
+        ["sign"]
+      );
+      const infoBytes = new TextEncoder().encode(infoStr);
+      let t = new Uint8Array(0);
+      const okm = new Uint8Array(length);
+      let written = 0;
+      let i = 1;
+      while (written < length) {
+        const input = new Uint8Array(t.length + infoBytes.length + 1);
+        input.set(t, 0);
+        input.set(infoBytes, t.length);
+        input[t.length + infoBytes.length] = i;
+        t = new Uint8Array(await crypto.subtle.sign("HMAC", hmacKey, input));
+        const toCopy = Math.min(t.length, length - written);
+        okm.set(t.subarray(0, toCopy), written);
+        written += toCopy;
+        i++;
+      }
+      return okm;
+    }
+
+    async function createNativeEnvelope(cred, recipientId, plaintextObj, customAesKeyBytes) {
+      const plaintextBytes = new TextEncoder().encode(JSON.stringify(plaintextObj));
+      const keyBytes = customAesKeyBytes || b64ToBytes(cred.ecdhAesKeyBase64);
+      const aesKey = await crypto.subtle.importKey("raw", keyBytes, "AES-GCM", false, ["encrypt"]);
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const ctWithTag = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv, tagLength: 128 }, aesKey, plaintextBytes));
+      const ct = ctWithTag.slice(0, ctWithTag.length - 16);
+      const tag = ctWithTag.slice(ctWithTag.length - 16);
+
+      const ctB64 = bytesToB64(ct);
+      const ivB64 = bytesToB64(iv);
+      const tagB64 = bytesToB64(tag);
+      const timestamp = Date.now();
+      const nonceArr = crypto.getRandomValues(new Uint8Array(16));
+      const nonce = Array.from(nonceArr).map(b => b.toString(16).padStart(2, "0")).join("");
+
+      const sigInput = new TextEncoder().encode(`${cred.pbDeviceId}${recipientId}${timestamp}${nonce}${ctB64}`);
+      const privKey = await crypto.subtle.importKey(
+        "pkcs8",
+        b64ToBytes(cred.pbPrivKeyPkcs8Base64),
+        { name: "ECDSA", namedCurve: "P-256" },
+        false,
+        ["sign"]
+      );
+      const sigP1363 = new Uint8Array(await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, privKey, sigInput));
+      const sigDer = p1363ToDer(sigP1363);
+
+      return {
+        senderId: cred.pbDeviceId,
+        recipientId: recipientId,
+        timestamp,
+        nonce,
+        ciphertext: ctB64,
+        iv: ivB64,
+        tag: tagB64,
+        signature: bytesToB64(sigDer)
+      };
+    }
+
+    async function decryptNativeEnvelope(envelope, keyBytes) {
+      const aesKey = await crypto.subtle.importKey("raw", keyBytes, "AES-GCM", false, ["decrypt"]);
+      const ct = b64ToBytes(envelope.ciphertext);
+      const iv = b64ToBytes(envelope.iv);
+      const tag = b64ToBytes(envelope.tag);
+      const combined = new Uint8Array(ct.length + tag.length);
+      combined.set(ct, 0);
+      combined.set(tag, ct.length);
+      const decBuf = await crypto.subtle.decrypt({ name: "AES-GCM", iv, tagLength: 128 }, aesKey, combined);
+      return JSON.parse(new TextDecoder().decode(decBuf));
+    }
+
+    // ==================== 管理已配對的 Android 原生鏡頭 ====================
+    function getNativeCredsList() {
+      try {
+        const stored = JSON.parse(localStorage.getItem(STORAGE_NATIVE_CREDS) || "[]");
+        const hasDefault = stored.some(c => c.paDeviceId === DEFAULT_NATIVE_CRED.paDeviceId);
+        if (!hasDefault) {
+          stored.unshift(DEFAULT_NATIVE_CRED);
+          localStorage.setItem(STORAGE_NATIVE_CREDS, JSON.stringify(stored));
+        }
+        return stored;
+      } catch (e) {
+        return [DEFAULT_NATIVE_CRED];
+      }
+    }
+
+    function renderNativeCredsList() {
+      const list = getNativeCredsList();
+      const box = document.getElementById("native-cams-list");
+      box.innerHTML = list.map((c, idx) => `
+        <div class="native-cam-item">
+          <div>
+            <div style="font-size:15px;font-weight:800;color:#34d399;">📷 ${c.paName}</div>
+            <div style="font-size:11px;color:var(--muted);">裝置 ID：${c.paDeviceId.slice(0, 8)}...｜觀看見證：${c.pbName}</div>
+          </div>
+          <button class="btn-cam" onclick="startNativeAndroidViewer(${idx})">▶ 立即監看</button>
+        </div>
+      `).join("");
+    }
+
+    // 上傳新 QR Code 照片自動配對其他 Android 原生鏡頭
+    async function handleQrImageUpload(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      const statusEl = document.getElementById("qr-pair-status");
+      statusEl.style.display = "block";
+      statusEl.textContent = "⏳ 正在辨識照片中的 QR Code...";
+
+      try {
+        const bmp = await createImageBitmap(file);
+        const canvas = document.createElement("canvas");
+        canvas.width = bmp.width;
+        canvas.height = bmp.height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(bmp, 0, 0);
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(imgData.data, imgData.width, imgData.height);
+        if (!code || !code.data) {
+          throw new Error("照片中找不到清晰的 QR Code，請重新拍一張！");
+        }
+        const qrJson = JSON.parse(code.data);
+        if (!qrJson.deviceId || !qrJson.secret) {
+          throw new Error("這不是 CamMonitor 的配對 QR Code");
+        }
+        statusEl.textContent = `⏳ 已讀出「${qrJson.name}」，正在進行加密金鑰配對...`;
+        await performBrowserOtpPairing(qrJson, statusEl);
+      } catch (err) {
+        statusEl.style.color = "#f87171";
+        statusEl.textContent = "❌ 配對失敗：" + err.message;
+      }
+    }
+
+    async function performBrowserOtpPairing(qrJson, statusEl) {
+      const kp = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+      const privPkcs8 = bytesToB64(await crypto.subtle.exportKey("pkcs8", kp.privateKey));
+      const pubSpki = bytesToB64(await crypto.subtle.exportKey("spki", kp.publicKey));
+      const pbDeviceId = crypto.randomUUID();
+      const pbName = "Web-Viewer";
+      const otpKey = await customHkdfSha256(new TextEncoder().encode(qrJson.secret), "CamMonitor-OTP", 32);
+
+      const tempCred = {
+        pbDeviceId,
+        pbName,
+        pbPrivKeyPkcs8Base64: privPkcs8,
+        pbPubKeySpkiBase64: pubSpki
+      };
+
+      const env = await createNativeEnvelope(tempCred, qrJson.deviceId, {
+        type: "PAIR_REQUEST",
+        pbDeviceId,
+        pbName,
+        pbPublicKeyBase64: pubSpki
+      }, otpKey);
+
+      connectMqtt("wss://broker.hivemq.com:8884/mqtt", () => {
+        const rxTopic = `cammonitor/${pbDeviceId}/rx`;
+        mqttClient.subscribe(rxTopic, { qos: 1 }, () => {
+          mqttClient.publish(`cammonitor/${qrJson.deviceId}/rx`, JSON.stringify(env), { qos: 1 });
+        });
+      }, async (topic, rawPayload) => {
+        if (topic !== `cammonitor/${pbDeviceId}/rx`) return;
+        const respEnv = JSON.parse(new TextDecoder().decode(rawPayload));
+        const msg = await decryptNativeEnvelope(respEnv, otpKey);
+        if (msg.type === "PAIR_CONFIRM") {
+          const ecdhPriv = await crypto.subtle.importKey("pkcs8", b64ToBytes(privPkcs8), { name: "ECDH", namedCurve: "P-256" }, false, ["deriveBits"]);
+          const ecdhPub = await crypto.subtle.importKey("spki", b64ToBytes(msg.paPublicKeyBase64), { name: "ECDH", namedCurve: "P-256" }, false, []);
+          const sharedBits = new Uint8Array(await crypto.subtle.deriveBits({ name: "ECDH", public: ecdhPub }, ecdhPriv, 256));
+          const ecdhAesKey = await customHkdfSha256(sharedBits, "CamMonitor-E2EE", 32);
+
+          const newCred = {
+            pbDeviceId,
+            pbName,
+            pbPrivKeyPkcs8Base64: privPkcs8,
+            pbPubKeySpkiBase64: pubSpki,
+            paDeviceId: msg.paDeviceId,
+            paName: msg.paName,
+            paPubKeySpkiBase64: msg.paPublicKeyBase64,
+            ecdhAesKeyBase64: bytesToB64(ecdhAesKey)
+          };
+          const list = getNativeCredsList().filter(c => c.paDeviceId !== newCred.paDeviceId);
+          list.unshift(newCred);
+          localStorage.setItem(STORAGE_NATIVE_CREDS, JSON.stringify(list));
+          renderNativeCredsList();
+          statusEl.style.color = "#4ade80";
+          statusEl.textContent = `✅ 與「${msg.paName}」配對成功！請點上方「▶ 立即監看」。`;
+        }
+      });
+    }
+
+    // ==================== 啟動原生 Android 鏡頭監看 (Native Android Viewer) ====================
+    async function startNativeAndroidViewer(credIdx) {
+      const list = getNativeCredsList();
+      activeNativeCred = list[credIdx] || DEFAULT_NATIVE_CRED;
+      isViewerMode = true;
+      isNativeAndroidViewer = true;
+
+      const remoteVideo = document.getElementById("remote-video");
+      remoteVideo.muted = true; // iOS Safari / Telegram WebView 必須預設靜音才允許自動播放 WebRTC 視訊
+      document.getElementById("btn-mute-remote").textContent = "🔇 點此開聲音";
+
+      document.getElementById("home-screen").style.display = "none";
+      document.getElementById("viewer-screen").style.display = "flex";
+      document.getElementById("viewer-cam-title").textContent = `① 連線訊令伺服器...`;
+      document.getElementById("viewer-status-dot").style.background = "#f59e0b";
+
+      if (viewerPc) {
+        try { viewerPc.close(); } catch (e) {}
+      }
+      viewerPc = new RTCPeerConnection(RTC_CONFIG);
+
+      // 建立與原生 Android WebRtcManager 相容的 Transceiver 與 DataChannel
+      viewerPc.addTransceiver("video", { direction: "recvonly" });
+      viewerPc.addTransceiver("audio", { direction: "sendrecv" });
+
+      viewerDc = viewerPc.createDataChannel("control");
+      viewerDc.onopen = () => {
+        sendNativeControlCmd({ cmd: "QUERY_BATTERY" });
+      };
+      viewerDc.onmessage = evt => {
+        try {
+          const text = typeof evt.data === "string" ? evt.data : new TextDecoder().decode(evt.data);
+          const data = JSON.parse(text);
+          if (data.cmd === "RENAME" && data.name) {
+            document.getElementById("viewer-cam-title").textContent = `🟢 ${data.name} (LIVE)`;
+          } else if (data.cmd === "BATTERY") {
+            remoteCameraBattery = `${data.pct}%${data.charging ? "⚡" : ""}`;
+            refreshHudStats();
+          } else if (data.cmd === "TORCH_REPORT") {
+            remoteTorchOn = !!data.enabled;
+            document.getElementById("btn-remote-torch").classList.toggle("active", remoteTorchOn);
+          } else if (data.cmd === "NIGHT_MODE_REPORT") {
+            const btn = document.getElementById("btn-night-mode");
+            btn.textContent = `🌙 夜間：${data.mode === "NIGHT" ? "強制" : data.mode === "NORMAL" ? "正常" : "自動"}`;
+            btn.classList.toggle("active", !!data.active);
+          }
+        } catch (e) {}
+      };
+
+      const fallbackStream = new MediaStream();
+
+      viewerPc.ontrack = evt => {
+        const v = document.getElementById("remote-video");
+        if (evt.streams && evt.streams[0]) {
+          if (v.srcObject !== evt.streams[0]) {
+            v.srcObject = evt.streams[0];
+          }
+        } else if (evt.track) {
+          fallbackStream.addTrack(evt.track);
+          v.srcObject = fallbackStream;
+        }
+        v.play().catch(() => {});
+        document.getElementById("viewer-status-dot").style.background = "#10b981";
+        document.getElementById("viewer-cam-title").textContent = `🟢 ${activeNativeCred.paName} (LIVE)`;
+      };
+
+      viewerPc.oniceconnectionstatechange = () => {
+        const st = viewerPc ? viewerPc.iceConnectionState : "";
+        if (st === "checking") {
+          document.getElementById("viewer-cam-title").textContent = `④ 正在建立 P2P 影像通道...`;
+        } else if (st === "connected" || st === "completed") {
+          document.getElementById("viewer-status-dot").style.background = "#10b981";
+          document.getElementById("viewer-cam-title").textContent = `🟢 ${activeNativeCred.paName} (LIVE)`;
+          document.getElementById("remote-video").play().catch(() => {});
+        } else if (st === "failed") {
+          document.getElementById("viewer-status-dot").style.background = "#ef4444";
+          document.getElementById("viewer-cam-title").textContent = `⚠️ 4G 電信防火牆阻擋 P2P，請連 Wi-Fi 或重試`;
+        }
+      };
+
+      const pendingLocalCandidates = [];
+      viewerPc.onicecandidate = async evt => {
+        if (evt.candidate) {
+          const candMsg = {
+            type: "ICE_CANDIDATE",
+            sdpMid: evt.candidate.sdpMid || "0",
+            sdpMLineIndex: evt.candidate.sdpMLineIndex || 0,
+            sdp: evt.candidate.candidate
+          };
+          pendingLocalCandidates.push(candMsg);
+          await sendEncryptedToNativeCam(candMsg);
+        }
+      };
+
+      let hasReceivedAnswer = false;
+
+      connectMqtt("wss://broker.hivemq.com:8884/mqtt", async () => {
+        const myRxTopic = `cammonitor/${activeNativeCred.pbDeviceId}/rx`;
+        mqttClient.subscribe(myRxTopic, { qos: 1 }, async () => {
+          document.getElementById("viewer-cam-title").textContent = `② 正在喚醒鏡頭 ${activeNativeCred.paName}...`;
+          const offer = await viewerPc.createOffer();
+          await viewerPc.setLocalDescription(offer);
+          const sendOfferFn = async () => {
+            if (!isViewerMode || !isNativeAndroidViewer || hasReceivedAnswer) return;
+            await sendEncryptedToNativeCam({
+              type: "OFFER",
+              sdp: viewerPc.localDescription.sdp
+            });
+            for (const c of pendingLocalCandidates) {
+              await sendEncryptedToNativeCam(c);
+            }
+          };
+          await sendOfferFn();
+          if (nativeOfferRetryTimer) clearInterval(nativeOfferRetryTimer);
+          nativeOfferRetryTimer = setInterval(sendOfferFn, 6000);
+        });
+      }, async (topic, rawPayload) => {
+        if (!activeNativeCred || topic !== `cammonitor/${activeNativeCred.pbDeviceId}/rx`) return;
+        try {
+          const env = JSON.parse(new TextDecoder().decode(rawPayload));
+          const keyBytes = b64ToBytes(activeNativeCred.ecdhAesKeyBase64);
+          const msg = await decryptNativeEnvelope(env, keyBytes);
+
+          if (msg.type === "CAMERA_WAKING") {
+            document.getElementById("viewer-cam-title").textContent = `③ 鏡頭感光元件喚醒中...`;
+          } else if (msg.type === "ANSWER") {
+            hasReceivedAnswer = true;
+            if (nativeOfferRetryTimer) {
+              clearInterval(nativeOfferRetryTimer);
+              nativeOfferRetryTimer = null;
+            }
+            document.getElementById("viewer-cam-title").textContent = `④ 收到鏡頭回應，載入畫面中...`;
+            if (viewerPc.signalingState !== "stable") {
+              await viewerPc.setRemoteDescription(new RTCSessionDescription({ type: "answer", sdp: msg.sdp }));
+            }
+          } else if (msg.type === "ICE_CANDIDATE") {
+            if (viewerPc) {
+              await viewerPc.addIceCandidate(new RTCIceCandidate({
+                sdpMid: msg.sdpMid,
+                sdpMLineIndex: msg.sdpMLineIndex,
+                candidate: msg.sdp
+              }));
+            }
+          }
+        } catch (err) {}
+      });
+    }
+
+    async function sendEncryptedToNativeCam(msgObj) {
+      if (!mqttClient || !mqttClient.connected || !activeNativeCred) return;
+      const env = await createNativeEnvelope(activeNativeCred, activeNativeCred.paDeviceId, msgObj);
+      mqttClient.publish(`cammonitor/${activeNativeCred.paDeviceId}/rx`, JSON.stringify(env), { qos: 1 });
+    }
+
+    function sendNativeControlCmd(cmdObj) {
+      if (viewerDc && viewerDc.readyState === "open") {
+        viewerDc.send(JSON.stringify(cmdObj));
+      }
+    }
+
+    // ==================== 共用 MQTT 連線輔助 ====================
+    function connectMqtt(brokerUrl, onReady, customMessageHandler) {
+      if (mqttClient) {
+        try { mqttClient.end(true); } catch (e) {}
+      }
+      const url = brokerUrl || BROKERS[currentBrokerIdx % BROKERS.length];
+      mqttClient = mqtt.connect(url, {
+        clientId: "cammonitor-" + Math.random().toString(16).slice(2, 10),
+        clean: true,
+        connectTimeout: 8000,
+        reconnectPeriod: 3000
+      });
+
+      mqttClient.on("connect", () => {
+        if (onReady) onReady();
+      });
+
+      mqttClient.on("message", (topic, payload) => {
+        if (customMessageHandler) {
+          customMessageHandler(topic, payload);
+          return;
+        }
+        try {
+          const msg = JSON.parse(new TextDecoder().decode(payload));
+          handleWebSignalingMessage(topic, msg);
+        } catch (e) {}
+      });
+    }
+
+    // ==================== 觀看端控制項 ====================
+    let remoteFrontLens = false;
+    function switchRemoteLens() {
+      remoteFrontLens = !remoteFrontLens;
+      if (isNativeAndroidViewer) {
+        sendNativeControlCmd({ cmd: "SET_NIGHT_MODE", mode: "SWITCH_LENS" });
+      } else if (viewerDc && viewerDc.readyState === "open") {
+        viewerDc.send(JSON.stringify({ cmd: "SWITCH_LENS" }));
+      }
+      const btn = document.getElementById("btn-switch-lens");
+      if (btn) {
+        btn.textContent = remoteFrontLens ? "🔄 鏡頭：前鏡" : "🔄 鏡頭：後鏡";
+      }
+    }
+
+    function toggleRemoteTorch() {
+      remoteTorchOn = !remoteTorchOn;
+      if (isNativeAndroidViewer) {
+        sendNativeControlCmd({ cmd: "TORCH", enabled: remoteTorchOn });
+      } else if (viewerDc && viewerDc.readyState === "open") {
+        viewerDc.send(JSON.stringify({ cmd: "TOGGLE_TORCH" }));
+      }
+    }
+
+    function cycleNightMode() {
+      const modes = ["AUTO", "NIGHT", "NORMAL"];
+      nightModeIdx = (nightModeIdx + 1) % modes.length;
+      const m = modes[nightModeIdx];
+      if (isNativeAndroidViewer) {
+        sendNativeControlCmd({ cmd: "SET_NIGHT_MODE", mode: m });
+      } else {
+        const v = document.getElementById("remote-video");
+        v.classList.toggle("night-boost", m === "NIGHT");
+      }
+      const btn = document.getElementById("btn-night-mode");
+      btn.textContent = `🌙 夜間：${m === "NIGHT" ? "強制" : m === "NORMAL" ? "正常" : "自動"}`;
+    }
+
+    function rotateViewerVideo() {
+      videoRotation = (videoRotation + 90) % 360;
+      document.getElementById("remote-video").style.transform = `rotate(${videoRotation}deg)`;
+    }
+
+    function toggleVideoScale() {
+      videoFillMode = !videoFillMode;
+      const v = document.getElementById("remote-video");
+      v.style.objectFit = videoFillMode ? "cover" : "contain";
+      document.getElementById("btn-scale-mode").textContent = videoFillMode ? "📐 填滿螢幕" : "📐 配合螢幕";
+    }
+
+    function toggleRemoteMute() {
+      const v = document.getElementById("remote-video");
+      v.muted = !v.muted;
+      v.play().catch(() => {});
+      document.getElementById("btn-mute-remote").textContent = v.muted ? "🔇 點此開聲音" : "🔊 鏡頭聲音：開";
+    }
+
+    async function startPttTalk() {
+      const btn = document.getElementById("btn-ptt");
+      btn.classList.add("active");
+      btn.textContent = "🎙️ 發話中（放開結束）...";
+      try {
+        if (!pttStream) {
+          pttStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        }
+        const audioTrack = pttStream.getAudioTracks()[0];
+        audioTrack.enabled = true;
+        if (viewerPc) {
+          const sender = viewerPc.getSenders().find(s => !s.track || s.track.kind === "audio");
+          if (sender) await sender.replaceTrack(audioTrack);
+        }
+        if (isNativeAndroidViewer) {
+          sendNativeControlCmd({ cmd: "PTT_START" });
+        }
+      } catch (e) {}
+    }
+
+    function stopPttTalk() {
+      const btn = document.getElementById("btn-ptt");
+      btn.classList.remove("active");
+      btn.textContent = "🎙️ 按住對講 (PTT)";
+      if (pttStream) {
+        pttStream.getAudioTracks().forEach(t => (t.enabled = false));
+      }
+      if (isNativeAndroidViewer) {
+        sendNativeControlCmd({ cmd: "PTT_STOP" });
+      }
+    }
+
+    function stopViewerMode() {
+      isViewerMode = false;
+      isNativeAndroidViewer = false;
+      if (nativeOfferRetryTimer) {
+        clearInterval(nativeOfferRetryTimer);
+        nativeOfferRetryTimer = null;
+      }
+      if (viewerPc) {
+        try { viewerPc.close(); } catch (e) {}
+        viewerPc = null;
+      }
+      document.getElementById("viewer-screen").style.display = "none";
+      document.getElementById("home-screen").style.display = "flex";
+    }
+
+    // ==================== Web 版鏡頭與配對碼模式 ====================
+    async function updateLocalBattery() {
+      try {
+        if (navigator.getBattery) {
+          const bat = await navigator.getBattery();
+          const updateFn = () => {
+            localBatteryStr = `${Math.round(bat.level * 100)}%${bat.charging ? "⚡" : ""}`;
+            refreshHudStats();
+          };
+          updateFn();
+          bat.addEventListener("levelchange", updateFn);
+          bat.addEventListener("chargingchange", updateFn);
+        }
+      } catch (e) {}
+    }
+    updateLocalBattery();
+
+    function refreshHudStats() {
+      if (isCameraMode) {
+        const viewerCount = Object.keys(camPeers).length;
+        document.getElementById("cam-hud-stats").textContent = `720p · 觀看端 ${viewerCount}/2 · 🔋 ${localBatteryStr}`;
+      }
+      if (isViewerMode) {
+        document.getElementById("viewer-battery-pill").textContent = `📷 鏡頭 ${remoteCameraBattery} ｜ 📱 本機 ${localBatteryStr}`;
+      }
+    }
+
+    function pubWebSignal(pin, msgObj) {
+      if (!mqttClient) return;
+      mqttClient.publish(`samlu_cammonitor_v1/${pin}/signal`, JSON.stringify(msgObj));
+    }
+
+    async function startCameraMode() {
+      const inputName = document.getElementById("cam-name-input").value.trim();
+      if (inputName) camName = inputName;
+      camPin = localStorage.getItem(STORAGE_CAM_PIN) || String(Math.floor(100000 + Math.random() * 900000));
+      localStorage.setItem(STORAGE_CAM_PIN, camPin);
+
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: currentFacingMode }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: true
+        });
+        document.getElementById("cam-local-video").srcObject = localStream;
+      } catch (err) {
+        alert("無法開啟相機：" + err.message);
+        return;
+      }
+
+      isCameraMode = true;
+      document.getElementById("home-screen").style.display = "none";
+      document.getElementById("camera-screen").style.display = "flex";
+      document.getElementById("cam-hud-title").textContent = `${camName} (${camPin})`;
+      showPairingModal();
+
+      connectMqtt(null, () => {
+        mqttClient.subscribe(`samlu_cammonitor_v1/${camPin}/signal`);
+      });
+    }
+
+    async function switchCameraFacing() {
+      currentFacingMode = currentFacingMode === "environment" ? "user" : "environment";
+      if (localStream) localStream.getTracks().forEach(t => t.stop());
+      localStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: currentFacingMode }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: true
+      });
+      document.getElementById("cam-local-video").srcObject = localStream;
+    }
+
+    async function toggleLocalTorch() {
+      if (!localStream) return;
+      const track = localStream.getVideoTracks()[0];
+      try {
+        torchEnabled = !torchEnabled;
+        await track.applyConstraints({ advanced: [{ torch: torchEnabled }] });
+      } catch (e) {}
+    }
+
+    function showPairingModal() {
+      const shareUrl = `${location.origin}${location.pathname}?pair=${camPin}&name=${encodeURIComponent(camName)}`;
+      document.getElementById("cam-pin-display").textContent = camPin;
+      const wrap = document.getElementById("qrcode-wrap");
+      wrap.innerHTML = "";
+      new QRCode(wrap, { text: shareUrl, width: 180, height: 180 });
+      document.getElementById("pair-modal").style.display = "flex";
+    }
+    function hidePairingModal() { document.getElementById("pair-modal").style.display = "none"; }
+    function copyShareUrl() {
+      const shareUrl = `${location.origin}${location.pathname}?pair=${camPin}&name=${encodeURIComponent(camName)}`;
+      navigator.clipboard.writeText(shareUrl).then(() => alert("已複製監看網址！"));
+    }
+    function resetOledTimer() {
+      if (!isCameraMode) return;
+      if (oledTimeout) clearTimeout(oledTimeout);
+      oledTimeout = setTimeout(() => enableOledBlackScreen(), 60000);
+    }
+    function enableOledBlackScreen() { hidePairingModal(); document.getElementById("oled-black-overlay").style.display = "flex"; }
+    function disableOledBlackScreen() { document.getElementById("oled-black-overlay").style.display = "none"; resetOledTimer(); }
+    function stopCameraMode() {
+      isCameraMode = false;
+      if (localStream) localStream.getTracks().forEach(t => t.stop());
+      document.getElementById("camera-screen").style.display = "none";
+      document.getElementById("home-screen").style.display = "flex";
+    }
+
+    function connectByPinInput() {
+      const pin = document.getElementById("join-pin-input").value.trim().replace(/\D/g, "");
+      if (pin.length < 4) return alert("請輸入 6 位數配對碼");
+      targetCamPin = pin;
+      isViewerMode = true;
+      isNativeAndroidViewer = false;
+      document.getElementById("home-screen").style.display = "none";
+      document.getElementById("viewer-screen").style.display = "flex";
+      connectMqtt(null, () => {
+        mqttClient.subscribe(`samlu_cammonitor_v1/${targetCamPin}/signal`, () => {
+          pubWebSignal(targetCamPin, { type: "VIEWER_JOIN", senderId: myClientId });
+        });
+      });
+    }
+
+    async function handleWebSignalingMessage(topic, msg) {
+      if (msg.senderId === myClientId) return;
+      if (isCameraMode && msg.type === "VIEWER_JOIN") {
+        const pc = new RTCPeerConnection(RTC_CONFIG);
+        const dc = pc.createDataChannel("control");
+        camPeers[msg.senderId] = { pc, dc };
+        localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+        pc.onicecandidate = e => {
+          if (e.candidate) pubWebSignal(camPin, { type: "CANDIDATE", senderId: myClientId, targetId: msg.senderId, candidate: e.candidate });
+        };
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        pubWebSignal(camPin, { type: "OFFER", senderId: myClientId, targetId: msg.senderId, camName, sdp: pc.localDescription });
+      } else if (isCameraMode && msg.type === "ANSWER" && msg.targetId === myClientId) {
+        const p = camPeers[msg.senderId];
+        if (p) await p.pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+      } else if (isCameraMode && msg.type === "CANDIDATE" && msg.targetId === myClientId) {
+        const p = camPeers[msg.senderId];
+        if (p && msg.candidate) await p.pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+      } else if (isViewerMode && !isNativeAndroidViewer && msg.targetId === myClientId) {
+        if (msg.type === "OFFER") {
+          viewerPc = new RTCPeerConnection(RTC_CONFIG);
+          viewerPc.ontrack = e => { document.getElementById("remote-video").srcObject = e.streams[0]; };
+          viewerPc.onicecandidate = e => {
+            if (e.candidate) pubWebSignal(targetCamPin, { type: "CANDIDATE", senderId: myClientId, targetId: msg.senderId, candidate: e.candidate });
+          };
+          await viewerPc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+          const ans = await viewerPc.createAnswer();
+          await viewerPc.setLocalDescription(ans);
+          pubWebSignal(targetCamPin, { type: "ANSWER", senderId: myClientId, targetId: msg.senderId, sdp: viewerPc.localDescription });
+        } else if (msg.type === "CANDIDATE" && viewerPc && msg.candidate) {
+          await viewerPc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+        }
+      }
+    }
+
+    window.addEventListener("DOMContentLoaded", () => {
+      renderNativeCredsList();
+    });
+  </script>
+</body>
+</html>
