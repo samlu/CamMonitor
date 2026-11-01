@@ -1,6 +1,6 @@
 # CamMonitor 監控攝影機
 
-> **語言版本：** [English](README.md) | [繁體中文](README_TW.md)  
+> **語言版本：** [English](README.md) | [繁體中文](README_TW.md) | [日本語](README_JA.md)  
 > **開發心聲：** [為什麼要做這個專案？一位四十多年老工程師的 AI 實踐心聲](WhyCreateThisProject_TW.md)
 
 ![CamMonitor 宣傳橫幅](cammonitor_promo_tw.jpg)
