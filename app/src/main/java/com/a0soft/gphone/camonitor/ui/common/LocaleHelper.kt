@@ -19,6 +19,7 @@ object LocaleHelper {
     const val LANGUAGE_FOLLOW_SYSTEM = ""
     const val LANGUAGE_EN = "en"
     const val LANGUAGE_ZH_TW = "zh-TW"
+    const val LANGUAGE_JA = "ja"
 
     private const val PREFS_NAME = "cammonitor_locale_prefs"
     private const val KEY_APP_LANGUAGE = "key_app_language"
@@ -57,6 +58,8 @@ object LocaleHelper {
                         LANGUAGE_ZH_TW
                     } else if (tag.startsWith("en", ignoreCase = true)) {
                         LANGUAGE_EN
+                    } else if (tag.startsWith("ja", ignoreCase = true)) {
+                        LANGUAGE_JA
                     } else {
                         tag
                     }

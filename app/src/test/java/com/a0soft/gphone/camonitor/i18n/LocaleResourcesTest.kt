@@ -33,6 +33,7 @@ class LocaleResourcesTest {
 
         assertTrue("Should declare en locale", declaredLocales.contains("en"))
         assertTrue("Should declare zh-TW locale", declaredLocales.contains("zh-TW"))
+        assertTrue("Should declare ja locale", declaredLocales.contains("ja"))
     }
 
     @Test
@@ -56,9 +57,28 @@ class LocaleResourcesTest {
     }
 
     @Test
+    fun testStringsKeyParityBetweenEnglishAndJapanese() {
+        val defaultStringsFile = File(resDir, "values/strings.xml")
+        val jaStringsFile = File(resDir, "values-ja/strings.xml")
+
+        assertTrue("Default strings.xml must exist", defaultStringsFile.exists())
+        assertTrue("values-ja/strings.xml must exist", jaStringsFile.exists())
+
+        val defaultStrings = parseStringsXml(defaultStringsFile)
+        val jaStrings = parseStringsXml(jaStringsFile)
+
+        val missingInJa = defaultStrings.keys - jaStrings.keys
+        assertTrue("Missing keys in values-ja: $missingInJa", missingInJa.isEmpty())
+
+        val extraInJa = jaStrings.keys - defaultStrings.keys
+        assertTrue("Extra keys in values-ja not in default: $extraInJa", extraInJa.isEmpty())
+    }
+
+    @Test
     fun testPlaceholderConsistency() {
         val defaultStrings = parseStringsXml(File(resDir, "values/strings.xml"))
         val zhHantStrings = parseStringsXml(File(resDir, "values-b+zh+Hant/strings.xml"))
+        val jaStrings = parseStringsXml(File(resDir, "values-ja/strings.xml"))
 
         val placeholderPattern = Pattern.compile("%(?:(\\d+)\\$)?[-#+ 0,(]*\\d*(?:\\.\\d+)?([a-zA-Z%])")
 
@@ -72,6 +92,15 @@ class LocaleResourcesTest {
                 defaultPlaceholders,
                 zhHantPlaceholders
             )
+
+            val jaValue = jaStrings[key]
+            assertNotNull("Translation must exist in values-ja for $key", jaValue)
+            val jaPlaceholders = extractPlaceholders(placeholderPattern, jaValue!!)
+            assertEquals(
+                "Placeholder mismatch in values-ja for key: $key (en: $defaultValue, ja: $jaValue)",
+                defaultPlaceholders,
+                jaPlaceholders
+            )
         }
     }
 
@@ -80,6 +109,7 @@ class LocaleResourcesTest {
         assertEquals("", LocaleHelper.LANGUAGE_FOLLOW_SYSTEM)
         assertEquals("en", LocaleHelper.LANGUAGE_EN)
         assertEquals("zh-TW", LocaleHelper.LANGUAGE_ZH_TW)
+        assertEquals("ja", LocaleHelper.LANGUAGE_JA)
     }
 
     private fun extractPlaceholders(pattern: Pattern, text: String): List<String> {

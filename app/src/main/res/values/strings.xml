@@ -142,6 +142,7 @@
     <string name="language_system_default">System Default</string>
     <string name="language_english">English</string>
     <string name="language_traditional_chinese">繁體中文 (台灣)</string>
+    <string name="language_japanese">日本語</string>
     <string name="language_open_system_settings">System Language Settings</string>
     <string name="cd_language_settings">Change Language</string>
 

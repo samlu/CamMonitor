@@ -1,0 +1,169 @@
+<resources>
+    <string name="app_name">CamMonitor</string>
+    <string name="start_camera_mode">カメラモードを開始</string>
+    <string name="start_viewer_mode">ビューアーモードを開始</string>
+    <string name="exit_camera_mode">カメラモードを終了</string>
+    <string name="exit_viewer_mode">ビューアーモードを終了</string>
+    <string name="rotate_90">回転</string>
+    <string name="notification_channel_name">CamMonitor サービス</string>
+    <string name="notification_channel_description">カメラ配信中に表示されるフォアグラウンドサービスの通知</string>
+    <string name="notification_title">CamMonitor 動作中</string>
+    <string name="notification_text">カメラ配信がバックグラウンドで動作しています</string>
+    <string name="notification_waiting_for_viewers">ビューアーの接続を待っています</string>
+    <string name="notification_streaming_live">ビューアーにライブ配信中</string>
+    <string name="notification_standby_waiting">カメラは待機中です（省電力のためセンサーを停止中）。ビューアーを待っています...</string>
+
+    <!-- Common Actions & Labels -->
+    <string name="action_back">戻る</string>
+    <string name="action_save">保存</string>
+    <string name="action_cancel">キャンセル</string>
+    <string name="action_rename">名前を変更</string>
+    <string name="action_retry">再試行</string>
+    <string name="action_exit">終了</string>
+    <string name="action_revoke">取り消す</string>
+    <string name="action_connect">接続</string>
+    <string name="action_remove_camera">カメラを削除</string>
+    <string name="action_cancel_pairing">ペアリングをキャンセル</string>
+    <string name="system_logs">システムログ</string>
+    <string name="paired_devices">ペアリング済みのデバイス</string>
+    <string name="dialog_camera_name_label">カメラ名</string>
+    <string name="dialog_rename_camera_title">カメラの名前を変更</string>
+    <string name="device_id_format">ID: %1$s...</string>
+
+    <!-- Home Screen -->
+    <string name="home_no_viewers_paired">ペアリング済みのビューアーはありません（タップしてペアリング）</string>
+    <string name="home_paired_with">%1$s とペアリング済み</string>
+    <string name="home_viewers_paired_ready">%1$d 台のビューアーとペアリング済み（配信準備完了）</string>
+    <string name="home_camera_name_prefix">カメラ名: %1$s</string>
+    <string name="home_paired_viewers_count">ペアリング済みのビューアー（%1$d/%2$d）</string>
+    <string name="home_pair_viewer_button">ビューアーをペアリング</string>
+    <string name="home_no_cameras_paired">ペアリング済みのカメラはありません（タップしてペアリング）</string>
+    <string name="home_cameras_paired_choose">%1$d 台のカメラとペアリング済み（タップして選択）</string>
+    <string name="home_paired_cameras_count">ペアリング済みのカメラ（%1$d/%2$d）</string>
+    <string name="home_pair_camera_button">カメラをペアリング</string>
+    <string name="home_pair_another_camera">別のカメラをペアリング（%1$d/%2$d）</string>
+    <string name="dialog_select_camera_title">表示するカメラを選択</string>
+    <string name="dialog_choose_camera_stream">表示するカメラの映像を選んでください:</string>
+
+    <!-- Camera Mode Screen -->
+    <string name="camera_live_badge">720p %1$dfps</string>
+    <string name="camera_viewers_count">ビューアー %1$d/%2$d</string>
+    <string name="camera_viewers_count_short">%1$d/%2$d</string>
+    <string name="camera_intercom_live">インターホン通話中（ビューアーが発話中）</string>
+    <string name="camera_black_screen">黒画面</string>
+    <string name="camera_exit_button">カメラを終了</string>
+    <string name="camera_paused_title">カメラ一時停止中</string>
+    <string name="camera_paused_description">1 分間ビューアーが接続されなかったため、バッテリー節約のためにカメラセンサーを停止しました。待機モード中です。ビューアーが接続すると、カメラは自動的に再開します。</string>
+
+    <!-- Viewer Mode Screen -->
+    <string name="camera_default_name">カメラ</string>
+    <string name="viewer_status_connecting">カメラに接続しています...</string>
+    <string name="viewer_status_no_camera">ペアリング済みのカメラが見つかりません</string>
+    <string name="viewer_status_init_failed">初期化に失敗しました</string>
+    <string name="viewer_status_waiting_response">カメラの応答を待っています...</string>
+    <string name="viewer_status_starting_stream">配信を開始しています...</string>
+    <string name="viewer_status_camera_rejected">カメラが拒否しました: %1$s</string>
+    <string name="viewer_status_live">720p %1$dfps</string>
+    <string name="viewer_status_connection_failed">接続に失敗しました</string>
+    <string name="viewer_status_disconnected">切断されました</string>
+    <string name="viewer_camera_battery_prefix">カメラ %1$s</string>
+    <string name="viewer_device_battery_prefix">ビューアー %1$s</string>
+    <string name="cd_camera_battery">カメラのバッテリー</string>
+    <string name="cd_viewer_battery">ビューアーのバッテリー</string>
+    <string name="cd_torch">ライト</string>
+    <string name="cd_fill_screen">画面いっぱいに表示</string>
+    <string name="cd_fit_screen">画面に合わせる</string>
+    <string name="viewer_ptt_transmitting">送話中...</string>
+    <string name="viewer_ptt_hold_to_talk">長押しで話す</string>
+    <string name="cd_audio_playback_on">音声再生オン</string>
+    <string name="cd_audio_playback_off">音声再生オフ</string>
+    <string name="viewer_reconnect_prompt">カメラとの接続が切れました。自動で再接続中です。今すぐ再試行するにはタップしてください。</string>
+    <string name="viewer_reconnect_now">今すぐ再接続</string>
+    <string name="viewer_symmetric_nat_desc">通信事業者の Symmetric NAT のため、P2P の直接接続に失敗しました。デバイスを Wi-Fi または同じローカルネットワークに接続してください。</string>
+    <string name="viewer_connecting_to_title">%1$s に接続中</string>
+    <string name="viewer_usually_connects_in">通常は約 %1$s 秒で接続します</string>
+    <string name="viewer_step_network_active">ネットワークに接続しています...</string>
+    <string name="viewer_step_network_done">ネットワークに接続しました</string>
+    <string name="viewer_step_camera_active">カメラを呼び出しています...</string>
+    <string name="viewer_step_camera_waking">カメラを起動しています...</string>
+    <string name="viewer_step_camera_done">カメラが応答しました</string>
+    <string name="viewer_step_camera_pending">カメラを呼び出す</string>
+    <string name="viewer_step_link_active">安全な接続を確立しています...</string>
+    <string name="viewer_step_link_done">安全な接続を確立しました</string>
+    <string name="viewer_step_link_pending">安全な接続を確立する</string>
+    <string name="viewer_step_video_active">ライブ映像を開始しています...</string>
+    <string name="viewer_step_video_done">ライブ映像の準備ができました</string>
+    <string name="viewer_step_video_pending">ライブ映像を開始する</string>
+    <string name="viewer_step_duration_sec">%1$s 秒</string>
+    <string name="viewer_reaching_attempt_countdown">試行 %1$d/%2$d · 残り %3$d 秒</string>
+    <string name="viewer_reaching_slow_hint">通常より時間がかかっています。カメラ側のスマートフォンがオンラインか確認してください。</string>
+    <string name="viewer_status_camera_timeout">カメラが応答しませんでした（%1$d 秒）</string>
+    <string name="viewer_camera_timeout_desc">カメラ側のスマートフォンの電源が入っていて、インターネットに接続され、カメラモードになっているか確認してください。</string>
+
+    <!-- Camera Pairing Screen -->
+    <string name="camera_pairing_title">新しいビューアーをペアリング</string>
+    <string name="camera_pairing_broadcasting_as">配信名: %1$s</string>
+    <string name="cd_pairing_qr_code">ペアリング用 QR コード</string>
+    <string name="camera_pairing_otp_expires">OTP の有効期限まで %1$02d:%2$02d</string>
+    <string name="camera_pairing_slot_available">空き枠 %1$d / %2$d</string>
+    <string name="camera_pairing_instructions">デバイス B で CamMonitor を開き、「ビューアーモードを開始」をタップしてこのコードをスキャンしてください。</string>
+
+    <!-- Viewer Pairing Screen -->
+    <string name="viewer_pairing_title">カメラの QR コードをスキャン</string>
+    <string name="viewer_pairing_align_qr">QR コードを枠内に合わせてペアリングします</string>
+    <string name="viewer_pairing_invalid_qr">CamMonitor の QR コードの形式が正しくありません</string>
+    <string name="viewer_pairing_connecting_broker">有効な QR コードを検出しました。シグナリングブローカーに接続しています...</string>
+    <string name="viewer_pairing_broker_failed">ブローカーへの接続に失敗しました。再試行しています...</string>
+    <string name="viewer_pairing_authenticating">%1$s と認証しています...</string>
+    <string name="viewer_pairing_success">ペアリングに成功しました！ビューアーを開始しています...</string>
+    <string name="viewer_pairing_timeout">ペアリングがタイムアウトしました。もう一度 QR コードを枠内に合わせて再試行してください。</string>
+    <string name="viewer_pairing_limit_reached">カメラの上限数（%1$d 台）に達しました。</string>
+
+    <!-- Manage Devices Screen -->
+    <string name="manage_devices_pair_device">デバイスをペアリング</string>
+    <string name="manage_devices_empty_prompt">ペアリング済みのデバイスはまだありません。\nカメラをペアリングすると映像を表示でき（最大 8 台）、ビューアーをペアリングするとこのカメラを共有できます（最大 2 台）。</string>
+    <string name="manage_devices_paired_info">%1$s にペアリング\nID: %2$s...</string>
+    <string name="dialog_revoke_title">デバイスのアクセスを取り消しますか？</string>
+    <string name="dialog_revoke_message">「%1$s」のアクセスを取り消してもよろしいですか？このデバイスはすぐに接続できなくなります。</string>
+    <string name="dialog_pair_new_device_title">新しいデバイスをペアリング</string>
+    <string name="manage_devices_pair_camera_option">カメラをペアリング（ビューアーとして）</string>
+    <string name="manage_devices_pair_camera_desc">カメラの QR コードをスキャンして映像を表示します（最大 8 台）</string>
+    <string name="manage_devices_pair_viewer_option">ビューアーをペアリング（カメラとして）</string>
+    <string name="manage_devices_pair_viewer_desc">ビューアーがスキャンする QR コードを表示します（最大 2 台）</string>
+
+    <!-- Log Viewer Screen -->
+    <string name="log_share_title">CamMonitor のログを共有</string>
+    <string name="log_share_description">ログを共有</string>
+    <string name="log_clear_description">ログを消去</string>
+    <string name="log_filter_all">すべて</string>
+
+    <!-- Language Picker -->
+    <string name="language_picker_title">アプリの言語</string>
+    <string name="language_system_default">システムのデフォルト</string>
+    <string name="language_english">English</string>
+    <string name="language_traditional_chinese">繁體中文（台灣）</string>
+    <string name="language_japanese">日本語</string>
+    <string name="language_open_system_settings">システムの言語設定</string>
+    <string name="cd_language_settings">言語を変更</string>
+
+    <!-- Camera Low-Light / Night Mode -->
+    <string name="camera_night_mode_active">夜間</string>
+    <string name="night_mode_auto">自動</string>
+    <string name="night_mode_night">夜間</string>
+    <string name="night_mode_normal">通常</string>
+
+    <!-- About Screen -->
+    <string name="about_title">このアプリについて</string>
+    <string name="about_version">バージョン %1$s</string>
+    <string name="about_description">使わなくなった Android スマートフォンを、アカウント不要でプライベートな家庭用防犯カメラに変えます。エンドツーエンド暗号化、スマートなバッテリー保護、双方向のトランシーバー式インターホンを備えています。</string>
+    <string name="about_open_source_notice">このアプリは Apache 2.0 ライセンスのオープンソースです。</string>
+    <string name="about_view_on_github">GitHub で見る</string>
+    <string name="about_github_url">https://github.com/samlu/CamMonitor</string>
+    <!-- Permissions Rationale & Recovery -->
+    <string name="permission_dialog_title">権限が必要です</string>
+    <string name="permission_camera_reason">カメラ: 映像の配信とペアリング用 QR コードのスキャンに必要です。</string>
+    <string name="permission_audio_reason">マイク: 双方向の音声インターホンに必要です。</string>
+    <string name="permission_notification_reason">通知: カメラの監視をバックグラウンドで継続するために必要です。</string>
+    <string name="permission_open_settings">設定を開く</string>
+    <string name="permission_grant">許可する</string>
+</resources>

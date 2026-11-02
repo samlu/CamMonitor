@@ -30,7 +30,7 @@ CamMonitor turns your spare Android phone into a private, zero-account home secu
   - **Orientation & Fit Controls:** Rotate incoming video in 90° increments ($0^\circ \to 90^\circ \to 180^\circ \to 270^\circ$) and toggle between Aspect Fit (full uncropped view) and Aspect Fill.
   - **Battery Monitoring:** View real-time battery percentages and charging statuses for both the camera and viewer devices.
 - **Local Diagnostics:** Built-in rolling log viewer with instant share/export for troubleshooting.
-- **Multi-Language:** English and Traditional Chinese (繁體中文).
+- **Multi-Language:** English, Traditional Chinese (繁體中文), and Japanese (日本語).
 
 ---
 
@@ -104,7 +104,7 @@ Before first use, pair your two devices:
 
 ## Language & System Logs
 
-- **Change Language:** Tap the **Globe/Language** icon on the top-right of the Home screen to select between *System Default*, *English*, or *繁體中文*.
+- **Change Language:** Tap the **Globe/Language** icon on the top-right of the Home screen to select between *System Default*, *English*, *繁體中文*, or *日本語*.
 - **System Logs:** Tap the **Document** icon on the top-right of the Home screen to view the connection and signaling diagnostic logs. Tap the Share icon to export the log file.
 
 ---
