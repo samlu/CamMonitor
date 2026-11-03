@@ -144,6 +144,13 @@ class WebRtcManager(private val context: Context) {
     val isNightExtensionSupported: Boolean
         get() = cameraXCapturer?.isNightExtensionSupported ?: false
 
+    val isFrontCamera: Boolean
+        get() = cameraXCapturer?.isFrontCamera ?: false
+
+    fun switchCameraLens(): Boolean {
+        return cameraXCapturer?.switchLens() ?: false
+    }
+
     fun setNightModeSetting(setting: com.a0soft.gphone.camonitor.data.model.NightModeSetting) {
         _nightModeSetting.value = setting
         cameraXCapturer?.setNightModeSetting(setting)
