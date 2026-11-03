@@ -20,7 +20,7 @@
     <string name="action_rename">名前を変更</string>
     <string name="action_retry">再試行</string>
     <string name="action_exit">終了</string>
-    <string name="action_revoke">取り消す</string>
+    <string name="action_revoke">アクセス解除</string>
     <string name="action_connect">接続</string>
     <string name="action_remove_camera">カメラを削除</string>
     <string name="action_cancel_pairing">ペアリングをキャンセル</string>
@@ -33,12 +33,12 @@
     <!-- Home Screen -->
     <string name="home_no_viewers_paired">ペアリング済みのビューアーはありません（タップしてペアリング）</string>
     <string name="home_paired_with">%1$s とペアリング済み</string>
-    <string name="home_viewers_paired_ready">%1$d 台のビューアーとペアリング済み（配信準備完了）</string>
+    <string name="home_viewers_paired_ready">%1$d台のビューアーとペアリング済み（配信準備完了）</string>
     <string name="home_camera_name_prefix">カメラ名: %1$s</string>
     <string name="home_paired_viewers_count">ペアリング済みのビューアー（%1$d/%2$d）</string>
     <string name="home_pair_viewer_button">ビューアーをペアリング</string>
     <string name="home_no_cameras_paired">ペアリング済みのカメラはありません（タップしてペアリング）</string>
-    <string name="home_cameras_paired_choose">%1$d 台のカメラとペアリング済み（タップして選択）</string>
+    <string name="home_cameras_paired_choose">%1$d台のカメラとペアリング済み（タップして選択）</string>
     <string name="home_paired_cameras_count">ペアリング済みのカメラ（%1$d/%2$d）</string>
     <string name="home_pair_camera_button">カメラをペアリング</string>
     <string name="home_pair_another_camera">別のカメラをペアリング（%1$d/%2$d）</string>
@@ -50,10 +50,10 @@
     <string name="camera_viewers_count">ビューアー %1$d/%2$d</string>
     <string name="camera_viewers_count_short">%1$d/%2$d</string>
     <string name="camera_intercom_live">インターホン通話中（ビューアーが発話中）</string>
-    <string name="camera_black_screen">黒画面</string>
+    <string name="camera_black_screen">画面消灯</string>
     <string name="camera_exit_button">カメラを終了</string>
     <string name="camera_paused_title">カメラ一時停止中</string>
-    <string name="camera_paused_description">1 分間ビューアーが接続されなかったため、バッテリー節約のためにカメラセンサーを停止しました。待機モード中です。ビューアーが接続すると、カメラは自動的に再開します。</string>
+    <string name="camera_paused_description">1分間ビューアーが接続されなかったため、バッテリー節約のためにカメラセンサーを停止しました。待機モード中です。ビューアーが接続すると、カメラは自動的に再開します。</string>
 
     <!-- Viewer Mode Screen -->
     <string name="camera_default_name">カメラ</string>
@@ -81,7 +81,7 @@
     <string name="viewer_reconnect_now">今すぐ再接続</string>
     <string name="viewer_symmetric_nat_desc">通信事業者の Symmetric NAT のため、P2P の直接接続に失敗しました。デバイスを Wi-Fi または同じローカルネットワークに接続してください。</string>
     <string name="viewer_connecting_to_title">%1$s に接続中</string>
-    <string name="viewer_usually_connects_in">通常は約 %1$s 秒で接続します</string>
+    <string name="viewer_usually_connects_in">通常は約 %1$s秒で接続します</string>
     <string name="viewer_step_network_active">ネットワークに接続しています...</string>
     <string name="viewer_step_network_done">ネットワークに接続しました</string>
     <string name="viewer_step_camera_active">カメラを呼び出しています...</string>
@@ -94,10 +94,10 @@
     <string name="viewer_step_video_active">ライブ映像を開始しています...</string>
     <string name="viewer_step_video_done">ライブ映像の準備ができました</string>
     <string name="viewer_step_video_pending">ライブ映像を開始する</string>
-    <string name="viewer_step_duration_sec">%1$s 秒</string>
-    <string name="viewer_reaching_attempt_countdown">試行 %1$d/%2$d · 残り %3$d 秒</string>
+    <string name="viewer_step_duration_sec">%1$s秒</string>
+    <string name="viewer_reaching_attempt_countdown">試行 %1$d/%2$d · 残り %3$d秒</string>
     <string name="viewer_reaching_slow_hint">通常より時間がかかっています。カメラ側のスマートフォンがオンラインか確認してください。</string>
-    <string name="viewer_status_camera_timeout">カメラが応答しませんでした（%1$d 秒）</string>
+    <string name="viewer_status_camera_timeout">カメラが応答しませんでした（%1$d秒）</string>
     <string name="viewer_camera_timeout_desc">カメラ側のスマートフォンの電源が入っていて、インターネットに接続され、カメラモードになっているか確認してください。</string>
 
     <!-- Camera Pairing Screen -->
@@ -117,19 +117,19 @@
     <string name="viewer_pairing_authenticating">%1$s と認証しています...</string>
     <string name="viewer_pairing_success">ペアリングに成功しました！ビューアーを開始しています...</string>
     <string name="viewer_pairing_timeout">ペアリングがタイムアウトしました。もう一度 QR コードを枠内に合わせて再試行してください。</string>
-    <string name="viewer_pairing_limit_reached">カメラの上限数（%1$d 台）に達しました。</string>
+    <string name="viewer_pairing_limit_reached">カメラの上限数（%1$d台）に達しました。</string>
 
     <!-- Manage Devices Screen -->
     <string name="manage_devices_pair_device">デバイスをペアリング</string>
-    <string name="manage_devices_empty_prompt">ペアリング済みのデバイスはまだありません。\nカメラをペアリングすると映像を表示でき（最大 8 台）、ビューアーをペアリングするとこのカメラを共有できます（最大 2 台）。</string>
+    <string name="manage_devices_empty_prompt">ペアリング済みのデバイスはまだありません。\nカメラをペアリングすると映像を表示でき（最大 8台）、ビューアーをペアリングするとこのカメラを共有できます（最大 2台）。</string>
     <string name="manage_devices_paired_info">%1$s にペアリング\nID: %2$s...</string>
-    <string name="dialog_revoke_title">デバイスのアクセスを取り消しますか？</string>
-    <string name="dialog_revoke_message">「%1$s」のアクセスを取り消してもよろしいですか？このデバイスはすぐに接続できなくなります。</string>
+    <string name="dialog_revoke_title">デバイスのアクセスを解除しますか？</string>
+    <string name="dialog_revoke_message">「%1$s」のアクセスを解除してもよろしいですか？このデバイスはすぐに接続できなくなります。</string>
     <string name="dialog_pair_new_device_title">新しいデバイスをペアリング</string>
     <string name="manage_devices_pair_camera_option">カメラをペアリング（ビューアーとして）</string>
-    <string name="manage_devices_pair_camera_desc">カメラの QR コードをスキャンして映像を表示します（最大 8 台）</string>
+    <string name="manage_devices_pair_camera_desc">カメラの QR コードをスキャンして映像を表示します（最大 8台）</string>
     <string name="manage_devices_pair_viewer_option">ビューアーをペアリング（カメラとして）</string>
-    <string name="manage_devices_pair_viewer_desc">ビューアーがスキャンする QR コードを表示します（最大 2 台）</string>
+    <string name="manage_devices_pair_viewer_desc">ビューアーがスキャンする QR コードを表示します（最大 2台）</string>
 
     <!-- Log Viewer Screen -->
     <string name="log_share_title">CamMonitor のログを共有</string>
