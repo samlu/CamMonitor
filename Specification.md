@@ -487,6 +487,7 @@ flowchart LR
 ### 6.1 Media Engine & Transport
 * **Video Pipeline:** CameraX (`CameraXVideoCapturer`) $\to$ `Preview` Use Case $\to$ WebRTC `SurfaceTextureHelper` $\to$ Hardware H.264 / VP8 encoder.
   * Default resolution: 1280x720 (720p).
+  * **Sensor-space resolution selection:** CameraX `Size` values are always landscape (sensor coordinates), independent of how the device is held. The request is normalised to `max(w,h) x min(w,h)` and screen orientation is applied through `targetRotation`; swapping for portrait produces `Size(720,1280)`, which matches no 16:9 candidate and silently degrades to a much lower resolution. `FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER` avoids selecting the sensor maximum (e.g. 3264x1840) for a stream capped at 720p.
   * Target frame rate: 20 FPS.
   * Target bitrate: ~1.5 Mbps, dynamic down to 500 Kbps on packet loss.
   * **Dynamic Night Mode Extension (`ExtensionMode.NIGHT`):**
