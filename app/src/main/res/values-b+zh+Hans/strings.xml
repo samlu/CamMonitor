@@ -1,0 +1,170 @@
+<resources>
+    <string name="app_name">CamMonitor</string>
+    <string name="start_camera_mode">启动镜头模式</string>
+    <string name="start_viewer_mode">启动观看模式</string>
+    <string name="exit_camera_mode">退出镜头模式</string>
+    <string name="exit_viewer_mode">退出观看模式</string>
+    <string name="rotate_90">旋转</string>
+    <string name="notification_channel_name">CamMonitor 服务</string>
+    <string name="notification_channel_description">持续镜头串流的前台服务通知</string>
+    <string name="notification_title">CamMonitor 运行中</string>
+    <string name="notification_text">镜头串流正在后台持续运行</string>
+    <string name="notification_waiting_for_viewers">等待观看端连接</string>
+    <string name="notification_streaming_live">正在实时串流给观看端</string>
+    <string name="notification_standby_waiting">镜头待命模式（感光元件已暂停以节省电量）。等待观看端连接…</string>
+
+    <!-- Common Actions & Labels -->
+    <string name="action_back">返回</string>
+    <string name="action_save">保存</string>
+    <string name="action_cancel">取消</string>
+    <string name="action_rename">重命名</string>
+    <string name="action_retry">重试</string>
+    <string name="action_exit">退出</string>
+    <string name="action_revoke">解除配对</string>
+    <string name="action_connect">连接</string>
+    <string name="action_remove_camera">移除镜头</string>
+    <string name="action_cancel_pairing">取消配对</string>
+    <string name="system_logs">系统日志</string>
+    <string name="paired_devices">已配对设备</string>
+    <string name="dialog_camera_name_label">镜头名称</string>
+    <string name="dialog_rename_camera_title">重命名镜头</string>
+    <string name="device_id_format">ID: %1$s...</string>
+
+    <!-- Home Screen -->
+    <string name="home_no_viewers_paired">尚未配对观看端（轻触进行配对）</string>
+    <string name="home_paired_with">已与 %1$s 配对</string>
+    <string name="home_viewers_paired_ready">%1$d 个观看端已配对（可随时串流）</string>
+    <string name="home_camera_name_prefix">镜头名称：%1$s</string>
+    <string name="home_paired_viewers_count">已配对观看端 (%1$d/%2$d)</string>
+    <string name="home_pair_viewer_button">配对观看端</string>
+    <string name="home_no_cameras_paired">尚未配对镜头（轻触进行配对）</string>
+    <string name="home_cameras_paired_choose">%1$d 个镜头已配对（轻触以选择）</string>
+    <string name="home_paired_cameras_count">已配对镜头 (%1$d/%2$d)</string>
+    <string name="home_pair_camera_button">配对镜头</string>
+    <string name="home_pair_another_camera">配对另一个镜头 (%1$d/%2$d)</string>
+    <string name="dialog_select_camera_title">选择要观看的镜头</string>
+    <string name="dialog_choose_camera_stream">请选择要观看的镜头串流：</string>
+
+    <!-- Camera Mode Screen -->
+    <string name="camera_live_badge">720p %1$dfps</string>
+    <string name="camera_viewers_count">%1$d/%2$d 观看端</string>
+    <string name="camera_viewers_count_short">%1$d/%2$d</string>
+    <string name="camera_intercom_live">对讲通话中（观看端发话）</string>
+    <string name="camera_black_screen">熄屏模式</string>
+    <string name="camera_exit_button">退出镜头</string>
+    <string name="camera_paused_title">镜头已暂停</string>
+    <string name="camera_paused_description">超过 1 分钟没有观看端连接。已停止感光元件以节省电量。待命模式进行中 — 当观看端连接时将自动唤醒镜头。</string>
+
+    <!-- Viewer Mode Screen -->
+    <string name="camera_default_name">镜头</string>
+    <string name="viewer_status_connecting">正在连接至镜头…</string>
+    <string name="viewer_status_no_camera">未找到已配对的镜头</string>
+    <string name="viewer_status_init_failed">初始化失败</string>
+    <string name="viewer_status_waiting_response">正在等待镜头响应…</string>
+    <string name="viewer_status_starting_stream">正在启动串流…</string>
+    <string name="viewer_status_camera_rejected">镜头拒绝连接：%1$s</string>
+    <string name="viewer_status_live">720p %1$dfps</string>
+    <string name="viewer_status_connection_failed">连接失败</string>
+    <string name="viewer_status_disconnected">连接已断开</string>
+    <string name="viewer_camera_battery_prefix">镜头 %1$s</string>
+    <string name="viewer_device_battery_prefix">观看端 %1$s</string>
+    <string name="cd_camera_battery">镜头电量</string>
+    <string name="cd_viewer_battery">观看端电量</string>
+    <string name="cd_torch">手电筒</string>
+    <string name="cd_fill_screen">填满屏幕</string>
+    <string name="cd_fit_screen">适应屏幕</string>
+    <string name="viewer_ptt_transmitting">发送中…</string>
+    <string name="viewer_ptt_hold_to_talk">按住对讲</string>
+    <string name="cd_audio_playback_on">音频播放开启</string>
+    <string name="cd_audio_playback_off">音频播放关闭</string>
+    <string name="viewer_reconnect_prompt">镜头连接中断。正在自动重连，或轻触立即重试。</string>
+    <string name="viewer_reconnect_now">立即重新连接</string>
+    <string name="viewer_symmetric_nat_desc">P2P 直连因运营商对称型 NAT 失败。请将设备连接至 Wi-Fi 或相同的局域网。</string>
+    <string name="viewer_connecting_to_title">正在连接至 %1$s</string>
+    <string name="viewer_usually_connects_in">通常在 ~%1$s 秒内完成连接</string>
+    <string name="viewer_step_network_active">正在连接至网络…</string>
+    <string name="viewer_step_network_done">已连接至网络</string>
+    <string name="viewer_step_camera_active">正在呼叫镜头…</string>
+    <string name="viewer_step_camera_waking">正在唤醒镜头…</string>
+    <string name="viewer_step_camera_done">镜头已响应</string>
+    <string name="viewer_step_camera_pending">呼叫镜头</string>
+    <string name="viewer_step_link_active">正在建立加密连接…</string>
+    <string name="viewer_step_link_done">已建立加密连接</string>
+    <string name="viewer_step_link_pending">建立加密连接</string>
+    <string name="viewer_step_video_active">正在启动实时画面…</string>
+    <string name="viewer_step_video_done">实时画面已就绪</string>
+    <string name="viewer_step_video_pending">启动实时画面</string>
+    <string name="viewer_step_duration_sec">%1$s秒</string>
+    <string name="viewer_reaching_attempt_countdown">第 %1$d/%2$d 次尝试 · 剩余 %3$d 秒</string>
+    <string name="viewer_reaching_slow_hint">连接时间比平时长 — 请确认镜头手机已开机并连上网络。</string>
+    <string name="viewer_status_camera_timeout">镜头未响应（%1$d 秒）</string>
+    <string name="viewer_camera_timeout_desc">请确认镜头手机已开机、连上网络，并处于镜头模式。</string>
+
+    <!-- Camera Pairing Screen -->
+    <string name="camera_pairing_title">配对新的观看端</string>
+    <string name="camera_pairing_broadcasting_as">广播名称：%1$s</string>
+    <string name="cd_pairing_qr_code">配对二维码</string>
+    <string name="camera_pairing_otp_expires">OTP 有效期剩余 %1$02d:%2$02d</string>
+    <string name="camera_pairing_slot_available">剩余可用名额 %1$d/%2$d</string>
+    <string name="camera_pairing_instructions">请在设备 B 上打开 CamMonitor，点击「启动观看模式」并扫描此二维码。</string>
+
+    <!-- Viewer Pairing Screen -->
+    <string name="viewer_pairing_title">扫描镜头二维码</string>
+    <string name="viewer_pairing_align_qr">将二维码对准框线以进行配对</string>
+    <string name="viewer_pairing_invalid_qr">无效的 CamMonitor 二维码格式</string>
+    <string name="viewer_pairing_connecting_broker">已识别有效二维码，正在连接信令服务器...</string>
+    <string name="viewer_pairing_broker_failed">信令服务器连接失败，正在重试...</string>
+    <string name="viewer_pairing_authenticating">正在与 %1$s 进行验证…</string>
+    <string name="viewer_pairing_success">配对成功！正在启动观看端…</string>
+    <string name="viewer_pairing_timeout">配对超时。请重新对准二维码重试。</string>
+    <string name="viewer_pairing_limit_reached">已达相机数量上限（最多 %1$d 台相机）。</string>
+
+    <!-- Manage Devices Screen -->
+    <string name="manage_devices_pair_device">配对设备</string>
+    <string name="manage_devices_empty_prompt">尚未配对任何设备。\n配对镜头以观看实时串流（最多 8 台），或配对观看端以分享此镜头（最多 2 台）。</string>
+    <string name="manage_devices_paired_info">配对时间：%1$s\nID: %2$s...</string>
+    <string name="dialog_revoke_title">解除设备访问授权？</string>
+    <string name="dialog_revoke_message">确定要解除「%1$s」的配对吗？该设备将立即失去连接权限。</string>
+    <string name="dialog_pair_new_device_title">配对新设备</string>
+    <string name="manage_devices_pair_camera_option">配对镜头（作为观看端）</string>
+    <string name="manage_devices_pair_camera_desc">扫描镜头二维码以观看串流（最多 8 台）</string>
+    <string name="manage_devices_pair_viewer_option">配对观看端（作为镜头端）</string>
+    <string name="manage_devices_pair_viewer_desc">显示二维码供观看端扫描（最多 2 台）</string>
+
+    <!-- Log Viewer Screen -->
+    <string name="log_share_title">分享 CamMonitor 日志</string>
+    <string name="log_share_description">分享日志</string>
+    <string name="log_clear_description">清除日志</string>
+    <string name="log_filter_all">全部</string>
+
+    <!-- Language Picker -->
+    <string name="language_picker_title">应用语言</string>
+    <string name="language_system_default">跟随系统设置</string>
+    <string name="language_simplified_chinese">简体中文</string>
+    <string name="language_english">English</string>
+    <string name="language_traditional_chinese">繁體中文（台灣）</string>
+    <string name="language_japanese">日本語</string>
+    <string name="language_open_system_settings">系统语言设置</string>
+    <string name="cd_language_settings">更改语言</string>
+
+    <!-- Camera Low-Light / Night Mode -->
+    <string name="camera_night_mode_active">夜间</string>
+    <string name="night_mode_auto">自动</string>
+    <string name="night_mode_night">夜间</string>
+    <string name="night_mode_normal">正常</string>
+
+    <!-- About Screen -->
+    <string name="about_title">关于</string>
+    <string name="about_version">版本 %1$s</string>
+    <string name="about_description">将闲置的旧 Android 手机变成家庭安防监控摄像头。具备端到端加密直连、智能待命防发热与双向语音对讲功能。</string>
+    <string name="about_open_source_notice">本项目采用 Apache 2.0 许可协议开源。</string>
+    <string name="about_view_on_github">在 GitHub 上查看项目</string>
+    <string name="about_github_url">https://github.com/samlu/CamMonitor</string>
+    <!-- Permissions Rationale & Recovery -->
+    <string name="permission_dialog_title">需要必要权限</string>
+    <string name="permission_camera_reason">相机：用于视频串流与扫描配对二维码。</string>
+    <string name="permission_audio_reason">麦克风：用于双向语音对讲功能。</string>
+    <string name="permission_notification_reason">通知：用于在后台持续稳定运行监控服务。</string>
+    <string name="permission_open_settings">打开应用设置</string>
+    <string name="permission_grant">授权</string>
+</resources>
