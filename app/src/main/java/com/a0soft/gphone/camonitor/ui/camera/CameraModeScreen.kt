@@ -14,8 +14,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -24,9 +24,11 @@ import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -69,26 +71,63 @@ fun CameraModeScreen(
     val isNightModeActive by app.webRtcManager.isNightModeActive.collectAsState()
     val streamFps by app.webRtcManager.streamFps.collectAsState()
 
-    var isBlackScreenActive by remember { mutableStateOf(false) }
+    // Locked = "black screen" + touch guard. Entering it is the ONLY way to turn
+    // the display off, and every entry point goes through enterLocked() so the
+    // manual button and the 60s idle timer can never diverge.
+    var isLocked by rememberSaveable { mutableStateOf(false) }
     var idleSeconds by remember { mutableStateOf(0) }
     var cameraName by remember { mutableStateOf(securityRepo.getDeviceName()) }
     var showRenameDialog by remember { mutableStateOf(false) }
     var localSurfaceRenderer by remember { mutableStateOf<SurfaceViewRenderer?>(null) }
 
-    fun wakeUpDisplay() {
-        isBlackScreenActive = false
+    // Gesture gate: ignore anything that happens in the first 300ms after locking
+    // (the click that locked the screen, or a fast double tap) and keep a 3s
+    // cooldown after unlocking so a stray focus event cannot re-lock immediately.
+    var lockArmedAt by remember { mutableStateOf(0L) }
+    var unlockCooldownUntil by remember { mutableStateOf(0L) }
+    var showUnlockHint by remember { mutableStateOf(false) }
+
+    fun enterLocked() {
+        if (!isLocked) {
+            AppLogger.i("CameraModeScreen", "Entering locked black screen (touch guard on)")
+        }
+        isLocked = true
         idleSeconds = 0
+        // A dialog is a separate window: it would float on top of the black
+        // screen and its outside-tap dismissal would silently bypass the lock.
+        showRenameDialog = false
+        lockArmedAt = android.os.SystemClock.elapsedRealtime()
+        showUnlockHint = true
+    }
+
+    fun unlockFromGesture() {
+        isLocked = false
+        idleSeconds = 0
+        showUnlockHint = false
+        unlockCooldownUntil = android.os.SystemClock.elapsedRealtime() + 3_000L
+        AppLogger.i("CameraModeScreen", "Unlocked by swipe")
+    }
+
+    // The hint must fade out on its own: on an AMOLED panel a permanently drawn
+    // hint would be a static bright element on an otherwise black screen.
+    LaunchedEffect(showUnlockHint) {
+        if (showUnlockHint) {
+            delay(1_500L)
+            showUnlockHint = false
+        }
     }
 
     BackHandler {
-        if (showRenameDialog) {
-            showRenameDialog = false
-        } else if (isBlackScreenActive) {
-            wakeUpDisplay()
-        } else {
-            val stopIntent = Intent(context, CameraMonitorService::class.java)
-            context.stopService(stopIntent)
-            onExitCameraMode()
+        when {
+            showRenameDialog -> showRenameDialog = false
+            // Consume back while locked: a stray back press in a pocket would
+            // otherwise drop the camera out of streaming mode entirely.
+            isLocked -> AppLogger.d("CameraModeScreen", "Back press ignored while locked")
+            else -> {
+                val stopIntent = Intent(context, CameraMonitorService::class.java)
+                context.stopService(stopIntent)
+                onExitCameraMode()
+            }
         }
     }
 
@@ -143,31 +182,50 @@ fun CameraModeScreen(
         }
     }
 
-    // 60-Second local inactivity timer for OLED black screen
-    LaunchedEffect(isBlackScreenActive, streamingState) {
-        if (!isBlackScreenActive && streamingState == CameraStreamingState.STREAMING) {
+    // Keep the display awake for the whole camera session.
+    //
+    // The old build only dimmed the panel to 1% and never touched the screen-off
+    // timer, so the system still slept after the configured timeout: on an AMOLED
+    // that looks identical to a real screen-off, which is exactly why the device
+    // was unreachable at 6am. FLAG_KEEP_SCREEN_ON is the only app-side way to stop
+    // the system from entering Doze — and on AMOLED a fully black window at 1%
+    // brightness costs almost nothing.
+    DisposableEffect(window) {
+        window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        AppLogger.i("CameraModeScreen", "Screen kept on for camera session")
+        onDispose {
+            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            AppLogger.i("CameraModeScreen", "Screen keep-on released")
+        }
+    }
+
+    // Idle timer: 60s without a touch while streaming locks the display.
+    LaunchedEffect(isLocked, streamingState, showRenameDialog) {
+        if (!isLocked && !showRenameDialog && streamingState == CameraStreamingState.STREAMING) {
             idleSeconds = 0
             while (idleSeconds < 60) {
                 delay(1000L)
                 idleSeconds++
             }
-            isBlackScreenActive = true
+            enterLocked()
         }
     }
 
-    // Adjust system brightness and system bars when black screen toggles
-    DisposableEffect(isBlackScreenActive) {
+    // Brightness + immersive mode follow the lock state.
+    DisposableEffect(isLocked) {
         if (window != null) {
             val insetsController = WindowCompat.getInsetsController(window, view)
-            if (isBlackScreenActive) {
-                val params = window.attributes
+            val params = window.attributes
+            if (isLocked) {
                 params.screenBrightness = 0.01f
                 window.attributes = params
                 insetsController.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
                 insetsController.hide(WindowInsetsCompat.Type.systemBars())
             } else {
-                val params = window.attributes
-                params.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                // A monitoring device does not need a 100% panel: the preview is
+                // pure OLED emission and the display is one of the top three heat
+                // sources. 0.55 stays readable and still cuts a large share of it.
+                params.screenBrightness = 0.55f
                 window.attributes = params
                 insetsController.show(WindowInsetsCompat.Type.systemBars())
             }
@@ -183,16 +241,74 @@ fun CameraModeScreen(
         }
     }
 
+    // Best-effort re-arm of the touch guard when the window regains focus.
+    //
+    // Pulling the notification shade (or any overlay) takes focus away and can
+    // leave the system bars visible on top of the locked screen. We cannot forbid
+    // the shade without device-owner rights, but we can put the bars back.
+    val lockedSnapshot by rememberUpdatedState(isLocked)
+    val cooldownSnapshot by rememberUpdatedState(unlockCooldownUntil)
+    DisposableEffect(window, view) {
+        if (window == null) return@DisposableEffect onDispose {}
+        val observer = android.view.ViewTreeObserver.OnWindowFocusChangeListener { hasFocus ->
+            if (hasFocus && lockedSnapshot &&
+                android.os.SystemClock.elapsedRealtime() > cooldownSnapshot
+            ) {
+                view.postDelayed({
+                    WindowCompat.getInsetsController(window, view)
+                        .hide(WindowInsetsCompat.Type.systemBars())
+                }, 250L)
+            }
+        }
+        view.viewTreeObserver.addOnWindowFocusChangeListener(observer)
+        onDispose {
+            runCatching { view.viewTreeObserver.removeOnWindowFocusChangeListener(observer) }
+        }
+    }
+
     // Root UI Container
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) {
-                if (isBlackScreenActive) wakeUpDisplay() else idleSeconds = 0
+            .pointerInput(isLocked) {
+                if (!isLocked) {
+                    // Observe presses in the INITIAL pass and never consume them:
+                    // HUD buttons keep working, but any touch still resets the 60s
+                    // idle timer (a child button would otherwise swallow the tap
+                    // and the screen could lock while the user is still tapping).
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                            if (event.changes.any { it.pressed && !it.previousPressed }) {
+                                idleSeconds = 0
+                            }
+                        }
+                    }
+                } else {
+                    // Swipe-to-unlock. A tap only reveals the hint: on an AMOLED
+                    // the screen is genuinely black, so a permanently drawn track
+                    // would be invisible AND would burn in.
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        showUnlockHint = true
+                        // 30% of the screen width, but never less than 120px:/n                        // a zero-width first layout must not turn any touch into an unlock.
+                        val needed = maxOf(size.width * 0.3f, 120f)
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull() ?: break
+                            change.consume()
+                            val dx = kotlin.math.abs(change.position.x - down.position.x)
+                            val dy = kotlin.math.abs(change.position.y - down.position.y)
+                            val armed = android.os.SystemClock.elapsedRealtime() - lockArmedAt >= 300L
+                            if (armed && maxOf(dx, dy) >= needed) {
+                                unlockFromGesture()
+                                break
+                            }
+                            if (!change.pressed) break
+                        }
+                    }
+                }
             }
     ) {
         val isLandscape = (maxWidth > maxHeight) ||
@@ -200,7 +316,7 @@ fun CameraModeScreen(
             (configuration.screenWidthDp > configuration.screenHeightDp)
 
         // Local Camera Live Viewfinder
-        if (!isBlackScreenActive && streamingState != CameraStreamingState.PAUSED_INACTIVITY) {
+        if (!isLocked && streamingState != CameraStreamingState.PAUSED_INACTIVITY) {
             AndroidView(
                 factory = { ctx ->
                     SurfaceViewRenderer(ctx).apply {
@@ -232,7 +348,7 @@ fun CameraModeScreen(
             )
         }
 
-        if (streamingState == CameraStreamingState.PAUSED_INACTIVITY) {
+        if (streamingState == CameraStreamingState.PAUSED_INACTIVITY && !isLocked) {
             // Standby View after 60s of 0 viewers
             CameraPausedStandbyView(
                 onResume = { service?.resumeStreamingFromPause() },
@@ -242,7 +358,7 @@ fun CameraModeScreen(
                     onExitCameraMode()
                 }
             )
-        } else if (!isBlackScreenActive) {
+        } else if (!isLocked) {
             // Active Streaming HUD
             Column(
                 modifier = Modifier
@@ -384,7 +500,7 @@ fun CameraModeScreen(
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     FilledTonalButton(
-                        onClick = { isBlackScreenActive = true },
+                        onClick = { enterLocked() },
                         modifier = Modifier.weight(1f)
                     ) {
                         Icon(Icons.Default.Bedtime, contentDescription = null)
@@ -403,6 +519,31 @@ fun CameraModeScreen(
                     ) {
                         Text(stringResource(R.string.camera_exit_button))
                     }
+                }
+            }
+        }
+
+        // Locked black screen: a barely visible hint that fades out on its own.
+        // It must stay extremely dim and transient — a static bright element is
+        // invisible on an AMOLED while still burning the panel over hours.
+        if (isLocked && showUnlockHint) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(
+                        modifier = Modifier
+                            .width(48.dp)
+                            .height(3.dp)
+                            .background(Color(0xFF2A2A2A), RoundedCornerShape(2.dp))
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = stringResource(R.string.camera_unlock_hint),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFF3A3A3A)
+                    )
                 }
             }
         }

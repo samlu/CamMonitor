@@ -162,7 +162,7 @@ Every signaling envelope sent over the public MQTT broker is structured as:
    * Camera lifecycle events: Camera open, frame encoder initialization, sensor errors, torch toggles, ambient light sensor readings, and dynamic Night Extension rebinds (`ExtensionMode.NIGHT`).
 3. **Power & App Lifecycle:**
    * Foreground Service startup, shutdown, and notification bindings.
-   * OLED Black Screen activations, tap-to-wake events, and 60-second idle countdown triggers.
+   * OLED Black Screen activations, swipe-to-unlock events (including gestures rejected inside the 300 ms lock gate), and idle countdown triggers.
    * 60s viewer absence camera release triggers.
 4. **DataChannel Messages:**
    * Inbound and outbound control messages (`TORCH`, `PTT_START`, `PTT_STOP`, `RENAME`, `BATTERY`, `QUERY_BATTERY`, `SET_NIGHT_MODE`, `NIGHT_MODE_REPORT`).
@@ -314,9 +314,13 @@ Every signaling envelope sent over the public MQTT broker is structured as:
 * **Hardware State:**
   * Window brightness set to `0.01f`.
   * Status bars and navigation bars completely hidden via `WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE`.
-* **Touch Interaction:**
-  * The entire screen has a `clickable` / `pointerInput` listener.
-  * A single tap instantly wakes the screen: restores standard brightness, reveals HUD controls, and resets the 60-second idle timer.
+* **Touch Interaction (Locked, Not Merely Dimmed):**
+  * Entering the black screen arms a touch guard: stray taps are consumed instead of waking the display or hitting whatever control sits under the finger. This is the difference between "the panel went dark" and "the phone is locked".
+  * Unlocking requires a deliberate swipe of at least `max(30% of screen width, 120 dp)`, performed at least **300 ms** after locking, so the gesture that locked the screen cannot immediately undo it.
+  * A dim `Swipe up to unlock` hint fades in after **1.5 s**. Unlocking restores brightness and starts a **3 s** cooldown during which the screen cannot be locked again.
+  * The system back key is swallowed while locked.
+* **Brightness:** `0.01f` while locked, `0.55f` in the unlocked preview, `BRIGHTNESS_OVERRIDE_NONE` on exit.
+* **Screen Awake:** `FLAG_KEEP_SCREEN_ON` is held for the whole streaming session, so the display never sleeps mid-stream. Turning the panel off is therefore always an explicit action, never a system timeout.
 * **Burn-in Protection:** No static persistent text is rendered.
 
 #### 5.3.3 Inactivity / Standby View (After 60s of 0 Viewers)
