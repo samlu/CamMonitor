@@ -587,13 +587,19 @@ flowchart LR
 
 ### 7.4 Per-App Language Preferences & Internationalization (i18n)
 * **Supported Languages:**
-  * **English (`en`):** Default resources declared in `res/values/strings.xml`.
+  * **English (`en`):** Default resources in `res/values/strings.xml`.
+  * **Simplified Chinese (`zh-CN` / `zh-Hans`):** Script-qualified resources in `res/values-b+zh+Hans/strings.xml`.
   * **Traditional Chinese (`zh-TW` / `zh-Hant`):** Script-qualified resources in `res/values-b+zh+Hant/strings.xml`.
+  * **Japanese (`ja`):** `res/values-ja/strings.xml`.
+  * The default resource set must stay English. Chinese in `values/` makes every unmatched locale fall back to Chinese, which is worse than an untranslated string.
 * **Resource Qualifier Architecture:**
-  * Uses the BCP-47 script qualifier `values-b+zh+Hant/` exclusively instead of regional qualifiers (`values-zh-rTW/`). On Android 9+ (`minSdk = 28`), BCP-47 matching automatically resolves Traditional Chinese strings for users across Taiwan (`zh-TW`), Hong Kong (`zh-HK`), Macau (`zh-MO`), and generic Traditional Chinese setups without duplicating XML files.
-* **Dual Language Configuration Surfaces:**
-  1. **System "App languages" Setting (Android 13+ / API 33+):** Configured via `android:localeConfig="@xml/locales_config"` in `AndroidManifest.xml` with `<locale-config>` declaring `en` and `zh-TW`.
-  2. **In-App Language Picker:** Dropdown selector located directly in the Home Screen top app bar (`Icons.Default.Language`) enabling instant switching between `"Follow System"`, `"English"`, and `"繁體中文"`.
+  * Uses BCP-47 script qualifiers (`values-b+zh+Hans/`, `values-b+zh+Hant/`) instead of regional ones (`values-zh-rTW/`). On Android 9+ (`minSdk = 28`), BCP-47 matching resolves the correct script for `zh-CN`, `zh-SG`, `zh-Hans`, `zh-TW`, `zh-HK` and `zh-MO` without duplicating XML files.
+* **Chinese Tag Normalisation (`LocaleHelper.normalizeChineseTag`):**
+  * Every Chinese tag maps to exactly one script variant: a `hant` subtag, or a `-TW` / `-HK` / `-MO` region, resolves to Traditional; everything else (`zh`, `zh-CN`, `zh-SG`, `zh-Hans`) resolves to Simplified.
+  * Collapsing all `zh*` tags to `zh-TW` — the previous behaviour — makes Simplified unreachable on mainland devices even when the resources are present.
+* **Language Configuration Surfaces:**
+  1. **System "App languages" Setting (Android 13+ / API 33+):** Configured via `android:localeConfig="@xml/locales_config"`. `<locale-config>` must list all four tags (`en`, `zh-CN`, `zh-TW`, `ja`); a missing entry hides the language from the system picker even though the strings exist.
+  2. **In-App Language Picker:** Home Screen top app bar (`Icons.Default.Language`), offering `"Follow System"`, `"简体中文"`, `"繁體中文"`, `"English"` and `"日本語"`.
 * **Dynamic Application & Service Locale Propagation (`LocaleHelper`):**
   * Android's standard `AppCompatDelegate.setApplicationLocales()` and `LocaleManager.setApplicationLocales()` recreate UI activities, but do not automatically refresh the process-level `Application` singleton or background Services.
   * To guarantee that string resource lookups through `CamMonitorApp.instance.getString(...)` and `CameraMonitorService` foreground notifications resolve immediately to the selected language:

@@ -18,8 +18,26 @@ import java.util.Locale
 object LocaleHelper {
     const val LANGUAGE_FOLLOW_SYSTEM = ""
     const val LANGUAGE_EN = "en"
+    const val LANGUAGE_ZH_CN = "zh-CN"
     const val LANGUAGE_ZH_TW = "zh-TW"
     const val LANGUAGE_JA = "ja"
+
+    /**
+     * Maps any Chinese tag to one of the two script variants this app ships.
+     *
+     * The previous code collapsed EVERY "zh*" tag to zh-TW, so a zh-CN device
+     * could never reach the Simplified resources — and once Simplified became the
+     * default resource set, that bug would have silently forced Traditional on
+     * mainland users.
+     */
+    private fun normalizeChineseTag(tag: String): String {
+        val lower = tag.lowercase()
+        return when {
+            lower.contains("hant") -> LANGUAGE_ZH_TW
+            lower.endsWith("-tw") || lower.endsWith("-hk") || lower.endsWith("-mo") -> LANGUAGE_ZH_TW
+            else -> LANGUAGE_ZH_CN // "zh", "zh-CN", "zh-SG", "zh-Hans"
+        }
+    }
 
     private const val PREFS_NAME = "cammonitor_locale_prefs"
     private const val KEY_APP_LANGUAGE = "key_app_language"
@@ -55,7 +73,7 @@ object LocaleHelper {
                     val primary = appLocales[0]
                     val tag = primary.toLanguageTag()
                     return if (tag.startsWith("zh", ignoreCase = true)) {
-                        LANGUAGE_ZH_TW
+                        normalizeChineseTag(tag)
                     } else if (tag.startsWith("en", ignoreCase = true)) {
                         LANGUAGE_EN
                     } else if (tag.startsWith("ja", ignoreCase = true)) {
