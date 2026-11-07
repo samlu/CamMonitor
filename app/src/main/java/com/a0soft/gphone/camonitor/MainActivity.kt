@@ -26,6 +26,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import com.a0soft.gphone.camonitor.log.AppLogger
 import com.a0soft.gphone.camonitor.ui.about.AboutScreen
 import com.a0soft.gphone.camonitor.ui.camera.CameraModeScreen
 import com.a0soft.gphone.camonitor.ui.devices.ManageDevicesScreen
@@ -99,6 +100,15 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onDestroy() {
+        // `isFinishing` filters out config-change recreations (the locale switch
+        // calls recreate()), which are not the end of a session.
+        if (isFinishing) {
+            AppLogger.markCleanShutdown("activity finished")
+        }
+        super.onDestroy()
     }
 
     override fun onStop() {

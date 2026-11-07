@@ -292,8 +292,10 @@ class CameraMonitorService : Service() {
                     handleRemoteOffer(senderId, message.sdp)
                 }
                 is SignalingMessage.IceCandidate -> {
-                    val typeMatch = Regex("typ\\s+(\\w+)").find(message.sdp)?.groupValues?.getOrNull(1) ?: "unknown"
-                    AppLogger.d(tag, "Received remote ICE candidate from $senderId: mid=${message.sdpMid}, index=${message.sdpMLineIndex}, type=$typeMatch")
+                    // No log here on purpose: WebRtcManager already records every
+                    // candidate (DEBUG) and the negotiated pair (INFO). Logging it
+                    // again in this layer duplicated 327 of 2859 lines in a
+                    // 31-minute capture without adding any information.
                     val candidate = IceCandidate(message.sdpMid, message.sdpMLineIndex, message.sdp)
                     app.webRtcManager.addRemoteIceCandidate(senderId, candidate)
                 }
@@ -519,5 +521,9 @@ class CameraMonitorService : Service() {
                 CamMonitorApp.instance.signalingClient.stopListening()
             } catch (_: Exception) {}
         }
+        // Tells the next boot this run ended on purpose. Without a marker the
+        // logger reports "previous session did not end normally", which is how a
+        // silent kill gets mistaken for a crash.
+        AppLogger.markCleanShutdown("service destroyed")
     }
 }
