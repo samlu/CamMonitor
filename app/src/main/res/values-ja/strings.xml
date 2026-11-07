@@ -134,6 +134,8 @@
     <!-- Log Viewer Screen -->
     <string name="log_share_title">CamMonitor のログを共有</string>
     <string name="log_share_description">ログを共有</string>
+    <string name="log_level_verbose">詳細ログが有効です（デバッグ情報を含む）</string>
+    <string name="log_level_normal">標準ログ（タップで詳細ログ）</string>
     <string name="log_clear_description">ログを消去</string>
     <string name="log_filter_all">すべて</string>
 

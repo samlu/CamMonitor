@@ -134,6 +134,8 @@
     <!-- Log Viewer Screen -->
     <string name="log_share_title">Share CamMonitor Logs</string>
     <string name="log_share_description">Share Logs</string>
+    <string name="log_level_verbose">Verbose logging is on (includes debug)</string>
+    <string name="log_level_normal">Standard logging (tap for verbose)</string>
     <string name="log_clear_description">Clear Logs</string>
     <string name="log_filter_all">ALL</string>
 
