@@ -28,6 +28,14 @@ object CryptoUtils {
 
     private val secureRandom = SecureRandom()
 
+    /**
+     * Serialises ECDH derivations. Declared before any method uses it so the
+     * object is fully initialised before the first call.
+     */
+    private val ecdhLock = Any()
+
+    private const val ECDH_MAX_ATTEMPTS = 2
+
     fun getOrCreateDeviceKeyPair(alias: String): KeyPair {
         if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) {
             throw UnsupportedOperationException("KeyStore PURPOSE_AGREE_KEY requires Android 12 (API 31)+")
@@ -193,7 +201,43 @@ object CryptoUtils {
         return cipher.doFinal(combined)
     }
 
-    fun deriveEcdhKey(privateKey: PrivateKey, publicKey: PublicKey): ByteArray {
+    /**
+     * Serialises ECDH derivations.
+     *
+     * Keys live in AndroidKeyStore, which hands out an opaque operation handle
+     * per key agreement. That handle is not re-entrant: two agreements on the
+     * same private key at the same time make the second one fail with
+     * `ProviderException: Keystore operation failed` /
+     * `Invalid operation handle`. Every reconnect produced 9-11 of these, and
+     * each failure dropped the envelope it was decrypting — which is how ICE
+     * candidates went missing and the connection stalled in CHECKING.
+     *
+     * Derivation is a few hundred microseconds, so a single lock costs nothing.
+     */
+    fun deriveEcdhKey(privateKey: PrivateKey, publicKey: PublicKey): ByteArray =
+        synchronized(ecdhLock) {
+            var last: Throwable? = null
+            for (attempt in 0 until ECDH_MAX_ATTEMPTS) {
+                try {
+                    return deriveEcdhKeyOnce(privateKey, publicKey)
+                } catch (t: Throwable) {
+                    last = t
+                    if (attempt < ECDH_MAX_ATTEMPTS - 1) {
+                        // A handle can still be held by the operation that just
+                        // aborted; give the provider a moment to release it before
+                        // retrying. This sleep only happens on the failure path.
+                        try {
+                            Thread.sleep(40L)
+                        } catch (e: InterruptedException) {
+                            Thread.currentThread().interrupt()
+                        }
+                    }
+                }
+            }
+            throw last ?: IllegalStateException("ECDH derivation failed without an exception")
+        }
+
+    private fun deriveEcdhKeyOnce(privateKey: PrivateKey, publicKey: PublicKey): ByteArray {
         val agreement = KeyAgreement.getInstance("ECDH")
         agreement.init(privateKey)
         agreement.doPhase(publicKey, true)

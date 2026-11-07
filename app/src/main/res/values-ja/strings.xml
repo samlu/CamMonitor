@@ -53,7 +53,7 @@
     <string name="camera_black_screen">画面消灯</string>
     <string name="camera_exit_button">カメラを終了</string>
     <string name="camera_paused_title">カメラ一時停止中</string>
-    <string name="camera_paused_description">1分間ビューアーが接続されなかったため、バッテリー節約のためにカメラセンサーを停止しました。待機モード中です。ビューアーが接続すると、カメラは自動的に再開します。</string>
+    <string name="camera_paused_description">15秒間ビューアーが接続されなかったため、バッテリー節約のためにカメラセンサーを停止しました。待機モード中です。ビューアーが接続すると、カメラは自動的に再開します。</string>
 
     <!-- Viewer Mode Screen -->
     <string name="camera_default_name">カメラ</string>
