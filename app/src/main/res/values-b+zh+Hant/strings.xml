@@ -51,6 +51,7 @@
     <string name="camera_viewers_count_short">%1$d/%2$d</string>
     <string name="camera_intercom_live">對講通話中（觀看端發話）</string>
     <string name="camera_black_screen">熄屏模式</string>
+    <string name="camera_unlock_hint">滑動解鎖</string>
     <string name="camera_exit_button">退出鏡頭</string>
     <string name="camera_paused_title">鏡頭已暫停</string>
     <string name="camera_paused_description">超過 1 分鐘無觀看端連線。已停止感光元件以節省電力。待命模式進行中 — 當觀看端連線時將自動喚醒鏡頭。</string>
