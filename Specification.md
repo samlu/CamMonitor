@@ -144,11 +144,20 @@ Every signaling envelope sent over the public MQTT broker is structured as:
   * Any legacy external logs under `context.getExternalFilesDir("logs")` are automatically purged on startup.
 * **Thread-Safe StateFlow:** In-memory diagnostic logs are updated atomically using a Compare-And-Swap (CAS) loop via `_logsFlow.update { ... }`.
 * **Rolling Policy:**
-  * Max file size: **2 MB** per file.
-  * File rotation: Keeps up to **3 rolling backups** (`cammonitor.log`, `cammonitor.1.log`, `cammonitor.2.log`).
-  * Total disk budget: Capped at **~6 MB** maximum.
+  * Max file size: **8 MB** per file.
+  * File rotation: Keeps up to **5 rolling backups** (`cammonitor.log`, `cammonitor.1.log` … `cammonitor.5.log`).
+  * Total disk budget: Capped at **~48 MB** maximum. The previous 2 MB × 4 policy held roughly eleven hours, so an overnight failure overwrote its own evidence.
+* **Write Path:**
+  * Entries are funnelled through a bounded `Channel` (capacity 4096) into a single writer coroutine holding a long-lived `BufferedWriter`, flushed every **32 lines** or after **1 s** idle. The previous implementation opened, wrote and closed the file once per line.
+  * `minLevel` filters what reaches the file; mandatory entries (session markers, crash traces) bypass the filter.
 * **Log Entry Format:**
-  `[2026-10-12 17:20:01.432] [INFO] [WebRTCManager] ICE connection state changed: CONNECTED`
+  `[2026-10-12 17:20:01.432] [+12.345s] [INFO] [WebRtcManager] [webrtc-signaling] ICE connection state changed: CONNECTED`
+  * The elapsed offset is relative to process start, so a stall reads as a gap in the numbers instead of requiring arithmetic across wall-clock timestamps.
+  * The thread name is recorded per entry. Without it, audio, signaling and camera work interleave in one file and cannot be told apart.
+* **Session Boundaries:**
+  * `=== SESSION START ===` / `=== SESSION END ===` bracket every run.
+  * On startup the previous run's tail (last 4 KB) is echoed into the new file, so a process that was killed rather than crashed still leaves its final state visible.
+  * An `UncaughtExceptionHandler` appends `=== SESSION END === (crash)` with the stack trace.
 
 ### 3.2 Key Events Logged
 1. **Signaling & MQTT:**

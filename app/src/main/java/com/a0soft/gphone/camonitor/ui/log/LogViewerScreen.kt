@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -26,6 +27,7 @@ import com.a0soft.gphone.camonitor.data.model.LogLevel
 import com.a0soft.gphone.camonitor.log.AppLogger
 import com.a0soft.gphone.camonitor.ui.theme.StatusError
 import com.a0soft.gphone.camonitor.ui.theme.StatusWarning
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -33,9 +35,14 @@ fun LogViewerScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val logs by AppLogger.logsFlow.collectAsState()
     var selectedFilter by remember { mutableStateOf("ALL") }
     val listState = rememberLazyListState()
+    // Mirrors AppLogger.minLevel so the icon re-renders on toggle; the logger
+    // itself is a plain object and cannot notify Compose.
+    var logLevel by remember { mutableStateOf(AppLogger.minLevel) }
+    val verbose = logLevel == LogLevel.DEBUG
 
     val filteredLogs = remember(logs, selectedFilter) {
         when (selectedFilter) {
@@ -66,8 +73,12 @@ fun LogViewerScreen(
                 },
                 actions = {
                     IconButton(onClick = {
-                        val file = AppLogger.getLogFile()
-                        if (file != null && file.exists()) {
+                        scope.launch {
+                            val file = AppLogger.exportBundle()
+                            if (file == null || !file.exists()) {
+                                AppLogger.w("LogViewer", "No log files to export")
+                                return@launch
+                            }
                             try {
                                 val uri = FileProvider.getUriForFile(
                                     context,
@@ -75,17 +86,36 @@ fun LogViewerScreen(
                                     file
                                 )
                                 val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                    type = "text/plain"
+                                    // A bundle of several files is a zip now, so the
+                                    // MIME type has to match or receivers refuse it.
+                                    type = "application/zip"
                                     putExtra(Intent.EXTRA_STREAM, uri)
                                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                 }
                                 context.startActivity(Intent.createChooser(shareIntent, context.getString(R.string.log_share_title)))
                             } catch (e: Exception) {
-                                AppLogger.e("LogViewer", "Failed to share log file", e)
+                                AppLogger.e("LogViewer", "Failed to share log bundle", e)
                             }
                         }
                     }) {
                         Icon(Icons.Default.Share, contentDescription = stringResource(R.string.log_share_description))
+                    }
+                    // Verbosity switch: the streaming camera writes enough lines to
+                    // matter for heat and storage. INFO is the quiet default users
+                    // can drop to; DEBUG (the startup value) keeps everything.
+                    IconButton(onClick = {
+                        val next = if (verbose) LogLevel.INFO else LogLevel.DEBUG
+                        AppLogger.minLevel = next
+                        logLevel = next
+                    }) {
+                        Icon(
+                            imageVector = Icons.Default.Tune,
+                            contentDescription = stringResource(
+                                if (verbose) R.string.log_level_verbose else R.string.log_level_normal
+                            ),
+                            tint = if (verbose) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                     IconButton(onClick = { AppLogger.clearLogs() }) {
                         Icon(Icons.Default.DeleteSweep, contentDescription = stringResource(R.string.log_clear_description))
