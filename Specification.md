@@ -319,15 +319,15 @@ Every signaling envelope sent over the public MQTT broker is structured as:
   * A single tap instantly wakes the screen: restores standard brightness, reveals HUD controls, and resets the 60-second idle timer.
 * **Burn-in Protection:** No static persistent text is rendered.
 
-#### 5.3.3 Inactivity / Standby View (After 60s of 0 Viewers)
+#### 5.3.3 Inactivity / Standby View (After 15 s of 0 Viewers)
 * **Background:** Dark `#121212` background (Camera hardware completely closed and released).
 * **Center Card:**
   * Icon: `Icons.Default.PauseCircleOutline` (64dp, Warning Amber).
   * Title: `"Camera Paused"` (HeadlineSmall).
-  * Description: `"No viewers connected for 1 minute. Camera sensor stopped to preserve battery."` (BodyMedium).
+  * Description: `"No viewers connected for 15 seconds. Camera sensor stopped to preserve battery."` (BodyMedium).
   * Spacing: 24dp vertical gap.
 * **Actions (Vertical column):**
-  * `Button`: `"Start Camera Mode"` $\to$ Re-opens camera, restarts listener, resets 60s timer.
+  * `Button`: `"Start Camera Mode"` $\to$ Re-opens camera, restarts listener, resets the 15 s timer.
   * `OutlinedButton`: `"Exit Camera Mode"` $\to$ Terminates service, returns to Home.
 
 ---
