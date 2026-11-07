@@ -369,15 +369,23 @@ class CameraXVideoCapturer(
             AppLogger.i(tag, "Binding CameraX with Standard CameraSelector (Normal mode)")
         }
 
-        val isLandscape = currentTargetRotation == Surface.ROTATION_90 || currentTargetRotation == Surface.ROTATION_270
-        val boundWidth = if (isLandscape) maxOf(lastWidth, lastHeight) else minOf(lastWidth, lastHeight)
-        val boundHeight = if (isLandscape) minOf(lastWidth, lastHeight) else maxOf(lastWidth, lastHeight)
+        // CameraX expresses resolutions in SENSOR coordinates, which are always
+        // landscape (1280x720, 1920x1080, ...). They are unrelated to how the phone
+        // is held: swapping width/height for portrait produces Size(720,1280), which
+        // matches no 16:9 candidate, so the fallback rule silently drops to 640x360
+        // or even 192x108 while every log line still says "720p".
+        // Screen orientation is applied separately via targetRotation.
+        val boundWidth = maxOf(lastWidth, lastHeight)
+        val boundHeight = minOf(lastWidth, lastHeight)
 
         val resolutionSelector = ResolutionSelector.Builder()
             .setResolutionStrategy(
                 ResolutionStrategy(
                     Size(boundWidth, boundHeight),
-                    ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER
+                    // CLOSEST_HIGHER_THEN_LOWER picks the sensor's maximum (e.g.
+                    // 3264x1840) for a stream that VideoSource caps at 720p anyway:
+                    // extra ISP/encoder work for frames that are downscaled immediately.
+                    ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER
                 )
             )
             .setAspectRatioStrategy(AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY)
