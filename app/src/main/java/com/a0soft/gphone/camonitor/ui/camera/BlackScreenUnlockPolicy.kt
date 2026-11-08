@@ -14,14 +14,10 @@ object BlackScreenUnlockPolicy {
     /** A tap that just locked the screen must not immediately unlock it. */
     const val LOCK_ARM_DELAY_MS = 300L
 
-    /** After unlocking, ignore stray focus events that could re-lock the screen. */
-    const val UNLOCK_COOLDOWN_MS = 3_000L
-
     /** The hint fades on its own so an AMOLED panel shows no static bright element. */
     const val HINT_DELAY_MS = 1_500L
 
     const val LOCKED_BRIGHTNESS = 0.01f
-    const val UNLOCKED_BRIGHTNESS = 0.55f
 
     private const val SWIPE_FRACTION = 0.3f
     private const val MIN_SWIPE_PX = 120f

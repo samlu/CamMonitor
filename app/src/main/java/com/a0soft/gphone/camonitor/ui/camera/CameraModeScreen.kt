@@ -81,11 +81,10 @@ fun CameraModeScreen(
     var localSurfaceRenderer by remember { mutableStateOf<SurfaceViewRenderer?>(null) }
 
     // Gesture gate: ignore anything that happens in the first 300ms after locking
-    // (the click that locked the screen, or a fast double tap) and keep a 3s
-    // cooldown after unlocking so a stray focus event cannot re-lock immediately.
-    var lockArmedAt by remember { mutableStateOf(0L) }
-    var unlockCooldownUntil by remember { mutableStateOf(0L) }
-    var showUnlockHint by remember { mutableStateOf(false) }
+    // (the click that locked the screen, or a fast double tap).
+    var lockArmedAt by remember { mutableLongStateOf(0L) }
+    var unlockHintTick by remember { mutableIntStateOf(0) }
+    val showUnlockHint = unlockHintTick > 0
 
     fun enterLocked() {
         if (!isLocked) {
@@ -97,23 +96,23 @@ fun CameraModeScreen(
         // screen and its outside-tap dismissal would silently bypass the lock.
         showRenameDialog = false
         lockArmedAt = android.os.SystemClock.elapsedRealtime()
-        showUnlockHint = true
+        unlockHintTick++
     }
 
     fun unlockFromGesture() {
         isLocked = false
         idleSeconds = 0
-        showUnlockHint = false
-        unlockCooldownUntil = android.os.SystemClock.elapsedRealtime() + BlackScreenUnlockPolicy.UNLOCK_COOLDOWN_MS
+        unlockHintTick = 0
         AppLogger.i("CameraModeScreen", "Unlocked by swipe")
     }
 
     // The hint must fade out on its own: on an AMOLED panel a permanently drawn
     // hint would be a static bright element on an otherwise black screen.
-    LaunchedEffect(showUnlockHint) {
-        if (showUnlockHint) {
+    // Keying on unlockHintTick restarts the full 1.5s fade-out timer on every tap.
+    LaunchedEffect(unlockHintTick) {
+        if (unlockHintTick > 0) {
             delay(BlackScreenUnlockPolicy.HINT_DELAY_MS)
-            showUnlockHint = false
+            unlockHintTick = 0
         }
     }
 
@@ -200,8 +199,12 @@ fun CameraModeScreen(
     }
 
     // Idle timer: 60s without a touch while active locks the display.
-    LaunchedEffect(isLocked, streamingState, showRenameDialog) {
-        if (!isLocked && !showRenameDialog && streamingState != CameraStreamingState.IDLE) {
+    // Keyed on isServiceActive (not raw streamingState) so background transitions
+    // between WAITING_FOR_VIEWERS, STREAMING, and PAUSED_INACTIVITY do not reset
+    // the 60s touch-idle countdown.
+    val isServiceActive = streamingState != CameraStreamingState.IDLE
+    LaunchedEffect(isLocked, showRenameDialog, isServiceActive) {
+        if (!isLocked && !showRenameDialog && isServiceActive) {
             idleSeconds = 0
             while (idleSeconds < 60) {
                 delay(1000L)
@@ -222,10 +225,7 @@ fun CameraModeScreen(
                 insetsController.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
                 insetsController.hide(WindowInsetsCompat.Type.systemBars())
             } else {
-                // A monitoring device does not need a 100% panel: the preview is
-                // pure OLED emission and the display is one of the top three heat
-                // sources. 0.55 stays readable and still cuts a large share of it.
-                params.screenBrightness = BlackScreenUnlockPolicy.UNLOCKED_BRIGHTNESS
+                params.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
                 window.attributes = params
                 insetsController.show(WindowInsetsCompat.Type.systemBars())
             }
@@ -247,16 +247,15 @@ fun CameraModeScreen(
     // leave the system bars visible on top of the locked screen. We cannot forbid
     // the shade without device-owner rights, but we can put the bars back.
     val lockedSnapshot by rememberUpdatedState(isLocked)
-    val cooldownSnapshot by rememberUpdatedState(unlockCooldownUntil)
     DisposableEffect(window, view) {
         if (window == null) return@DisposableEffect onDispose {}
         val observer = android.view.ViewTreeObserver.OnWindowFocusChangeListener { hasFocus ->
-            if (hasFocus && lockedSnapshot &&
-                android.os.SystemClock.elapsedRealtime() > cooldownSnapshot
-            ) {
+            if (hasFocus && lockedSnapshot) {
                 view.postDelayed({
-                    WindowCompat.getInsetsController(window, view)
-                        .hide(WindowInsetsCompat.Type.systemBars())
+                    if (lockedSnapshot) {
+                        WindowCompat.getInsetsController(window, view)
+                            .hide(WindowInsetsCompat.Type.systemBars())
+                    }
                 }, 250L)
             }
         }
@@ -291,7 +290,7 @@ fun CameraModeScreen(
                     // would be invisible AND would burn in.
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
-                        showUnlockHint = true
+                        unlockHintTick++
                         // Threshold and accept/reject rule live in BlackScreenUnlockPolicy
                         // so they can be unit-tested without a Compose test runner.
                         // A zero-width first layout must not turn any touch into an unlock.

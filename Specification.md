@@ -326,10 +326,10 @@ Every signaling envelope sent over the public MQTT broker is structured as:
   * Status bars and navigation bars completely hidden via `WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE`.
 * **Touch Interaction (Locked, Not Merely Dimmed):**
   * Entering the black screen arms a touch guard: stray taps are consumed instead of waking the display or hitting whatever control sits under the finger. This is the difference between "the panel went dark" and "the phone is locked".
-  * Unlocking requires a deliberate swipe of at least `max(30% of screen width, 120 dp)`, performed at least **300 ms** after locking, so the gesture that locked the screen cannot immediately undo it.
-  * A dim `Swipe up to unlock` hint fades in after **1.5 s**. Unlocking restores brightness and starts a **3 s** cooldown during which the screen cannot be locked again.
+  * Unlocking requires a deliberate swipe of at least `max(30% of screen width, 120 px)` on either axis, performed at least **300 ms** after locking, so the gesture that locked the screen cannot immediately undo it.
+  * A dim `Swipe to unlock` hint appears on lock or tap and fades out after **1.5 s** (restarting the 1.5 s timer on each tap).
   * The system back key is swallowed while locked.
-* **Brightness:** `0.01f` while locked, `0.55f` in the unlocked preview, `BRIGHTNESS_OVERRIDE_NONE` on exit.
+* **Brightness:** `0.01f` while locked, `BRIGHTNESS_OVERRIDE_NONE` (system brightness) while unlocked or on exit.
 * **Screen Awake:** `FLAG_KEEP_SCREEN_ON` is held for the whole streaming session, so the display never sleeps mid-stream. Turning the panel off is therefore always an explicit action, never a system timeout.
 * **Burn-in Protection:** No static persistent text is rendered.
 

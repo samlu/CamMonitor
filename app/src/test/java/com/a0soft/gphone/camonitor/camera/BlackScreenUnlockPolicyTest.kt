@@ -11,10 +11,8 @@ class BlackScreenUnlockPolicyTest {
     @Test
     fun testConstants() {
         assertEquals(300L, BlackScreenUnlockPolicy.LOCK_ARM_DELAY_MS)
-        assertEquals(3_000L, BlackScreenUnlockPolicy.UNLOCK_COOLDOWN_MS)
         assertEquals(1_500L, BlackScreenUnlockPolicy.HINT_DELAY_MS)
         assertEquals(0.01f, BlackScreenUnlockPolicy.LOCKED_BRIGHTNESS, 0.001f)
-        assertEquals(0.55f, BlackScreenUnlockPolicy.UNLOCKED_BRIGHTNESS, 0.001f)
     }
 
     @Test
