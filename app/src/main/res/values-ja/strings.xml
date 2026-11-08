@@ -135,11 +135,19 @@
     <!-- Log Viewer Screen -->
     <string name="log_share_title">CamMonitor のログを共有</string>
     <string name="log_share_description">ログを共有</string>
+    <string name="log_level_verbose">詳細ログが有効です（デバッグ情報を含む）</string>
+    <string name="log_level_normal">標準ログ（タップで詳細ログ）</string>
+    <string name="log_level_menu_title">ログの詳細度</string>
+    <string name="log_level_debug_title">詳細ログ (DEBUG)</string>
+    <string name="log_level_debug_desc">すべての診断情報とデバッグトレースを記録</string>
+    <string name="log_level_info_title">標準ログ (INFO)</string>
+    <string name="log_level_info_desc">デバッグログを除外して発熱とストレージ消費を抑制</string>
     <string name="log_clear_description">ログを消去</string>
     <string name="log_filter_all">すべて</string>
 
     <!-- Language Picker -->
     <string name="language_picker_title">アプリの言語</string>
+    <string name="language_simplified_chinese">简体中文</string>
     <string name="language_system_default">システムのデフォルト</string>
     <string name="language_english">English</string>
     <string name="language_traditional_chinese">繁體中文（台灣）</string>
@@ -160,6 +168,13 @@
     <string name="about_open_source_notice">このアプリは Apache 2.0 ライセンスのオープンソースです。</string>
     <string name="about_view_on_github">GitHub で見る</string>
     <string name="about_github_url">https://github.com/samlu/CamMonitor</string>
+    <string name="about_contributors_title">コントリビューター</string>
+    <string name="about_contributors_subtitle">CamMonitor の改善にご協力いただいた皆様に感謝いたします。</string>
+    <string name="about_contributor_samlu_role">作成者・コアメンテナー</string>
+    <string name="about_contributor_owwhale_role">ログパイプライン・カメラエンジン・簡体字中国語</string>
+    <string name="about_contributor_eltociear_role">日本語ローカライズ</string>
+    <string name="about_view_all_contributors">GitHub でコントリビューター一覧を見る</string>
+    <string name="about_contributors_github_url">https://github.com/samlu/CamMonitor/graphs/contributors</string>
     <!-- Permissions Rationale & Recovery -->
     <string name="permission_dialog_title">権限が必要です</string>
     <string name="permission_camera_reason">カメラ: 映像の配信とペアリング用 QR コードのスキャンに必要です。</string>

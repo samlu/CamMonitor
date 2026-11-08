@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
@@ -18,6 +19,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
@@ -26,6 +28,7 @@ import com.a0soft.gphone.camonitor.data.model.LogLevel
 import com.a0soft.gphone.camonitor.log.AppLogger
 import com.a0soft.gphone.camonitor.ui.theme.StatusError
 import com.a0soft.gphone.camonitor.ui.theme.StatusWarning
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -33,9 +36,14 @@ fun LogViewerScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val logs by AppLogger.logsFlow.collectAsState()
     var selectedFilter by remember { mutableStateOf("ALL") }
     val listState = rememberLazyListState()
+    // Mirrors AppLogger.minLevel so the icon re-renders on toggle; the logger
+    // itself is a plain object and cannot notify Compose.
+    var logLevel by remember { mutableStateOf(AppLogger.minLevel) }
+    val verbose = logLevel == LogLevel.DEBUG
 
     val filteredLogs = remember(logs, selectedFilter) {
         when (selectedFilter) {
@@ -66,8 +74,12 @@ fun LogViewerScreen(
                 },
                 actions = {
                     IconButton(onClick = {
-                        val file = AppLogger.getLogFile()
-                        if (file != null && file.exists()) {
+                        scope.launch {
+                            val file = AppLogger.exportBundle()
+                            if (file == null || !file.exists()) {
+                                AppLogger.w("LogViewer", "No log files to export")
+                                return@launch
+                            }
                             try {
                                 val uri = FileProvider.getUriForFile(
                                     context,
@@ -75,17 +87,98 @@ fun LogViewerScreen(
                                     file
                                 )
                                 val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                    type = "text/plain"
+                                    // A bundle of several files is a zip now, so the
+                                    // MIME type has to match or receivers refuse it.
+                                    type = "application/zip"
                                     putExtra(Intent.EXTRA_STREAM, uri)
                                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                 }
                                 context.startActivity(Intent.createChooser(shareIntent, context.getString(R.string.log_share_title)))
                             } catch (e: Exception) {
-                                AppLogger.e("LogViewer", "Failed to share log file", e)
+                                AppLogger.e("LogViewer", "Failed to share log bundle", e)
                             }
                         }
                     }) {
                         Icon(Icons.Default.Share, contentDescription = stringResource(R.string.log_share_description))
+                    }
+                    // Verbosity switch: the streaming camera writes enough lines to
+                    // matter for heat and storage. INFO is the quiet default users
+                    // can drop to; DEBUG (the startup value) keeps everything.
+                    var showVerbosityMenu by remember { mutableStateOf(false) }
+                    Box {
+                        IconButton(onClick = { showVerbosityMenu = true }) {
+                            Icon(
+                                imageVector = Icons.Default.BugReport,
+                                contentDescription = stringResource(R.string.log_level_menu_title),
+                                tint = if (verbose) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showVerbosityMenu,
+                            onDismissRequest = { showVerbosityMenu = false },
+                            modifier = Modifier.widthIn(min = 260.dp)
+                        ) {
+                            DropdownMenuItem(
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+                                text = {
+                                    Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                                        Text(
+                                            text = stringResource(R.string.log_level_debug_title),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = if (verbose) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                        Spacer(modifier = Modifier.height(3.dp))
+                                        Text(
+                                            text = stringResource(R.string.log_level_debug_desc),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                },
+                                leadingIcon = {
+                                    RadioButton(
+                                        selected = verbose,
+                                        onClick = null
+                                    )
+                                },
+                                onClick = {
+                                    AppLogger.minLevel = LogLevel.DEBUG
+                                    logLevel = LogLevel.DEBUG
+                                    showVerbosityMenu = false
+                                }
+                            )
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+                            DropdownMenuItem(
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+                                text = {
+                                    Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                                        Text(
+                                            text = stringResource(R.string.log_level_info_title),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = if (!verbose) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                        Spacer(modifier = Modifier.height(3.dp))
+                                        Text(
+                                            text = stringResource(R.string.log_level_info_desc),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                },
+                                leadingIcon = {
+                                    RadioButton(
+                                        selected = !verbose,
+                                        onClick = null
+                                    )
+                                },
+                                onClick = {
+                                    AppLogger.minLevel = LogLevel.INFO
+                                    logLevel = LogLevel.INFO
+                                    showVerbosityMenu = false
+                                }
+                            )
+                        }
                     }
                     IconButton(onClick = { AppLogger.clearLogs() }) {
                         Icon(Icons.Default.DeleteSweep, contentDescription = stringResource(R.string.log_clear_description))

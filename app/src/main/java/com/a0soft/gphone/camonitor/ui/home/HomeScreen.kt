@@ -495,8 +495,9 @@ fun HomeScreen(
                 ) {
                     val options = listOf(
                         LocaleHelper.LANGUAGE_FOLLOW_SYSTEM to stringResource(R.string.language_system_default),
-                        LocaleHelper.LANGUAGE_EN to stringResource(R.string.language_english),
+                        LocaleHelper.LANGUAGE_ZH_CN to stringResource(R.string.language_simplified_chinese),
                         LocaleHelper.LANGUAGE_ZH_TW to stringResource(R.string.language_traditional_chinese),
+                        LocaleHelper.LANGUAGE_EN to stringResource(R.string.language_english),
                         LocaleHelper.LANGUAGE_JA to stringResource(R.string.language_japanese)
                     )
 

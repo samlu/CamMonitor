@@ -29,6 +29,25 @@ class LocaleHelperInstrumentedTest {
     }
 
     @Test
+    fun testSwitchToSimplifiedChineseUpdatesApplicationStrings() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            LocaleHelper.setLanguage(context, LocaleHelper.LANGUAGE_ZH_CN)
+        }
+
+        // Verify tag
+        val currentTag = LocaleHelper.getCurrentLanguageTag(context)
+        assertEquals(LocaleHelper.LANGUAGE_ZH_CN, currentTag)
+
+        // Verify Application instance string retrieval resolves to Simplified Chinese
+        val app = CamMonitorApp.instance
+        assertEquals("系统日志", app.getString(R.string.system_logs))
+        assertEquals("启动镜头模式", app.getString(R.string.start_camera_mode))
+        assertEquals("启动观看模式", app.getString(R.string.start_viewer_mode))
+        assertEquals("已配对设备", app.getString(R.string.paired_devices))
+        assertEquals("返回", app.getString(R.string.action_back))
+    }
+
+    @Test
     fun testSwitchToTraditionalChineseUpdatesApplicationStrings() {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             LocaleHelper.setLanguage(context, LocaleHelper.LANGUAGE_ZH_TW)

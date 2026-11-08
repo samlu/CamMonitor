@@ -142,13 +142,23 @@ Every signaling envelope sent over the public MQTT broker is structured as:
   `context.filesDir/logs/cammonitor.log`
   *(Protected from world/MTP access on Android 9+; accessible through the in-app log viewer and system share sheet).*
   * Any legacy external logs under `context.getExternalFilesDir("logs")` are automatically purged on startup.
-* **Thread-Safe StateFlow:** In-memory diagnostic logs are updated atomically using a Compare-And-Swap (CAS) loop via `_logsFlow.update { ... }`.
+* **Thread-Safe StateFlow:** In-memory diagnostic logs are buffered in a bounded circular buffer (max 500 entries) and published throttled (every 300 ms) to `_logsFlow` to prevent GC churn during heavy logging bursts. On process startup, the tail (up to 200 lines / 64 KB) of the previous on-disk log is preloaded into the buffer, preserving cross-session diagnostic history directly in the in-app Log Viewer after process restarts, kills, or crashes.
 * **Rolling Policy:**
-  * Max file size: **2 MB** per file.
-  * File rotation: Keeps up to **3 rolling backups** (`cammonitor.log`, `cammonitor.1.log`, `cammonitor.2.log`).
-  * Total disk budget: Capped at **~6 MB** maximum.
+  * Max file size: **8 MB** per file.
+  * File rotation: Keeps up to **5 rolling backups** (`cammonitor.log`, `cammonitor.1.log` … `cammonitor.5.log`).
+  * Total disk budget: Capped at **~48 MB** maximum. The previous 2 MB × 4 policy held roughly eleven hours, so an overnight failure overwrote its own evidence.
+  * Log Bundle Export: Exports a consolidated zip archive (`cammonitor-logs.zip`) containing the active log and all available rolling backup files via Android Share Sheet (`application/zip`).
+* **Write Path:**
+  * Entries are funnelled through a bounded `Channel` (capacity 4096) into a single writer coroutine holding a long-lived `BufferedWriter`, flushed every **32 lines** or after **1 s** idle. The previous implementation opened, wrote and closed the file once per line.
+  * `minLevel` filters what reaches the file (toggleable between `DEBUG` and `INFO` in the Log Viewer); mandatory entries (session markers, crash traces) bypass the filter.
 * **Log Entry Format:**
-  `[2026-10-12 17:20:01.432] [INFO] [WebRTCManager] ICE connection state changed: CONNECTED`
+  `[2026-10-12 17:20:01.432 +12.3s] [INFO] [WebRtcManager] {webrtc-signaling} ICE connection state changed: CONNECTED`
+  * The elapsed offset (`+12.3s`) is monotonic time relative to process start, immune to NTP jumps and timezone shifts, making stalls or gaps immediately visible.
+  * The thread name is recorded per entry (`{thread}`) to distinguish interleaved audio, signaling, camera, and UI threads.
+* **Session Boundaries:**
+  * `===== SESSION START pid=... =====` / `===== SESSION END (reason) =====` bracket each run.
+  * On startup, the previous run's tail (last 4 KB) is inspected for clean termination. If missing, a warning is logged indicating ungraceful termination (system kill, force stop, or crash).
+  * An `UncaughtExceptionHandler` synchronously writes fatal crash stack traces directly to disk (`appendSync`), bypassing coroutine queues to ensure persistence before process death.
 
 ### 3.2 Key Events Logged
 1. **Signaling & MQTT:**
@@ -444,8 +454,9 @@ Every signaling envelope sent over the public MQTT broker is structured as:
 * **Top Bar:**
   * Title: `"System Logs"` (HeadlineSmall).
   * Navigation icon: Back arrow.
-  * Action 1: `IconButton(Icons.Default.Share)` $\to$ Triggers Android Share Sheet with `cammonitor.log` attached via `FileProvider`.
-  * Action 2: `IconButton(Icons.Default.DeleteSweep)` $\to$ Clears current log file with confirmation.
+  * Action 1: `IconButton(Icons.Default.Share)` $\to$ Triggers Android Share Sheet exporting `cammonitor-logs.zip` (active and rolling backup files) via `FileProvider` (`application/zip`).
+  * Action 2: `IconButton(Icons.Default.BugReport)` $\to$ Opens a `DropdownMenu` log verbosity selector allowing users to choose between `Verbose (DEBUG)` (full diagnostic details) and `Standard (INFO)` (filters out debug logs to reduce thermal load and disk usage).
+  * Action 3: `IconButton(Icons.Default.DeleteSweep)` $\to$ Clears current in-memory buffer and on-disk log files.
 * **Filter Row:**
   * Filter chips: `[ALL]`, `[INFO]`, `[WARN]`, `[ERROR]`, `[WebRTC]`, `[MQTT]`.
 * **Log List:**
@@ -474,6 +485,13 @@ Every signaling envelope sent over the public MQTT broker is structured as:
     * Label: `"View on GitHub"` (`Button` with `Icons.Default.OpenInNew`).
     * Triggers external `Intent.ACTION_VIEW` targeting `https://github.com/samlu/CamMonitor`.
   * Plaintext Repository URL display (`BodySmall`, muted outline color).
+* **Contributors Card (`ElevatedCard`):**
+  * Bundled static list of repository contributors with localized contribution domains:
+    * `samlu` (`@samlu`): Creator & Core Maintainer (`about_contributor_samlu_role`).
+    * `OWWhale` (`@OWWhale`): Logging Pipeline, Camera Engine & i18n (`about_contributor_owwhale_role`).
+    * `Ikko Eltociear Ashimine` (`@eltociear`): Japanese Localization (`about_contributor_eltociear_role`).
+  * Each contributor row displays an initial avatar, GitHub handle, localized contribution description, and external link icon directing to their GitHub profile.
+  * External Link Button: `"View All Contributors on GitHub"` targeting `https://github.com/samlu/CamMonitor/graphs/contributors`.
 
 ---
 
@@ -491,6 +509,7 @@ flowchart LR
 ### 6.1 Media Engine & Transport
 * **Video Pipeline:** CameraX (`CameraXVideoCapturer`) $\to$ `Preview` Use Case $\to$ WebRTC `SurfaceTextureHelper` $\to$ Hardware H.264 / VP8 encoder.
   * Default resolution: 1280x720 (720p).
+  * **Sensor-space resolution selection:** CameraX `Size` values are always landscape (sensor coordinates), independent of how the device is held. The request is normalised to `max(w,h) x min(w,h)` and screen orientation is applied through `targetRotation`; swapping for portrait produces `Size(720,1280)`, which matches no 16:9 candidate and silently degrades to a much lower resolution. `FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER` avoids selecting the sensor maximum (e.g. 3264x1840) for a stream capped at 720p.
   * Target frame rate: 20 FPS.
   * Target bitrate: ~1.5 Mbps, dynamic down to 500 Kbps on packet loss.
   * **Dynamic Night Mode Extension (`ExtensionMode.NIGHT`):**
@@ -591,13 +610,19 @@ flowchart LR
 
 ### 7.4 Per-App Language Preferences & Internationalization (i18n)
 * **Supported Languages:**
-  * **English (`en`):** Default resources declared in `res/values/strings.xml`.
+  * **English (`en`):** Default resources in `res/values/strings.xml`.
+  * **Simplified Chinese (`zh-CN` / `zh-Hans`):** Script-qualified resources in `res/values-b+zh+Hans/strings.xml`.
   * **Traditional Chinese (`zh-TW` / `zh-Hant`):** Script-qualified resources in `res/values-b+zh+Hant/strings.xml`.
+  * **Japanese (`ja`):** `res/values-ja/strings.xml`.
+  * The default resource set must stay English. Chinese in `values/` makes every unmatched locale fall back to Chinese, which is worse than an untranslated string.
 * **Resource Qualifier Architecture:**
-  * Uses the BCP-47 script qualifier `values-b+zh+Hant/` exclusively instead of regional qualifiers (`values-zh-rTW/`). On Android 9+ (`minSdk = 28`), BCP-47 matching automatically resolves Traditional Chinese strings for users across Taiwan (`zh-TW`), Hong Kong (`zh-HK`), Macau (`zh-MO`), and generic Traditional Chinese setups without duplicating XML files.
-* **Dual Language Configuration Surfaces:**
-  1. **System "App languages" Setting (Android 13+ / API 33+):** Configured via `android:localeConfig="@xml/locales_config"` in `AndroidManifest.xml` with `<locale-config>` declaring `en` and `zh-TW`.
-  2. **In-App Language Picker:** Dropdown selector located directly in the Home Screen top app bar (`Icons.Default.Language`) enabling instant switching between `"Follow System"`, `"English"`, and `"繁體中文"`.
+  * Uses BCP-47 script qualifiers (`values-b+zh+Hans/`, `values-b+zh+Hant/`) instead of regional ones (`values-zh-rTW/`). On Android 9+ (`minSdk = 28`), BCP-47 matching resolves the correct script for `zh-CN`, `zh-SG`, `zh-Hans`, `zh-TW`, `zh-HK` and `zh-MO` without duplicating XML files.
+* **Chinese Tag Normalisation (`LocaleHelper.normalizeChineseTag`):**
+  * Every Chinese tag maps to exactly one script variant: a `hant` subtag, or a `-TW` / `-HK` / `-MO` region, resolves to Traditional; everything else (`zh`, `zh-CN`, `zh-SG`, `zh-Hans`) resolves to Simplified.
+  * Collapsing all `zh*` tags to `zh-TW` — the previous behaviour — makes Simplified unreachable on mainland devices even when the resources are present.
+* **Language Configuration Surfaces:**
+  1. **System "App languages" Setting (Android 13+ / API 33+):** Configured via `android:localeConfig="@xml/locales_config"`. `<locale-config>` must list all four tags (`en`, `zh-CN`, `zh-TW`, `ja`); a missing entry hides the language from the system picker even though the strings exist.
+  2. **In-App Language Picker:** Home Screen top app bar (`Icons.Default.Language`), offering `"Follow System"`, `"简体中文"`, `"繁體中文"`, `"English"` and `"日本語"`.
 * **Dynamic Application & Service Locale Propagation (`LocaleHelper`):**
   * Android's standard `AppCompatDelegate.setApplicationLocales()` and `LocaleManager.setApplicationLocales()` recreate UI activities, but do not automatically refresh the process-level `Application` singleton or background Services.
   * To guarantee that string resource lookups through `CamMonitorApp.instance.getString(...)` and `CameraMonitorService` foreground notifications resolve immediately to the selected language:
