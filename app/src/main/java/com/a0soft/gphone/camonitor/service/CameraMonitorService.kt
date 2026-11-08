@@ -1,5 +1,6 @@
 package com.a0soft.gphone.camonitor.service
 
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.Service
 import android.content.Context
@@ -29,7 +30,7 @@ enum class CameraStreamingState {
     IDLE,
     WAITING_FOR_VIEWERS,
     STREAMING,
-    PAUSED_INACTIVITY // Paused after 60s of 0 viewers
+    PAUSED_INACTIVITY // Paused after 15s of 0 viewers
 }
 
 class CameraMonitorService : Service() {
@@ -37,6 +38,16 @@ class CameraMonitorService : Service() {
         @Volatile
         var isRunning: Boolean = false
             private set
+
+        /**
+         * How long the sensor keeps running after the last viewer leaves.
+         *
+         * Was 60s. The camera plus encoder is the hottest thing on the device, so
+         * idling for a full minute after nobody is watching wastes real power for
+         * no benefit: a returning viewer triggers CameraWaking and the sensor is
+         * re-opened in ~1-2s anyway.
+         */
+        const val NO_VIEWER_PAUSE_MS = 15_000L
     }
 
     private val tag = "CameraMonitorService"
@@ -60,6 +71,17 @@ class CameraMonitorService : Service() {
 
     private var inactivityJob: Job? = null
     private var batteryBroadcastJob: Job? = null
+
+    /**
+     * Camera recovery bookkeeping.
+     *
+     * A camera that keeps dying (sensor grabbed by another app, HAL stuck) must not
+     * be restarted in a tight loop — that heats the device and burns battery
+     * without ever producing a picture. Back off exponentially and give up after a
+     * few attempts; the next viewer connection resets the counter.
+     */
+    private var cameraRecoveryAttempts = 0
+    private var cameraRecoveryJob: Job? = null
 
     inner class LocalBinder : Binder() {
         fun getService(): CameraMonitorService = this@CameraMonitorService
@@ -102,13 +124,24 @@ class CameraMonitorService : Service() {
         com.a0soft.gphone.camonitor.ui.common.LocaleHelper.applyCurrentLocale(this)
     }
 
+    /**
+     * Holds a CPU wake lock for the whole lifetime of the streaming service.
+     *
+     * Deliberately unbounded: the previous acquire(24h) silently expired after a
+     * day, and an expired wake lock produces no callback and no log — the service
+     * kept running while the CPU was free to suspend, which is indistinguishable
+     * from "the camera app randomly stops responding". The lock now mirrors the
+     * WifiLock (also unbounded) and is released in onDestroy; if the process is
+     * killed the system reclaims it anyway.
+     */
+    @SuppressLint("WakelockTimeout")
     private fun acquireWakeLock() {
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "CamMonitor:StreamingWakeLock").apply {
             setReferenceCounted(false)
-            acquire(24 * 60 * 60 * 1000L) // 24 hours max safety
+            acquire()
         }
-        AppLogger.d(tag, "Partial WakeLock acquired")
+        AppLogger.i(tag, "Partial WakeLock acquired (unbounded, released on destroy)")
     }
 
     @Suppress("DEPRECATION")
@@ -170,14 +203,10 @@ class CameraMonitorService : Service() {
         updateNotification(getString(R.string.notification_waiting_for_viewers))
 
         app.webRtcManager.onCameraUnexpectedClosed = {
-            serviceScope.launch {
-                if (_streamingState.value == CameraStreamingState.STREAMING ||
-                    _streamingState.value == CameraStreamingState.WAITING_FOR_VIEWERS
-                ) {
-                    AppLogger.w(tag, "Unexpected camera closure detected, attempting recovery restart in 1s...")
-                    delay(1000L)
-                    app.webRtcManager.startCameraCapture()
-                }
+            if (_streamingState.value == CameraStreamingState.STREAMING ||
+                _streamingState.value == CameraStreamingState.WAITING_FOR_VIEWERS
+            ) {
+                scheduleCameraRecovery(app)
             }
         }
 
@@ -236,8 +265,44 @@ class CameraMonitorService : Service() {
         viewersCountJob = null
         cancelInactivityTimer()
         stopBatteryBroadcast()
+        resetCameraRecovery()
         _streamingState.value = CameraStreamingState.IDLE
         CamMonitorApp.instance.webRtcManager.stopCameraCapture()
+    }
+
+    /**
+     * Restarts the camera pipeline with exponential backoff.
+     *
+     * Attempt n waits 1s, 2s, 4s, 8s … capped at 20s, and the loop stops after 5
+     * consecutive failures (≈30s of trying). A new viewer Offer resets the counter,
+     * so a user who walks back in always gets a fresh set of attempts.
+     */
+    private fun scheduleCameraRecovery(app: CamMonitorApp) {
+        if (cameraRecoveryJob?.isActive == true) {
+            AppLogger.i(tag, "Camera recovery already scheduled; ignoring duplicate request")
+            return
+        }
+        if (cameraRecoveryAttempts >= 5) {
+            AppLogger.w(tag, "Camera recovery aborted: 5 consecutive failures (waiting for a new viewer)")
+            return
+        }
+        val attempt = cameraRecoveryAttempts
+        val delayMs = (1_000L shl attempt.coerceAtMost(5)).coerceAtMost(20_000L)
+        cameraRecoveryAttempts = attempt + 1
+        cameraRecoveryJob = serviceScope.launch {
+            AppLogger.w(tag, "Camera lost — recovery attempt ${attempt + 1}/5 in ${delayMs}ms")
+            delay(delayMs)
+            app.webRtcManager.startCameraCapture()
+        }
+    }
+
+    private fun resetCameraRecovery() {
+        if (cameraRecoveryAttempts != 0) {
+            AppLogger.i(tag, "Camera recovery counter reset (was ${cameraRecoveryAttempts})")
+        }
+        cameraRecoveryAttempts = 0
+        cameraRecoveryJob?.cancel()
+        cameraRecoveryJob = null
     }
 
     private fun startBatteryBroadcast() {
@@ -263,9 +328,9 @@ class CameraMonitorService : Service() {
     private fun startInactivityTimer() {
         inactivityJob?.cancel()
         inactivityJob = serviceScope.launch {
-            AppLogger.i(tag, "Inactivity timer started: 60s countdown until camera pause")
-            delay(60_000L) // 1 minute
-            AppLogger.i(tag, "0 viewers for 60s: Stopping camera and pausing")
+            AppLogger.i(tag, "Inactivity timer started: ${NO_VIEWER_PAUSE_MS / 1000}s countdown until camera pause")
+            delay(NO_VIEWER_PAUSE_MS)
+            AppLogger.i(tag, "0 viewers for ${NO_VIEWER_PAUSE_MS / 1000}s: Stopping camera and pausing")
             CamMonitorApp.instance.webRtcManager.stopCameraCapture()
             _streamingState.value = CameraStreamingState.PAUSED_INACTIVITY
             updateNotification(getString(R.string.notification_standby_waiting))
@@ -279,6 +344,7 @@ class CameraMonitorService : Service() {
 
     fun resumeStreamingFromPause() {
         AppLogger.i(tag, "Resuming camera streaming from pause state")
+        resetCameraRecovery()
         CamMonitorApp.instance.webRtcManager.startCameraCapture()
         _streamingState.value = CameraStreamingState.WAITING_FOR_VIEWERS
         startInactivityTimer()
@@ -328,6 +394,8 @@ class CameraMonitorService : Service() {
 
         // Cancel previous inactivity countdown so old timer does not kill camera mid-handshake
         cancelInactivityTimer()
+        // A fresh connection is a fresh chance for the camera pipeline.
+        resetCameraRecovery()
 
         // Fast pre-answer ACK when camera sensor is sleeping/inactive so viewer knows camera is waking up
         val isWakingSensor = _streamingState.value == CameraStreamingState.PAUSED_INACTIVITY ||

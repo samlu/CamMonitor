@@ -53,7 +53,7 @@
     <string name="camera_black_screen">Black Screen</string>
     <string name="camera_exit_button">Exit Camera</string>
     <string name="camera_paused_title">Camera Paused</string>
-    <string name="camera_paused_description">No viewers connected for 1 minute. Camera sensor stopped to preserve battery. Standby mode active — camera will automatically wake up when a viewer connects.</string>
+    <string name="camera_paused_description">No viewers connected for 15 seconds. Camera sensor stopped to preserve battery. Standby mode active — camera will automatically wake up when a viewer connects.</string>
 
     <!-- Viewer Mode Screen -->
     <string name="camera_default_name">Camera</string>
