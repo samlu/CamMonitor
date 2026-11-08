@@ -233,4 +233,22 @@ class ModelSerializationTest {
         rotation = (rotation + 90f) % 360f
         assertEquals(0f, rotation, 0.01f)
     }
+
+    @Test
+    fun testLogEntryFormat() {
+        val entry = com.a0soft.gphone.camonitor.data.model.LogEntry(
+            timestamp = 1731039280123L,
+            level = com.a0soft.gphone.camonitor.data.model.LogLevel.INFO,
+            tag = "WebRtcManager",
+            message = "ICE connection state changed: CONNECTED",
+            elapsedMs = 12345L,
+            thread = "webrtc-signaling"
+        )
+        val formatted = entry.format()
+        assertTrue(formatted.contains("+12.3s"))
+        assertTrue(formatted.contains("[INFO]"))
+        assertTrue(formatted.contains("[WebRtcManager]"))
+        assertTrue(formatted.contains("{webrtc-signaling}"))
+        assertTrue(formatted.contains("ICE connection state changed: CONNECTED"))
+    }
 }

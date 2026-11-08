@@ -432,7 +432,7 @@ data class LogEntry(
     val thread: String = ""
 ) {
     fun format(): String {
-        val time = FORMATTER.get()!!.format(java.util.Date(timestamp))
+        val time = FORMATTER.format(java.time.Instant.ofEpochMilli(timestamp))
         val rel = String.format(java.util.Locale.US, "%.1fs", elapsedMs / 1000.0)
         val threadPart = if (thread.isEmpty()) "" else " {$thread}"
         return "[$time +$rel] [${level.name}] [$tag]$threadPart $message"
@@ -440,15 +440,11 @@ data class LogEntry(
 
     companion object {
         /**
-         * SimpleDateFormat is not thread-safe and constructing one per line was
-         * measurably wasteful (every one of the ~400 call sites paid for it).
-         * A ThreadLocal keeps one instance per writer thread instead.
+         * DateTimeFormatter is immutable and thread-safe (minSdk = 28),
+         * avoiding ThreadLocal lifecycle management and Date allocation.
          */
-        private val FORMATTER = object : ThreadLocal<java.text.SimpleDateFormat>() {
-            override fun initialValue() = java.text.SimpleDateFormat(
-                "yyyy-MM-dd HH:mm:ss.SSS",
-                java.util.Locale.US
-            )
-        }
+        private val FORMATTER = java.time.format.DateTimeFormatter
+            .ofPattern("yyyy-MM-dd HH:mm:ss.SSS", java.util.Locale.US)
+            .withZone(java.time.ZoneId.systemDefault())
     }
 }

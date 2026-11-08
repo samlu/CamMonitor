@@ -134,6 +134,8 @@
     <!-- Log Viewer Screen -->
     <string name="log_share_title">分享 CamMonitor 日志</string>
     <string name="log_share_description">分享日志</string>
+    <string name="log_level_verbose">详细日志已开启（含调试信息）</string>
+    <string name="log_level_normal">标准日志（轻触开启详细日志）</string>
     <string name="log_clear_description">清除日志</string>
     <string name="log_filter_all">全部</string>
 

@@ -142,22 +142,23 @@ Every signaling envelope sent over the public MQTT broker is structured as:
   `context.filesDir/logs/cammonitor.log`
   *(Protected from world/MTP access on Android 9+; accessible through the in-app log viewer and system share sheet).*
   * Any legacy external logs under `context.getExternalFilesDir("logs")` are automatically purged on startup.
-* **Thread-Safe StateFlow:** In-memory diagnostic logs are updated atomically using a Compare-And-Swap (CAS) loop via `_logsFlow.update { ... }`.
+* **Thread-Safe StateFlow:** In-memory diagnostic logs are buffered in a bounded circular buffer (max 500 entries) and published throttled (every 300 ms) to `_logsFlow` to prevent GC churn during heavy logging bursts. On process startup, the tail (up to 200 lines / 64 KB) of the previous on-disk log is preloaded into the buffer, preserving cross-session diagnostic history directly in the in-app Log Viewer after process restarts, kills, or crashes.
 * **Rolling Policy:**
   * Max file size: **8 MB** per file.
   * File rotation: Keeps up to **5 rolling backups** (`cammonitor.log`, `cammonitor.1.log` … `cammonitor.5.log`).
   * Total disk budget: Capped at **~48 MB** maximum. The previous 2 MB × 4 policy held roughly eleven hours, so an overnight failure overwrote its own evidence.
+  * Log Bundle Export: Exports a consolidated zip archive (`cammonitor-logs.zip`) containing the active log and all available rolling backup files via Android Share Sheet (`application/zip`).
 * **Write Path:**
   * Entries are funnelled through a bounded `Channel` (capacity 4096) into a single writer coroutine holding a long-lived `BufferedWriter`, flushed every **32 lines** or after **1 s** idle. The previous implementation opened, wrote and closed the file once per line.
-  * `minLevel` filters what reaches the file; mandatory entries (session markers, crash traces) bypass the filter.
+  * `minLevel` filters what reaches the file (toggleable between `DEBUG` and `INFO` in the Log Viewer); mandatory entries (session markers, crash traces) bypass the filter.
 * **Log Entry Format:**
-  `[2026-10-12 17:20:01.432] [+12.345s] [INFO] [WebRtcManager] [webrtc-signaling] ICE connection state changed: CONNECTED`
-  * The elapsed offset is relative to process start, so a stall reads as a gap in the numbers instead of requiring arithmetic across wall-clock timestamps.
-  * The thread name is recorded per entry. Without it, audio, signaling and camera work interleave in one file and cannot be told apart.
+  `[2026-10-12 17:20:01.432 +12.3s] [INFO] [WebRtcManager] {webrtc-signaling} ICE connection state changed: CONNECTED`
+  * The elapsed offset (`+12.3s`) is monotonic time relative to process start, immune to NTP jumps and timezone shifts, making stalls or gaps immediately visible.
+  * The thread name is recorded per entry (`{thread}`) to distinguish interleaved audio, signaling, camera, and UI threads.
 * **Session Boundaries:**
-  * `=== SESSION START ===` / `=== SESSION END ===` bracket every run.
-  * On startup the previous run's tail (last 4 KB) is echoed into the new file, so a process that was killed rather than crashed still leaves its final state visible.
-  * An `UncaughtExceptionHandler` appends `=== SESSION END === (crash)` with the stack trace.
+  * `===== SESSION START pid=... =====` / `===== SESSION END (reason) =====` bracket each run.
+  * On startup, the previous run's tail (last 4 KB) is inspected for clean termination. If missing, a warning is logged indicating ungraceful termination (system kill, force stop, or crash).
+  * An `UncaughtExceptionHandler` synchronously writes fatal crash stack traces directly to disk (`appendSync`), bypassing coroutine queues to ensure persistence before process death.
 
 ### 3.2 Key Events Logged
 1. **Signaling & MQTT:**

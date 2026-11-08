@@ -135,6 +135,10 @@ object AppLogger {
 
         installCrashHandler()
 
+        // Preload recent tail lines from disk into uiBuffer so the in-app Log Viewer
+        // retains context across process restarts, kills, and crashes.
+        preloadTailToUiBuffer()
+
         logScope.launch { writerLoop() }
 
         // Read the previous run's tail BEFORE appending the new header, so the
@@ -412,6 +416,97 @@ object AppLogger {
     }
 
     // --------------------------------------------------------- crash & session
+
+    private val LOG_LINE_REGEX = Regex(
+        """^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})(?: \+([0-9.]+)s)?\] \[([A-Z]+)\] \[([^\]]+)\](?: \{([^}]+)\})?(?: (.*))?${'$'}"""
+    )
+
+    /**
+     * Seeds [uiBuffer] with the tail of the previous on-disk log file so the in-app
+     * Log Viewer retains diagnostic history across process restarts, kills, or crashes.
+     */
+    private fun preloadTailToUiBuffer(maxLines: Int = 200) {
+        val dir = logDir ?: return
+        val active = activeLogFile ?: return
+        val fileToRead = if (active.exists() && active.length() > 0L) {
+            active
+        } else {
+            val backup1 = File(dir, "cammonitor.1.log")
+            if (backup1.exists() && backup1.length() > 0L) backup1 else null
+        } ?: return
+
+        try {
+            RandomAccessFile(fileToRead, "r").use { raf ->
+                val length = raf.length()
+                val window = minOf(length, 65536L).toInt() // Read up to last 64 KB
+                raf.seek(length - window)
+                val bytes = ByteArray(window)
+                raf.readFully(bytes)
+                var text = String(bytes, Charsets.UTF_8)
+                if (window.toLong() < length) {
+                    val firstNewline = text.indexOf('\n')
+                    if (firstNewline != -1 && firstNewline < text.length - 1) {
+                        text = text.substring(firstNewline + 1)
+                    }
+                }
+                val rawLines = text.lines()
+                val tailLines = if (rawLines.size > maxLines) rawLines.takeLast(maxLines) else rawLines
+
+                for (line in tailLines) {
+                    if (line.isBlank()) continue
+                    val match = LOG_LINE_REGEX.matchEntire(line)
+                    if (match != null) {
+                        val timeStr = match.groups[1]?.value
+                        val relStr = match.groups[2]?.value
+                        val levelStr = match.groups[3]?.value ?: "INFO"
+                        val tagStr = match.groups[4]?.value ?: "Log"
+                        val threadStr = match.groups[5]?.value ?: ""
+                        val messageStr = match.groups[6]?.value ?: ""
+
+                        val ts = if (timeStr != null) {
+                            try {
+                                java.time.LocalDateTime.parse(
+                                    timeStr,
+                                    java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS", java.util.Locale.US)
+                                ).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+                            } catch (_: Exception) {
+                                System.currentTimeMillis()
+                            }
+                        } else {
+                            System.currentTimeMillis()
+                        }
+                        val elapsedMs = (relStr?.toDoubleOrNull()?.times(1000.0))?.toLong() ?: 0L
+                        val level = try {
+                            LogLevel.valueOf(levelStr)
+                        } catch (_: Exception) {
+                            LogLevel.INFO
+                        }
+
+                        uiBuffer.addLast(
+                            LogEntry(
+                                timestamp = ts,
+                                level = level,
+                                tag = tagStr,
+                                message = messageStr,
+                                elapsedMs = elapsedMs,
+                                thread = threadStr
+                            )
+                        )
+                    } else if (uiBuffer.isNotEmpty()) {
+                        // Multi-line stacktrace or message continuation
+                        val prev = uiBuffer.removeLast()
+                        uiBuffer.addLast(prev.copy(message = prev.message + "\n" + line))
+                    }
+                }
+                while (uiBuffer.size > MAX_MEMORY_LOGS) {
+                    uiBuffer.removeFirst()
+                }
+                publishUiLocked()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to preload log tail into UI buffer", e)
+        }
+    }
 
     /**
      * Reads the tail of the previous file looking for the shutdown marker.

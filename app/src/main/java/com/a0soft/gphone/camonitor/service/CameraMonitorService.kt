@@ -33,6 +33,12 @@ enum class CameraStreamingState {
 }
 
 class CameraMonitorService : Service() {
+    companion object {
+        @Volatile
+        var isRunning: Boolean = false
+            private set
+    }
+
     private val tag = "CameraMonitorService"
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
@@ -82,6 +88,7 @@ class CameraMonitorService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        isRunning = true
         com.a0soft.gphone.camonitor.ui.common.LocaleHelper.applyCurrentLocale(this)
         AppLogger.i(tag, "CameraMonitorService created")
         acquireWakeLock()
@@ -502,6 +509,7 @@ class CameraMonitorService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        isRunning = false
         AppLogger.i(tag, "CameraMonitorService destroyed")
         stopStreaming()
         CamMonitorApp.instance.webRtcManager.onCameraUnexpectedClosed = null
