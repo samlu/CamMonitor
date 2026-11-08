@@ -104,7 +104,7 @@ fun CameraModeScreen(
         isLocked = false
         idleSeconds = 0
         showUnlockHint = false
-        unlockCooldownUntil = android.os.SystemClock.elapsedRealtime() + 3_000L
+        unlockCooldownUntil = android.os.SystemClock.elapsedRealtime() + BlackScreenUnlockPolicy.UNLOCK_COOLDOWN_MS
         AppLogger.i("CameraModeScreen", "Unlocked by swipe")
     }
 
@@ -112,7 +112,7 @@ fun CameraModeScreen(
     // hint would be a static bright element on an otherwise black screen.
     LaunchedEffect(showUnlockHint) {
         if (showUnlockHint) {
-            delay(1_500L)
+            delay(BlackScreenUnlockPolicy.HINT_DELAY_MS)
             showUnlockHint = false
         }
     }
@@ -217,7 +217,7 @@ fun CameraModeScreen(
             val insetsController = WindowCompat.getInsetsController(window, view)
             val params = window.attributes
             if (isLocked) {
-                params.screenBrightness = 0.01f
+                params.screenBrightness = BlackScreenUnlockPolicy.LOCKED_BRIGHTNESS
                 window.attributes = params
                 insetsController.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
                 insetsController.hide(WindowInsetsCompat.Type.systemBars())
@@ -225,7 +225,7 @@ fun CameraModeScreen(
                 // A monitoring device does not need a 100% panel: the preview is
                 // pure OLED emission and the display is one of the top three heat
                 // sources. 0.55 stays readable and still cuts a large share of it.
-                params.screenBrightness = 0.55f
+                params.screenBrightness = BlackScreenUnlockPolicy.UNLOCKED_BRIGHTNESS
                 window.attributes = params
                 insetsController.show(WindowInsetsCompat.Type.systemBars())
             }
@@ -292,16 +292,17 @@ fun CameraModeScreen(
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
                         showUnlockHint = true
-                        // 30% of the screen width, but never less than 120px:/n                        // a zero-width first layout must not turn any touch into an unlock.
-                        val needed = maxOf(size.width * 0.3f, 120f)
+                        // Threshold and accept/reject rule live in BlackScreenUnlockPolicy
+                        // so they can be unit-tested without a Compose test runner.
+                        // A zero-width first layout must not turn any touch into an unlock.
                         while (true) {
                             val event = awaitPointerEvent()
                             val change = event.changes.firstOrNull() ?: break
                             change.consume()
-                            val dx = kotlin.math.abs(change.position.x - down.position.x)
-                            val dy = kotlin.math.abs(change.position.y - down.position.y)
-                            val armed = android.os.SystemClock.elapsedRealtime() - lockArmedAt >= 300L
-                            if (armed && maxOf(dx, dy) >= needed) {
+                            val dx = change.position.x - down.position.x
+                            val dy = change.position.y - down.position.y
+                            val sinceLockMs = android.os.SystemClock.elapsedRealtime() - lockArmedAt
+                            if (BlackScreenUnlockPolicy.shouldUnlock(dx, dy, size.width.toFloat(), sinceLockMs)) {
                                 unlockFromGesture()
                                 break
                             }
