@@ -20,6 +20,75 @@ CamMonitor is a peer-to-peer camera monitoring Android application running acros
   * **Signaling:** Public TLS-encrypted MQTT broker (`broker.hivemq.com:8883` / `broker.emqx.io:8883`). All signaling payloads are authenticated and encrypted end-to-end.
   * **NAT Traversal Scope:** Uses Google Public STUN (`stun:stun.l.google.com:19302`) + LAN direct host candidates. Direct P2P connection works across LAN, port-restricted cone NATs, and WAN whenever at least one device has a non-symmetric NAT or a public IP. Symmetric-to-symmetric NAT across separate WAN networks is explicitly out of scope.
 
+### 1.1 Project Architecture & Tech Stack
+CamMonitor is a private, zero-account, peer-to-peer encrypted home surveillance monitor for Android devices (pairing a camera sender device with viewer receiver devices).
+
+* **Language & Runtime:** Kotlin 2.0.21, Java 17, Android Min SDK 28 (Android 9.0 Pie), Target SDK 37 (Android 17), Compile SDK 37.
+* **UI Framework:** Jetpack Compose with Material 3, Single-Activity architecture (`MainActivity.kt`).
+* **Media & Streaming:**
+  * **CameraX 1.4.0** (`androidx.camera:*`) for camera capture, sensor-space resolution mapping, and Night mode extensions.
+  * **WebRTC Android 1.2.2** (`io.getstream:stream-webrtc-android`) for low-latency P2P video/audio streaming and DataChannel messaging.
+* **Signaling:**
+  * **HiveMQ MQTT Client 1.3.3** (`com.hivemq:hivemq-mqtt-client`) connecting via TLS (port 8883) to a public MQTT broker.
+  * End-to-end payload encryption using AES-GCM-256 with pre-shared keys generated during QR code pairing.
+* **Security & Storage:**
+  * `androidx.security:security-crypto:1.1.0-alpha06` (`EncryptedSharedPreferences`).
+  * Android Keystore (`AndroidKeyStore`) with hardware-backed ECDSA NIST P-256 keys.
+* **Foreground Service:**
+  * `CameraMonitorService.kt` keeps streaming active in the background with WakeLock and WifiLock.
+
+### 1.2 Directory & File Map
+
+```text
+CamMonitor/
+├── AGENTS.md                                # Autonomous agent operational directives & working guide
+├── Specification.md                         # Authoritative product & technical specification
+├── README.md / README_TW.md / README_JA.md  # Multilingual public documentation
+├── app/
+│   ├── build.gradle.kts                     # App module configuration & dependencies
+│   └── src/
+│       ├── main/
+│       │   ├── AndroidManifest.xml          # Permissions, foreground services, activity
+│       │   ├── java/com/a0soft/gphone/camonitor/
+│       │   │   ├── CamMonitorApp.kt         # Application singleton & notification channel init
+│       │   │   ├── MainActivity.kt          # Compose host activity & navigation routing
+│       │   │   ├── data/
+│       │   │   │   ├── camera/
+│       │   │   │   │   ├── CameraXVideoCapturer.kt # CameraX binding, sensor mapping, Night extension
+│       │   │   │   │   └── TorchManager.kt  # Camera flashlight state & hardware control
+│       │   │   │   ├── model/Models.kt      # Domain data classes, signaling events, LogLevel
+│       │   │   │   ├── security/
+│       │   │   │   │   ├── CryptoUtils.kt   # ECDH, ECDSA, HKDF-SHA256, AES-GCM-256 operations
+│       │   │   │   │   └── SecurityRepository.kt # KeyStore management, paired devices CRUD, envelopes
+│       │   │   │   ├── signaling/
+│       │   │   │   │   └── SignalingClient.kt # HiveMQ MQTT TLS signaling & encrypted exchange
+│       │   │   │   └── webrtc/
+│       │   │   │       └── WebRtcManager.kt # WebRTC PeerConnection, SDP offer/answer, DataChannel
+│       │   │   ├── service/
+│       │   │   │   └── CameraMonitorService.kt # Sticky foreground streaming service & 15s standby
+│       │   │   ├── time/TimeProvider.kt     # Clock abstraction for deterministic coroutine tests
+│       │   │   ├── log/
+│       │   │   │   └── AppLogger.kt         # Ring-buffer UI logs, rolling disk files, zip export
+│       │   │   └── ui/
+│       │   │       ├── home/HomeScreen.kt           # Mode selection, pairing summaries, top bar
+│       │   │       ├── camera/CameraModeScreen.kt   # Camera mode preview, OLED blackout saver
+│       │   │       ├── viewer/ViewerModeScreen.kt   # WebRTC video surface, overlay controls
+│       │   │       ├── pairing/
+│       │   │       │   ├── CameraPairingScreen.kt   # Displays QR code (PA sender)
+│       │   │       │   └── ViewerPairingScreen.kt   # ZXing QR code scanner (PB receiver)
+│       │   │       ├── devices/ManageDevicesScreen.kt # Paired devices list & revocation
+│       │   │       ├── log/LogViewerScreen.kt       # In-app log viewer, filters, verbosity menu
+│       │   │       ├── about/AboutScreen.kt         # App version, license, contributors card
+│       │   │       ├── common/                      # AudioRouting, Battery, Locale, QR helpers
+│       │   │       └── theme/                       # Material3 Color & Theme definitions
+│       │   └── res/
+│       │       ├── values/strings.xml               # English / Default strings
+│       │       ├── values-b+zh+Hant/strings.xml     # Traditional Chinese (Taiwan)
+│       │       ├── values-b+zh+Hans/strings.xml     # Simplified Chinese
+│       │       └── values-ja/strings.xml            # Japanese
+│       └── test/java/com/a0soft/gphone/camonitor/   # Comprehensive JUnit tests
+```
+
 ---
 
 ## 2. Security Architecture & Access Control

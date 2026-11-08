@@ -6,14 +6,15 @@ Welcome to **CamMonitor**. This guide serves as the definitive reference for aut
 
 ## 1. Core Operating Directives
 
-1. **Concrete Implementations Only**:
+1. **Mandatory Specification Review**:
+   - [`Specification.md`](file:///E:/Antigravity/CamMonitor/Specification.md) is the **single authoritative source of truth** for CamMonitor's architecture, tech stack, directory structure, security protocols, data models, and UI flows.
+   - Before designing, implementing, refactoring, or reviewing any code, agents **MUST read `Specification.md`** to fully understand the project architecture and domain constraints.
+   - Any architectural change, UI adjustment, protocol update, or new feature MUST be reflected in [`Specification.md`](file:///E:/Antigravity/CamMonitor/Specification.md).
+2. **Concrete Implementations Only**:
    - Never provide vague or high-level hand-waving. Provide exact code, file paths, diffs, and precise terminal commands.
    - Preserve existing code comments, docstrings, and formatting conventions unless explicitly asked to modify them.
-2. **Strict Commit & Push Policy**:
+3. **Strict Commit & Push Policy**:
    - **NEVER** execute `git commit` or `git push` automatically. Always ask or wait for explicit user approval before committing or pushing.
-3. **Specification & Documentation Parity**:
-   - CamMonitor maintains a single source of truth: [`Specification.md`](file:///E:/Antigravity/CamMonitor/Specification.md).
-   - Any architectural change, UI adjustment, protocol update, or new feature MUST be reflected in [`Specification.md`](file:///E:/Antigravity/CamMonitor/Specification.md).
 4. **Multilingual README Synchronization**:
    - Whenever user workflows, pairing procedures, UI controls, runtime permissions, or feature behaviors change, immediately update all public README files: [`README.md`](file:///E:/Antigravity/CamMonitor/README.md) (English), [`README_TW.md`](file:///E:/Antigravity/CamMonitor/README_TW.md) (Traditional Chinese), and [`README_JA.md`](file:///E:/Antigravity/CamMonitor/README_JA.md) (Japanese).
    - Keep feature descriptions, operational steps, and localized terminology aligned across all three documents.
@@ -24,80 +25,7 @@ Welcome to **CamMonitor**. This guide serves as the definitive reference for aut
 
 ---
 
-## 2. Project Architecture & Tech Stack
-
-CamMonitor is a private, zero-account, peer-to-peer encrypted home surveillance monitor for Android devices (pairing a camera sender device with viewer receiver devices).
-
-- **Language & Runtime**: Kotlin 2.0.21, Java 17, Android Min SDK 26 (Android 8.0 Oreo), Target SDK 35 (Android 15).
-- **UI Framework**: Jetpack Compose with Material3, Single-Activity architecture (`MainActivity.kt`).
-- **Media & Streaming**:
-  - **CameraX 1.4.0** (`androidx.camera:*`) for camera capture, resolution selection, and Night mode extensions.
-  - **WebRTC Android 1.2.2** (`io.getstream:stream-webrtc-android`) for low-latency P2P video/audio streaming and DataChannel messaging.
-- **Signaling**:
-  - **HiveMQ MQTT Client 1.3.3** (`com.hivemq:hivemq-mqtt-client`) connecting via TLS (port 8883) to a public MQTT broker.
-  - End-to-end payload encryption using AES-GCM-256 with pre-shared keys generated during QR code pairing.
-- **Security & Storage**:
-  - `androidx.security:security-crypto:1.1.0-alpha06` (`EncryptedSharedPreferences`).
-- **Foreground Service**:
-  - `CameraMonitorService.kt` keeps streaming active in the background with WakeLock and WifiLock.
-
----
-
-## 3. Directory & File Map
-
-```text
-CamMonitor/
-├── AGENTS.md                                # This agent operational guide
-├── Specification.md                         # Authoritative product & technical specification
-├── README.md / README_TW.md / README_JA.md  # Multilingual public documentation
-├── app/
-│   ├── build.gradle.kts                     # App module configuration & dependencies
-│   └── src/
-│       ├── main/
-│       │   ├── AndroidManifest.xml          # Permissions, foreground services, activity
-│       │   ├── java/com/a0soft/gphone/camonitor/
-│       │   │   ├── CamMonitorApp.kt         # Application singleton & notification channel init
-│       │   │   ├── MainActivity.kt          # Compose host activity & navigation routing
-│       │   │   ├── data/
-│       │   │   │   ├── camera/
-│       │   │   │   │   ├── CameraXVideoCapturer.kt # CameraX binding, sensor mapping, Night extension
-│       │   │   │   │   └── TorchManager.kt  # Camera flashlight state & hardware control
-│       │   │   │   ├── model/Models.kt      # Domain data classes, signaling events, LogLevel
-│       │   │   │   ├── security/
-│       │   │   │   │   ├── CryptoUtils.kt   # ECDH, ECDSA, HKDF-SHA256, AES-GCM-256 operations
-│       │   │   │   │   └── SecurityRepository.kt # KeyStore management, paired devices CRUD, envelopes
-│       │   │   │   ├── signaling/
-│       │   │   │   │   └── SignalingClient.kt # HiveMQ MQTT TLS signaling & encrypted exchange
-│       │   │   │   └── webrtc/
-│       │   │   │       └── WebRtcManager.kt # WebRTC PeerConnection, SDP offer/answer, DataChannel
-│       │   │   ├── service/
-│       │   │   │   └── CameraMonitorService.kt # Sticky foreground streaming service & 15s standby
-│       │   │   ├── time/TimeProvider.kt     # Clock abstraction for deterministic coroutine tests
-│       │   │   ├── log/
-│       │   │   │   └── AppLogger.kt         # Ring-buffer UI logs, rolling disk files, zip export
-│       │   │   └── ui/
-│       │   │       ├── home/HomeScreen.kt           # Mode selection, pairing summaries, top bar
-│       │   │       ├── camera/CameraModeScreen.kt   # Camera mode preview, OLED blackout saver
-│       │   │       ├── viewer/ViewerModeScreen.kt   # WebRTC video surface, overlay controls
-│       │   │       ├── pairing/
-│       │   │       │   ├── CameraPairingScreen.kt   # Displays QR code (PA sender)
-│       │   │       │   └── ViewerPairingScreen.kt   # ZXing QR code scanner (PB receiver)
-│       │   │       ├── devices/ManageDevicesScreen.kt # Paired devices list & revocation
-│       │   │       ├── log/LogViewerScreen.kt       # In-app log viewer, filters, verbosity menu
-│       │   │       ├── about/AboutScreen.kt         # App version, license, contributors card
-│       │   │       ├── common/                      # AudioRouting, Battery, Locale, QR helpers
-│       │   │       └── theme/                       # Material3 Color & Theme definitions
-│       │   └── res/
-│       │       ├── values/strings.xml               # English / Default strings
-│       │       ├── values-b+zh+Hant/strings.xml     # Traditional Chinese (Taiwan/HK)
-│       │       ├── values-b+zh+Hans/strings.xml     # Simplified Chinese
-│       │       └── values-ja/strings.xml            # Japanese
-│       └── test/java/com/a0soft/gphone/camonitor/   # Comprehensive JUnit tests
-```
-
----
-
-## 4. Internationalization (i18n) Rules
+## 2. Internationalization (i18n) Rules
 
 CamMonitor strictly supports four locales:
 1. `app/src/main/res/values/strings.xml` (Default / English)
@@ -112,7 +40,7 @@ CamMonitor strictly supports four locales:
 
 ---
 
-## 5. Contributor Tracking Workflow
+## 3. Contributor Tracking Workflow
 
 When PRs are merged or new contributors contribute to CamMonitor:
 
@@ -128,13 +56,13 @@ When PRs are merged or new contributors contribute to CamMonitor:
 
 ---
 
-## 6. Build, Test & Device Execution Commands
+## 4. Build, Test & Device Execution Commands
 
 All commands run via PowerShell on Windows.
 
 ### Compilation & Unit Tests
 ```powershell
-# Run all unit tests (77+ tests covering crypto, signaling, models, i18n parity)
+# Run all unit tests (97+ tests covering crypto, signaling, models, i18n parity)
 .\gradlew.bat testDebugUnitTest
 
 # Assemble debug APK
@@ -164,7 +92,7 @@ $apk = Get-ChildItem app\build\outputs\apk\debug\*.apk | Sort-Object LastWriteTi
 
 ---
 
-## 7. Critical Domain & Architecture Gotchas
+## 5. Critical Domain & Architecture Gotchas
 
 1. **CameraX Sensor Coordinate Space**:
    - Resolution selection must account for sensor orientation (e.g. natural landscape sensor vs portrait device display). Never force 1:1 or narrow aspect ratios that collapse CameraX into fallback `192x108` mode.
