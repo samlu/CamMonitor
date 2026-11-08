@@ -450,8 +450,9 @@ Every signaling envelope sent over the public MQTT broker is structured as:
 * **Top Bar:**
   * Title: `"System Logs"` (HeadlineSmall).
   * Navigation icon: Back arrow.
-  * Action 1: `IconButton(Icons.Default.Share)` $\to$ Triggers Android Share Sheet with `cammonitor.log` attached via `FileProvider`.
-  * Action 2: `IconButton(Icons.Default.DeleteSweep)` $\to$ Clears current log file with confirmation.
+  * Action 1: `IconButton(Icons.Default.Share)` $\to$ Triggers Android Share Sheet exporting `cammonitor-logs.zip` (active and rolling backup files) via `FileProvider` (`application/zip`).
+  * Action 2: `IconButton(Icons.Default.BugReport)` $\to$ Opens a `DropdownMenu` log verbosity selector allowing users to choose between `Verbose (DEBUG)` (full diagnostic details) and `Standard (INFO)` (filters out debug logs to reduce thermal load and disk usage).
+  * Action 3: `IconButton(Icons.Default.DeleteSweep)` $\to$ Clears current in-memory buffer and on-disk log files.
 * **Filter Row:**
   * Filter chips: `[ALL]`, `[INFO]`, `[WARN]`, `[ERROR]`, `[WebRTC]`, `[MQTT]`.
 * **Log List:**

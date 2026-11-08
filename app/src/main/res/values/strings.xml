@@ -136,6 +136,11 @@
     <string name="log_share_description">Share Logs</string>
     <string name="log_level_verbose">Verbose logging is on (includes debug)</string>
     <string name="log_level_normal">Standard logging (tap for verbose)</string>
+    <string name="log_level_menu_title">Log Verbosity</string>
+    <string name="log_level_debug_title">Verbose (DEBUG)</string>
+    <string name="log_level_debug_desc">Captures all diagnostic information and debug traces</string>
+    <string name="log_level_info_title">Standard (INFO)</string>
+    <string name="log_level_info_desc">Filters out debug logs to reduce thermal load and disk usage</string>
     <string name="log_clear_description">Clear Logs</string>
     <string name="log_filter_all">ALL</string>
 

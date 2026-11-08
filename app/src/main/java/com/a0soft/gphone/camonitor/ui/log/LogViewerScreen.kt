@@ -9,9 +9,9 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
@@ -103,19 +104,81 @@ fun LogViewerScreen(
                     // Verbosity switch: the streaming camera writes enough lines to
                     // matter for heat and storage. INFO is the quiet default users
                     // can drop to; DEBUG (the startup value) keeps everything.
-                    IconButton(onClick = {
-                        val next = if (verbose) LogLevel.INFO else LogLevel.DEBUG
-                        AppLogger.minLevel = next
-                        logLevel = next
-                    }) {
-                        Icon(
-                            imageVector = Icons.Default.Tune,
-                            contentDescription = stringResource(
-                                if (verbose) R.string.log_level_verbose else R.string.log_level_normal
-                            ),
-                            tint = if (verbose) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    var showVerbosityMenu by remember { mutableStateOf(false) }
+                    Box {
+                        IconButton(onClick = { showVerbosityMenu = true }) {
+                            Icon(
+                                imageVector = Icons.Default.BugReport,
+                                contentDescription = stringResource(R.string.log_level_menu_title),
+                                tint = if (verbose) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showVerbosityMenu,
+                            onDismissRequest = { showVerbosityMenu = false },
+                            modifier = Modifier.widthIn(min = 260.dp)
+                        ) {
+                            DropdownMenuItem(
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+                                text = {
+                                    Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                                        Text(
+                                            text = stringResource(R.string.log_level_debug_title),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = if (verbose) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                        Spacer(modifier = Modifier.height(3.dp))
+                                        Text(
+                                            text = stringResource(R.string.log_level_debug_desc),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                },
+                                leadingIcon = {
+                                    RadioButton(
+                                        selected = verbose,
+                                        onClick = null
+                                    )
+                                },
+                                onClick = {
+                                    AppLogger.minLevel = LogLevel.DEBUG
+                                    logLevel = LogLevel.DEBUG
+                                    showVerbosityMenu = false
+                                }
+                            )
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+                            DropdownMenuItem(
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+                                text = {
+                                    Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                                        Text(
+                                            text = stringResource(R.string.log_level_info_title),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = if (!verbose) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                        Spacer(modifier = Modifier.height(3.dp))
+                                        Text(
+                                            text = stringResource(R.string.log_level_info_desc),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                },
+                                leadingIcon = {
+                                    RadioButton(
+                                        selected = !verbose,
+                                        onClick = null
+                                    )
+                                },
+                                onClick = {
+                                    AppLogger.minLevel = LogLevel.INFO
+                                    logLevel = LogLevel.INFO
+                                    showVerbosityMenu = false
+                                }
+                            )
+                        }
                     }
                     IconButton(onClick = { AppLogger.clearLogs() }) {
                         Icon(Icons.Default.DeleteSweep, contentDescription = stringResource(R.string.log_clear_description))

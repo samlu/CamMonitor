@@ -136,6 +136,11 @@
     <string name="log_share_description">分享記錄</string>
     <string name="log_level_verbose">詳細日誌已開啟（含偵錯資訊）</string>
     <string name="log_level_normal">標準日誌（點按開啟詳細日誌）</string>
+    <string name="log_level_menu_title">日誌詳細度</string>
+    <string name="log_level_debug_title">詳細日誌 (DEBUG)</string>
+    <string name="log_level_debug_desc">記錄所有診斷細節與偵錯資訊</string>
+    <string name="log_level_info_title">標準日誌 (INFO)</string>
+    <string name="log_level_info_desc">過濾除錯日誌，降低發熱與節省儲存空間</string>
     <string name="log_clear_description">清除記錄</string>
     <string name="log_filter_all">全部</string>
 

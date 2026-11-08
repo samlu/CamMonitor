@@ -136,6 +136,11 @@
     <string name="log_share_description">分享日志</string>
     <string name="log_level_verbose">详细日志已开启（含调试信息）</string>
     <string name="log_level_normal">标准日志（轻触开启详细日志）</string>
+    <string name="log_level_menu_title">日志详细度</string>
+    <string name="log_level_debug_title">详细日志 (DEBUG)</string>
+    <string name="log_level_debug_desc">记录所有诊断细节与调试信息</string>
+    <string name="log_level_info_title">标准日志 (INFO)</string>
+    <string name="log_level_info_desc">过滤调试日志，降低发热与节省存储空间</string>
     <string name="log_clear_description">清除日志</string>
     <string name="log_filter_all">全部</string>
 

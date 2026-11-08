@@ -136,6 +136,11 @@
     <string name="log_share_description">ログを共有</string>
     <string name="log_level_verbose">詳細ログが有効です（デバッグ情報を含む）</string>
     <string name="log_level_normal">標準ログ（タップで詳細ログ）</string>
+    <string name="log_level_menu_title">ログの詳細度</string>
+    <string name="log_level_debug_title">詳細ログ (DEBUG)</string>
+    <string name="log_level_debug_desc">すべての診断情報とデバッグトレースを記録</string>
+    <string name="log_level_info_title">標準ログ (INFO)</string>
+    <string name="log_level_info_desc">デバッグログを除外して発熱とストレージ消費を抑制</string>
     <string name="log_clear_description">ログを消去</string>
     <string name="log_filter_all">すべて</string>
 
