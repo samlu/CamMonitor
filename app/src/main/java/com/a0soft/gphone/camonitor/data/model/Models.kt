@@ -412,11 +412,39 @@ data class LogEntry(
     val timestamp: Long,
     val level: LogLevel,
     val tag: String,
-    val message: String
+    val message: String,
+    /**
+     * Milliseconds since process start.
+     *
+     * Wall-clock time alone is not trustworthy here: roaming between campus
+     * subnets triggers an NTP correction, and a jump backwards makes the log
+     * timeline read as if events happened out of order. The monotonic offset is
+     * immune to that, so a stall or a gap can still be measured accurately.
+     */
+    val elapsedMs: Long = 0L,
+    /**
+     * Name of the thread that emitted the line.
+     *
+     * This is the single most useful field when diagnosing a freeze — without it
+     * "the main thread was busy" can only be inferred indirectly from a timeout
+     * message somewhere else in the log.
+     */
+    val thread: String = ""
 ) {
     fun format(): String {
-        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", java.util.Locale.US)
-        val time = sdf.format(java.util.Date(timestamp))
-        return "[$time] [${level.name}] [$tag] $message"
+        val time = FORMATTER.format(java.time.Instant.ofEpochMilli(timestamp))
+        val rel = String.format(java.util.Locale.US, "%.1fs", elapsedMs / 1000.0)
+        val threadPart = if (thread.isEmpty()) "" else " {$thread}"
+        return "[$time +$rel] [${level.name}] [$tag]$threadPart $message"
+    }
+
+    companion object {
+        /**
+         * DateTimeFormatter is immutable and thread-safe (minSdk = 28),
+         * avoiding ThreadLocal lifecycle management and Date allocation.
+         */
+        private val FORMATTER = java.time.format.DateTimeFormatter
+            .ofPattern("yyyy-MM-dd HH:mm:ss.SSS", java.util.Locale.US)
+            .withZone(java.time.ZoneId.systemDefault())
     }
 }

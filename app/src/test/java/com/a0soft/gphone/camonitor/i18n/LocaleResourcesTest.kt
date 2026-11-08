@@ -32,8 +32,29 @@ class LocaleResourcesTest {
         }
 
         assertTrue("Should declare en locale", declaredLocales.contains("en"))
+        assertTrue("Should declare zh-CN locale", declaredLocales.contains("zh-CN"))
         assertTrue("Should declare zh-TW locale", declaredLocales.contains("zh-TW"))
         assertTrue("Should declare ja locale", declaredLocales.contains("ja"))
+    }
+
+    @Test
+    fun testStringsKeyParityBetweenEnglishAndSimplifiedChinese() {
+        val defaultStringsFile = File(resDir, "values/strings.xml")
+        val zhHansStringsFile = File(resDir, "values-b+zh+Hans/strings.xml")
+
+        assertTrue("Default strings.xml must exist", defaultStringsFile.exists())
+        assertTrue("values-b+zh+Hans/strings.xml must exist", zhHansStringsFile.exists())
+
+        val defaultStrings = parseStringsXml(defaultStringsFile)
+        val zhHansStrings = parseStringsXml(zhHansStringsFile)
+
+        // 1. Verify all default keys exist in Simplified Chinese
+        val missingInZhHans = defaultStrings.keys - zhHansStrings.keys
+        assertTrue("Missing keys in values-b+zh+Hans: $missingInZhHans", missingInZhHans.isEmpty())
+
+        // 2. Verify all Simplified Chinese keys exist in default strings
+        val extraInZhHans = zhHansStrings.keys - defaultStrings.keys
+        assertTrue("Extra keys in values-b+zh+Hans not in default: $extraInZhHans", extraInZhHans.isEmpty())
     }
 
     @Test
@@ -77,15 +98,25 @@ class LocaleResourcesTest {
     @Test
     fun testPlaceholderConsistency() {
         val defaultStrings = parseStringsXml(File(resDir, "values/strings.xml"))
+        val zhHansStrings = parseStringsXml(File(resDir, "values-b+zh+Hans/strings.xml"))
         val zhHantStrings = parseStringsXml(File(resDir, "values-b+zh+Hant/strings.xml"))
         val jaStrings = parseStringsXml(File(resDir, "values-ja/strings.xml"))
 
         val placeholderPattern = Pattern.compile("%(?:(\\d+)\\$)?[-#+ 0,(]*\\d*(?:\\.\\d+)?([a-zA-Z%])")
 
         defaultStrings.forEach { (key, defaultValue) ->
+            val zhHansValue = zhHansStrings[key]
+            assertNotNull("Translation must exist in values-b+zh+Hans for $key", zhHansValue)
+            val defaultPlaceholders = extractPlaceholders(placeholderPattern, defaultValue)
+            val zhHansPlaceholders = extractPlaceholders(placeholderPattern, zhHansValue!!)
+            assertEquals(
+                "Placeholder mismatch in values-b+zh+Hans for key: $key (en: $defaultValue, zh-Hans: $zhHansValue)",
+                defaultPlaceholders,
+                zhHansPlaceholders
+            )
+
             val zhHantValue = zhHantStrings[key]
             assertNotNull("Translation must exist in values-b+zh+Hant for $key", zhHantValue)
-            val defaultPlaceholders = extractPlaceholders(placeholderPattern, defaultValue)
             val zhHantPlaceholders = extractPlaceholders(placeholderPattern, zhHantValue!!)
             assertEquals(
                 "Placeholder mismatch in values-b+zh+Hant for key: $key (en: $defaultValue, zh: $zhHantValue)",
@@ -108,6 +139,7 @@ class LocaleResourcesTest {
     fun testLocaleHelperConstants() {
         assertEquals("", LocaleHelper.LANGUAGE_FOLLOW_SYSTEM)
         assertEquals("en", LocaleHelper.LANGUAGE_EN)
+        assertEquals("zh-CN", LocaleHelper.LANGUAGE_ZH_CN)
         assertEquals("zh-TW", LocaleHelper.LANGUAGE_ZH_TW)
         assertEquals("ja", LocaleHelper.LANGUAGE_JA)
     }

@@ -134,11 +134,19 @@
     <!-- Log Viewer Screen -->
     <string name="log_share_title">Share CamMonitor Logs</string>
     <string name="log_share_description">Share Logs</string>
+    <string name="log_level_verbose">Verbose logging is on (includes debug)</string>
+    <string name="log_level_normal">Standard logging (tap for verbose)</string>
+    <string name="log_level_menu_title">Log Verbosity</string>
+    <string name="log_level_debug_title">Verbose (DEBUG)</string>
+    <string name="log_level_debug_desc">Captures all diagnostic information and debug traces</string>
+    <string name="log_level_info_title">Standard (INFO)</string>
+    <string name="log_level_info_desc">Filters out debug logs to reduce thermal load and disk usage</string>
     <string name="log_clear_description">Clear Logs</string>
     <string name="log_filter_all">ALL</string>
 
     <!-- Language Picker -->
     <string name="language_picker_title">App Language</string>
+    <string name="language_simplified_chinese">简体中文</string>
     <string name="language_system_default">System Default</string>
     <string name="language_english">English</string>
     <string name="language_traditional_chinese">繁體中文 (台灣)</string>
@@ -159,6 +167,13 @@
     <string name="about_open_source_notice">This app is open source under the Apache 2.0 License.</string>
     <string name="about_view_on_github">View on GitHub</string>
     <string name="about_github_url">https://github.com/samlu/CamMonitor</string>
+    <string name="about_contributors_title">Contributors</string>
+    <string name="about_contributors_subtitle">Thanks to everyone who helps make CamMonitor better.</string>
+    <string name="about_contributor_samlu_role">Creator &amp; Core Maintainer</string>
+    <string name="about_contributor_owwhale_role">Logging Pipeline, Camera Engine &amp; i18n</string>
+    <string name="about_contributor_eltociear_role">Japanese Localization</string>
+    <string name="about_view_all_contributors">View All Contributors on GitHub</string>
+    <string name="about_contributors_github_url">https://github.com/samlu/CamMonitor/graphs/contributors</string>
     <!-- Permissions Rationale & Recovery -->
     <string name="permission_dialog_title">Permissions Required</string>
     <string name="permission_camera_reason">Camera: Required to stream video and scan pairing QR codes.</string>
