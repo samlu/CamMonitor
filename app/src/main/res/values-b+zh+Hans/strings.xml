@@ -112,12 +112,12 @@
     <string name="viewer_pairing_title">扫描镜头二维码</string>
     <string name="viewer_pairing_align_qr">将二维码对准框线以进行配对</string>
     <string name="viewer_pairing_invalid_qr">无效的 CamMonitor 二维码格式</string>
-    <string name="viewer_pairing_connecting_broker">已识别有效二维码，正在连接信令服务器...</string>
-    <string name="viewer_pairing_broker_failed">信令服务器连接失败，正在重试...</string>
+    <string name="viewer_pairing_connecting_broker">已识别有效二维码，正在连接信令服务器…</string>
+    <string name="viewer_pairing_broker_failed">信令服务器连接失败，正在重试…</string>
     <string name="viewer_pairing_authenticating">正在与 %1$s 进行验证…</string>
     <string name="viewer_pairing_success">配对成功！正在启动观看端…</string>
     <string name="viewer_pairing_timeout">配对超时。请重新对准二维码重试。</string>
-    <string name="viewer_pairing_limit_reached">已达相机数量上限（最多 %1$d 台相机）。</string>
+    <string name="viewer_pairing_limit_reached">已达镜头数量上限（最多 %1$d 台镜头）。</string>
 
     <!-- Manage Devices Screen -->
     <string name="manage_devices_pair_device">配对设备</string>
