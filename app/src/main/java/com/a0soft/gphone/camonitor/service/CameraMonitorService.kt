@@ -30,7 +30,7 @@ enum class CameraStreamingState {
     IDLE,
     WAITING_FOR_VIEWERS,
     STREAMING,
-    PAUSED_INACTIVITY // Paused after 60s of 0 viewers
+    PAUSED_INACTIVITY // Paused after 15s of 0 viewers
 }
 
 class CameraMonitorService : Service() {
@@ -38,11 +38,7 @@ class CameraMonitorService : Service() {
         @Volatile
         var isRunning: Boolean = false
             private set
-    }
 
-    private val tag = "CameraMonitorService"
-
-    private companion object {
         /**
          * How long the sensor keeps running after the last viewer leaves.
          *
@@ -53,6 +49,8 @@ class CameraMonitorService : Service() {
          */
         const val NO_VIEWER_PAUSE_MS = 15_000L
     }
+
+    private val tag = "CameraMonitorService"
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     private val binder = LocalBinder()

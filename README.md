@@ -21,7 +21,7 @@ CamMonitor turns your spare Android phone into a private, zero-account home secu
   - 1 Viewer can pair with up to **8 different cameras** (e.g., Living Room, Front Door, Baby Nursery).
 - **Smart Battery & Screen Protection:**
   - **OLED Black Screen:** Camera screen turns completely black after 1 minute of inactivity to prevent OLED burn-in and save power. Tap anywhere to wake.
-  - **Auto-Standby Mode:** If no viewers are watching for 1 minute, the camera sensor shuts down to preserve battery and automatically wakes when a viewer connects.
+  - **Auto-Standby Mode:** If no viewers are watching for 15 seconds, the camera sensor shuts down to preserve battery and automatically wakes when a viewer connects.
   - **Hardware Longevity & Anti-Overheating:** Deliberately avoids 24/7 continuous video recording and persistent AI object detection to prevent phone overheating, battery swelling, and camera sensor wear. (Users can use AI tools to add these functions if specifically needed).
 - **Remote Controls from Viewer:**
   - **3-Way Night Mode:** Switch between `Auto` (activates via ambient light sensor), `Night` (forced low-light enhancement), and `Normal`.
@@ -70,7 +70,7 @@ Before first use, pair your two devices:
    - **HUD Overlay:** The top bar shows streaming resolution/FPS (`720p 15fps`), active viewer count (`0/2` in portrait, `0/2 Viewers` in landscape), Night mode status, and flashlight status.
    - **OLED Black Screen:** After 60 seconds without touch, the display turns completely black to conserve power and protect the screen. **Tap anywhere on the screen** to turn the display back on.
    - **Manual Black Screen:** Tap the **Black Screen** button at the bottom left anytime to turn off the display immediately.
-   - **Camera Standby:** If no viewer connects within 1 minute, the camera enters standby mode to save battery. It will wake up automatically as soon as a paired viewer connects.
+   - **Camera Standby:** If no viewer connects within 15 seconds, the camera enters standby mode to save battery. It will wake up automatically as soon as a paired viewer connects.
 4. **To Exit:** Tap **Exit Camera** (or press the Back button and confirm).
 
 ---
@@ -115,7 +115,7 @@ To prevent spare phones from overheating, battery degradation/swelling, and shor
 
 - **No Continuous Video Recording:** Keeping the camera sensor and video encoder constantly running generates significant heat and degrades the device and battery quickly.
 - **No On-Device Object / Motion Detection:** Continuous computer vision models require holding the camera sensor and NPU/CPU at high utilization indefinitely.
-- **Auto-Standby Power Conservation:** If no viewer is connected for 1 minute, the camera hardware shuts down completely and enters low-power standby until a viewer connects.
+- **Auto-Standby Power Conservation:** If no viewer is connected for 15 seconds, the camera hardware shuts down completely and enters low-power standby until a viewer connects.
 - **Adding These Features:** If your specific use case requires continuous recording or object detection, you can use AI coding tools to extend this open-source codebase (e.g. adding CameraX `VideoCapture` or MLKit object detection onto the existing pipeline).
 
 ---
