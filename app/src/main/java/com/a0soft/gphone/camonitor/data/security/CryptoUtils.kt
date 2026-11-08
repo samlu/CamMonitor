@@ -29,12 +29,42 @@ object CryptoUtils {
     private val secureRandom = SecureRandom()
 
     /**
-     * Serialises ECDH derivations. Declared before any method uses it so the
-     * object is fully initialised before the first call.
+     * Serialises AndroidKeyStore private-key operations (ECDH key agreement and
+     * ECDSA signing). Declared before any method uses it so the object is fully
+     * initialised before the first call.
      */
-    private val ecdhLock = Any()
+    private val keystoreLock = Any()
 
-    private const val ECDH_MAX_ATTEMPTS = 2
+    private const val KEYSTORE_MAX_ATTEMPTS = 2
+
+    /**
+     * Bounded cache of derived 32-byte static ECDH keys keyed by (privateKey, publicKey).
+     * Eliminates redundant hardware KeyStore IPC + HKDF derivations on every ICE candidate.
+     */
+    private val ecdhCache = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
+
+    private fun <T> withKeystoreRetry(block: () -> T): T =
+        synchronized(keystoreLock) {
+            var last: Throwable? = null
+            for (attempt in 0 until KEYSTORE_MAX_ATTEMPTS) {
+                try {
+                    return block()
+                } catch (t: Throwable) {
+                    last = t
+                    if (attempt < KEYSTORE_MAX_ATTEMPTS - 1) {
+                        // A handle can still be held by the operation that just
+                        // aborted; give the provider a moment to release it before
+                        // retrying. This sleep only happens on the failure path.
+                        try {
+                            Thread.sleep(40L)
+                        } catch (e: InterruptedException) {
+                            Thread.currentThread().interrupt()
+                        }
+                    }
+                }
+            }
+            throw last ?: IllegalStateException("KeyStore operation failed without an exception")
+        }
 
     fun getOrCreateDeviceKeyPair(alias: String): KeyPair {
         if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) {
@@ -98,12 +128,13 @@ object CryptoUtils {
         return KeyPair(kf.generatePublic(pubSpec), kf.generatePrivate(privSpec))
     }
 
-    fun sign(data: ByteArray, privateKey: PrivateKey): String {
-        val signer = Signature.getInstance("SHA256withECDSA")
-        signer.initSign(privateKey)
-        signer.update(data)
-        return Base64.getEncoder().encodeToString(signer.sign())
-    }
+    fun sign(data: ByteArray, privateKey: PrivateKey): String =
+        withKeystoreRetry {
+            val signer = Signature.getInstance("SHA256withECDSA")
+            signer.initSign(privateKey)
+            signer.update(data)
+            Base64.getEncoder().encodeToString(signer.sign())
+        }
 
     fun verify(data: ByteArray, signatureBase64: String, publicKey: PublicKey): Boolean {
         return try {
@@ -202,7 +233,7 @@ object CryptoUtils {
     }
 
     /**
-     * Serialises ECDH derivations.
+     * Serialises and caches ECDH derivations.
      *
      * Keys live in AndroidKeyStore, which hands out an opaque operation handle
      * per key agreement. That handle is not re-entrant: two agreements on the
@@ -212,30 +243,29 @@ object CryptoUtils {
      * each failure dropped the envelope it was decrypting — which is how ICE
      * candidates went missing and the connection stalled in CHECKING.
      *
-     * Derivation is a few hundred microseconds, so a single lock costs nothing.
+     * Static ECDH for a given (privateKey, publicKey) pair is deterministic, so
+     * caching the derived 32-byte key eliminates redundant KeyStore IPC + HKDF
+     * calls on every subsequent ICE candidate envelope.
      */
-    fun deriveEcdhKey(privateKey: PrivateKey, publicKey: PublicKey): ByteArray =
-        synchronized(ecdhLock) {
-            var last: Throwable? = null
-            for (attempt in 0 until ECDH_MAX_ATTEMPTS) {
-                try {
-                    return deriveEcdhKeyOnce(privateKey, publicKey)
-                } catch (t: Throwable) {
-                    last = t
-                    if (attempt < ECDH_MAX_ATTEMPTS - 1) {
-                        // A handle can still be held by the operation that just
-                        // aborted; give the provider a moment to release it before
-                        // retrying. This sleep only happens on the failure path.
-                        try {
-                            Thread.sleep(40L)
-                        } catch (e: InterruptedException) {
-                            Thread.currentThread().interrupt()
-                        }
-                    }
-                }
+    fun deriveEcdhKey(privateKey: PrivateKey, publicKey: PublicKey): ByteArray {
+        val privId = privateKey.encoded?.let { Base64.getEncoder().encodeToString(it) }
+            ?: "ks:${System.identityHashCode(privateKey)}"
+        val pubId = Base64.getEncoder().encodeToString(publicKey.encoded)
+        val cacheKey = "$privId|$pubId"
+
+        ecdhCache[cacheKey]?.let { return it.clone() }
+
+        val derived = withKeystoreRetry {
+            ecdhCache[cacheKey]?.let { return@withKeystoreRetry it }
+            val result = deriveEcdhKeyOnce(privateKey, publicKey)
+            if (ecdhCache.size >= 64) {
+                ecdhCache.clear()
             }
-            throw last ?: IllegalStateException("ECDH derivation failed without an exception")
+            ecdhCache[cacheKey] = result
+            result
         }
+        return derived.clone()
+    }
 
     private fun deriveEcdhKeyOnce(privateKey: PrivateKey, publicKey: PublicKey): ByteArray {
         val agreement = KeyAgreement.getInstance("ECDH")

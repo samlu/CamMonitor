@@ -144,8 +144,8 @@ fun CameraModeScreen(
     }
 
     // 60-Second local inactivity timer for OLED black screen
-    LaunchedEffect(isBlackScreenActive, streamingState) {
-        if (!isBlackScreenActive && streamingState == CameraStreamingState.STREAMING) {
+    LaunchedEffect(isBlackScreenActive) {
+        if (!isBlackScreenActive) {
             idleSeconds = 0
             while (idleSeconds < 60) {
                 delay(1000L)
@@ -232,10 +232,13 @@ fun CameraModeScreen(
             )
         }
 
-        if (streamingState == CameraStreamingState.PAUSED_INACTIVITY) {
-            // Standby View after 60s of 0 viewers
+        if (!isBlackScreenActive && streamingState == CameraStreamingState.PAUSED_INACTIVITY) {
+            // Standby View after 15s of 0 viewers
             CameraPausedStandbyView(
-                onResume = { service?.resumeStreamingFromPause() },
+                onResume = {
+                    idleSeconds = 0
+                    service?.resumeStreamingFromPause()
+                },
                 onExit = {
                     val stopIntent = Intent(context, CameraMonitorService::class.java)
                     context.stopService(stopIntent)

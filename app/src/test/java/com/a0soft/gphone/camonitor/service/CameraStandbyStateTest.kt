@@ -17,7 +17,8 @@ import org.junit.Test
 class CameraStandbyStateTest {
 
     @Test
-    fun testInactivityTimerTransitionsToPausedInactivityAfter60s() = runTest {
+    fun testInactivityTimerTransitionsToPausedInactivityAfter15s() = runTest {
+        assertEquals(15_000L, CameraMonitorService.NO_VIEWER_PAUSE_MS)
         val streamingState = MutableStateFlow(CameraStreamingState.WAITING_FOR_VIEWERS)
         var cameraHardwareStopped = false
 
@@ -25,7 +26,7 @@ class CameraStandbyStateTest {
         fun startTimer() {
             inactivityJob?.cancel()
             inactivityJob = launch {
-                delay(60_000L)
+                delay(CameraMonitorService.NO_VIEWER_PAUSE_MS)
                 cameraHardwareStopped = true
                 streamingState.value = CameraStreamingState.PAUSED_INACTIVITY
             }
@@ -33,14 +34,14 @@ class CameraStandbyStateTest {
 
         startTimer()
 
-        // Advance 30 seconds - should not be paused yet
-        advanceTimeBy(30_000L)
+        // Advance 10 seconds - should not be paused yet
+        advanceTimeBy(10_000L)
         runCurrent()
         assertEquals(CameraStreamingState.WAITING_FOR_VIEWERS, streamingState.value)
         assertFalse(cameraHardwareStopped)
 
-        // Advance remaining 30 seconds - should pause
-        advanceTimeBy(30_001L)
+        // Advance remaining 5 seconds - should pause at 15s
+        advanceTimeBy(5_001L)
         runCurrent()
         assertEquals(CameraStreamingState.PAUSED_INACTIVITY, streamingState.value)
         assertTrue(cameraHardwareStopped)
@@ -60,7 +61,7 @@ class CameraStandbyStateTest {
         fun startTimer() {
             inactivityJob?.cancel()
             inactivityJob = launch {
-                delay(60_000L)
+                delay(CameraMonitorService.NO_VIEWER_PAUSE_MS)
                 cameraHardwareStopped = true
                 streamingState.value = CameraStreamingState.PAUSED_INACTIVITY
             }
@@ -68,8 +69,8 @@ class CameraStandbyStateTest {
 
         startTimer()
 
-        // After 20 seconds, a viewer connects
-        advanceTimeBy(20_000L)
+        // After 5 seconds, a viewer connects
+        advanceTimeBy(5_000L)
         runCurrent()
         assertEquals(CameraStreamingState.WAITING_FOR_VIEWERS, streamingState.value)
 
@@ -77,8 +78,8 @@ class CameraStandbyStateTest {
         streamingState.value = CameraStreamingState.STREAMING
         cancelTimer()
 
-        // Advance past 60s total time
-        advanceTimeBy(50_000L)
+        // Advance past 15s total time
+        advanceTimeBy(20_000L)
         runCurrent()
 
         // Must still be STREAMING and not stopped
@@ -87,7 +88,7 @@ class CameraStandbyStateTest {
     }
 
     @Test
-    fun testIncomingOfferAtT58CancelsInactivityTimerAndPreventsStop() = runTest {
+    fun testIncomingOfferNearTimeoutCancelsInactivityTimerAndPreventsStop() = runTest {
         val streamingState = MutableStateFlow(CameraStreamingState.WAITING_FOR_VIEWERS)
         var cameraHardwareStopped = false
         var inactivityJob: Job? = null
@@ -100,7 +101,7 @@ class CameraStandbyStateTest {
         fun startTimer() {
             inactivityJob?.cancel()
             inactivityJob = launch {
-                delay(60_000L)
+                delay(CameraMonitorService.NO_VIEWER_PAUSE_MS)
                 cameraHardwareStopped = true
                 streamingState.value = CameraStreamingState.PAUSED_INACTIVITY
             }
@@ -118,29 +119,29 @@ class CameraStandbyStateTest {
 
         startTimer()
 
-        // Advance to 58s into the 60s countdown
-        advanceTimeBy(58_000L)
+        // Advance to 14s into the 15s countdown
+        advanceTimeBy(14_000L)
         runCurrent()
         assertFalse(cameraHardwareStopped)
         assertEquals(CameraStreamingState.WAITING_FOR_VIEWERS, streamingState.value)
 
-        // Remote offer arrives at t=58s
+        // Remote offer arrives at t=14s
         handleIncomingOffer()
 
-        // Advance 5 more seconds (past the original 60s mark to t=63s)
+        // Advance 5 more seconds (past the original 15s mark to t=19s)
         advanceTimeBy(5_000L)
         runCurrent()
 
         // Camera must NOT be stopped because countdown was refreshed for incoming offer
-        assertFalse("Camera capture must not be stopped mid-handshake past original 60s timer", cameraHardwareStopped)
+        assertFalse("Camera capture must not be stopped mid-handshake past original 15s timer", cameraHardwareStopped)
         assertEquals(CameraStreamingState.WAITING_FOR_VIEWERS, streamingState.value)
 
         // WebRTC handshake completes: viewer connects (active count = 1)
         streamingState.value = CameraStreamingState.STREAMING
         cancelTimer()
 
-        // Advance past 60s of new timer
-        advanceTimeBy(70_000L)
+        // Advance past 15s of new timer
+        advanceTimeBy(20_000L)
         runCurrent()
         assertFalse(cameraHardwareStopped)
         assertEquals(CameraStreamingState.STREAMING, streamingState.value)
@@ -155,7 +156,7 @@ class CameraStandbyStateTest {
         fun startTimer() {
             inactivityJob?.cancel()
             inactivityJob = launch {
-                delay(60_000L)
+                delay(CameraMonitorService.NO_VIEWER_PAUSE_MS)
                 streamingState.value = CameraStreamingState.PAUSED_INACTIVITY
             }
         }
@@ -175,8 +176,8 @@ class CameraStandbyStateTest {
         assertTrue(cameraHardwareStarted)
         assertEquals(CameraStreamingState.WAITING_FOR_VIEWERS, streamingState.value)
 
-        // Advancing 60s should re-pause if viewer doesn't connect
-        advanceTimeBy(60_001L)
+        // Advancing 15s should re-pause if viewer doesn't connect
+        advanceTimeBy(CameraMonitorService.NO_VIEWER_PAUSE_MS + 1L)
         runCurrent()
         assertEquals(CameraStreamingState.PAUSED_INACTIVITY, streamingState.value)
     }
@@ -191,7 +192,7 @@ class CameraStandbyStateTest {
             timerStarted = true
             inactivityJob?.cancel()
             inactivityJob = launch {
-                delay(60_000L)
+                delay(CameraMonitorService.NO_VIEWER_PAUSE_MS)
                 streamingState.value = CameraStreamingState.PAUSED_INACTIVITY
             }
         }
@@ -204,7 +205,7 @@ class CameraStandbyStateTest {
         assertTrue(timerStarted)
         assertEquals(CameraStreamingState.WAITING_FOR_VIEWERS, streamingState.value)
 
-        advanceTimeBy(60_001L)
+        advanceTimeBy(CameraMonitorService.NO_VIEWER_PAUSE_MS + 1L)
         runCurrent()
         assertEquals(CameraStreamingState.PAUSED_INACTIVITY, streamingState.value)
     }
@@ -256,5 +257,147 @@ class CameraStandbyStateTest {
         // Third invocation
         startStreaming()
         assertEquals(1, collectorLaunchCount)
+    }
+
+    @Test
+    fun testSecondViewerOfferWhileStreamingDoesNotStopActiveStream() = runTest {
+        val streamingState = MutableStateFlow(CameraStreamingState.STREAMING)
+        val activeViewersCount = MutableStateFlow(1)
+        var cameraHardwareStopped = false
+        var inactivityJob: Job? = null
+
+        fun cancelTimer() {
+            inactivityJob?.cancel()
+            inactivityJob = null
+        }
+
+        fun startTimer() {
+            inactivityJob?.cancel()
+            inactivityJob = launch {
+                delay(CameraMonitorService.NO_VIEWER_PAUSE_MS)
+                if (activeViewersCount.value > 0) return@launch
+                cameraHardwareStopped = true
+                streamingState.value = CameraStreamingState.PAUSED_INACTIVITY
+            }
+        }
+
+        fun handleIncomingOffer() {
+            cancelTimer()
+            if (streamingState.value == CameraStreamingState.PAUSED_INACTIVITY) {
+                streamingState.value = CameraStreamingState.WAITING_FOR_VIEWERS
+                startTimer()
+            } else {
+                if (activeViewersCount.value == 0) {
+                    startTimer()
+                }
+            }
+        }
+
+        // Viewer 1 is already streaming (activeViewersCount = 1), Viewer 2 sends Offer
+        handleIncomingOffer()
+
+        // Viewer 2 fails ICE negotiation, so activeViewersCount remains 1.
+        // Advance past 15s inactivity window:
+        advanceTimeBy(CameraMonitorService.NO_VIEWER_PAUSE_MS + 5_000L)
+        runCurrent()
+
+        assertFalse("Camera must not stop while Viewer 1 is still connected", cameraHardwareStopped)
+        assertEquals(CameraStreamingState.STREAMING, streamingState.value)
+    }
+
+    @Test
+    fun testStartStreamingWhilePausedInactivityDoesNotWakeSensor() {
+        var isStreamingActive = true
+        val streamingState = MutableStateFlow(CameraStreamingState.PAUSED_INACTIVITY)
+        var cameraStartCalled = false
+
+        fun startStreaming() {
+            if (isStreamingActive) {
+                if (streamingState.value == CameraStreamingState.PAUSED_INACTIVITY) {
+                    // Remain in standby
+                } else {
+                    cameraStartCalled = true
+                }
+                return
+            }
+            isStreamingActive = true
+            cameraStartCalled = true
+        }
+
+        // Rebind / onStartCommand while in PAUSED_INACTIVITY must NOT wake sensor
+        startStreaming()
+        assertFalse("Sensor must not wake on service rebind while in PAUSED_INACTIVITY", cameraStartCalled)
+        assertEquals(CameraStreamingState.PAUSED_INACTIVITY, streamingState.value)
+    }
+
+    @Test
+    fun testCameraRecoveryExponentialBackoffAndMaxAttempts() = runTest {
+        assertEquals(1_000L, CameraMonitorService.computeRecoveryDelayMs(0))
+        assertEquals(2_000L, CameraMonitorService.computeRecoveryDelayMs(1))
+        assertEquals(4_000L, CameraMonitorService.computeRecoveryDelayMs(2))
+        assertEquals(8_000L, CameraMonitorService.computeRecoveryDelayMs(3))
+        assertEquals(16_000L, CameraMonitorService.computeRecoveryDelayMs(4))
+        assertEquals(20_000L, CameraMonitorService.computeRecoveryDelayMs(5))
+
+        val streamingState = MutableStateFlow(CameraStreamingState.WAITING_FOR_VIEWERS)
+        var cameraRecoveryAttempts = 0
+        var cameraRecoveryJob: Job? = null
+        var startCameraCount = 0
+
+        fun scheduleCameraRecovery() {
+            if (cameraRecoveryJob?.isActive == true) return
+            if (cameraRecoveryAttempts >= CameraMonitorService.MAX_CAMERA_RECOVERY_ATTEMPTS) return
+            val attempt = cameraRecoveryAttempts
+            val delayMs = CameraMonitorService.computeRecoveryDelayMs(attempt)
+            cameraRecoveryAttempts = attempt + 1
+            cameraRecoveryJob = launch {
+                delay(delayMs)
+                if (streamingState.value == CameraStreamingState.STREAMING ||
+                    streamingState.value == CameraStreamingState.WAITING_FOR_VIEWERS
+                ) {
+                    startCameraCount++
+                }
+            }
+        }
+
+        // 5 consecutive camera failures should schedule 5 retries (1s, 2s, 4s, 8s, 16s)
+        val expectedDelays = listOf(1_000L, 2_000L, 4_000L, 8_000L, 16_000L)
+        expectedDelays.forEachIndexed { index, delayMs ->
+            scheduleCameraRecovery()
+            advanceTimeBy(delayMs)
+            runCurrent()
+            assertEquals(index + 1, startCameraCount)
+        }
+
+        // 6th failure must be aborted (capped at 5 attempts)
+        scheduleCameraRecovery()
+        advanceTimeBy(30_000L)
+        runCurrent()
+        assertEquals("Recovery must stop after 5 consecutive attempts", 5, startCameraCount)
+    }
+
+    @Test
+    fun testCameraRecoverySkippedWhenTransitionedToPausedInactivity() = runTest {
+        val streamingState = MutableStateFlow(CameraStreamingState.WAITING_FOR_VIEWERS)
+        var startCameraCount = 0
+
+        val recoveryJob = launch {
+            delay(CameraMonitorService.computeRecoveryDelayMs(1)) // 2000ms
+            if (streamingState.value == CameraStreamingState.STREAMING ||
+                streamingState.value == CameraStreamingState.WAITING_FOR_VIEWERS
+            ) {
+                startCameraCount++
+            }
+        }
+
+        // At 1000ms, inactivity timer pauses the service
+        advanceTimeBy(1_000L)
+        runCurrent()
+        streamingState.value = CameraStreamingState.PAUSED_INACTIVITY
+        recoveryJob.cancel()
+
+        advanceTimeBy(5_000L)
+        runCurrent()
+        assertEquals("Pending camera recovery must not wake sensor after PAUSED_INACTIVITY", 0, startCameraCount)
     }
 }

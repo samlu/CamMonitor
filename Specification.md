@@ -173,7 +173,7 @@ Every signaling envelope sent over the public MQTT broker is structured as:
 3. **Power & App Lifecycle:**
    * Foreground Service startup, shutdown, and notification bindings.
    * OLED Black Screen activations, tap-to-wake events, and 60-second idle countdown triggers.
-   * 60s viewer absence camera release triggers.
+   * 15s viewer absence camera release triggers.
 4. **DataChannel Messages:**
    * Inbound and outbound control messages (`TORCH`, `PTT_START`, `PTT_STOP`, `RENAME`, `BATTERY`, `QUERY_BATTERY`, `SET_NIGHT_MODE`, `NIGHT_MODE_REPORT`).
 
@@ -664,8 +664,8 @@ flowchart TD
 #### 8.2.2 State Machine & Signaling Unit Tests (`test/signaling/`)
 * `testCameraMode_PairingCountZero_TransitionsToQrDisplay()`: Verifies initial launch starts in QR pairing state.
 * `testCameraMode_PairingCountGreaterThanZero_TransitionsToCameraActive()`: Verifies paired device opens camera immediately.
-* `testCameraMode_ViewerConnects_StreamsAndResetsInactivityTimer()`: Verifies connection resets 60s timer.
-* `testCameraMode_ZeroViewersFor60Seconds_TransitionsToPausedState()`: Advances virtual time by 60s $\to$ asserts camera sensor is closed.
+* `testCameraMode_ViewerConnects_StreamsAndResetsInactivityTimer()`: Verifies connection resets 15s timer.
+* `testCameraMode_ZeroViewersFor15Seconds_TransitionsToPausedState()`: Advances virtual time by 15s $\to$ asserts camera sensor is closed.
 * `testCameraMode_MaxViewersReached_RejectsThirdConnection()`: Connects 2 viewers $\to$ verifies 3rd connection receives `REJECT_MAX_CAPACITY`.
 * `testCameraMode_Rename_BroadcastsDataChannelCommand()`: Renames camera $\to$ verifies JSON `{"cmd":"RENAME"}` sent to all active viewers.
 

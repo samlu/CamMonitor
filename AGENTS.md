@@ -56,33 +56,37 @@ CamMonitor/
 │       ├── main/
 │       │   ├── AndroidManifest.xml          # Permissions, foreground services, activity
 │       │   ├── java/com/a0soft/gphone/camonitor/
+│       │   │   ├── CamMonitorApp.kt         # Application singleton & notification channel init
 │       │   │   ├── MainActivity.kt          # Compose host activity & navigation routing
-│       │   │   ├── camera/
-│       │   │   │   └── CameraStreamManager.kt  # CameraX binding, sensor mapping, Night extension
-│       │   │   ├── webrtc/
-│       │   │   │   └── WebRtcManager.kt     # WebRTC PeerConnection, SDP offer/answer, DataChannel
-│       │   │   ├── mqtt/
-│       │   │   │   └── SignalingClient.kt   # HiveMQ MQTT TLS signaling & encrypted exchange
-│       │   │   ├── service/
-│       │   │   │   └── CameraMonitorService.kt # Sticky foreground streaming service
 │       │   │   ├── data/
-│       │   │   │   ├── DeviceRepository.kt  # Paired devices CRUD & limits
-│       │   │   │   ├── PrefsManager.kt      # Encrypted preference storage
-│       │   │   │   ├── CryptoManager.kt     # AES-GCM-256 key generation & encryption
-│       │   │   │   └── model/Models.kt      # Domain data classes, signaling events, LogLevel
+│       │   │   │   ├── camera/
+│       │   │   │   │   ├── CameraXVideoCapturer.kt # CameraX binding, sensor mapping, Night extension
+│       │   │   │   │   └── TorchManager.kt  # Camera flashlight state & hardware control
+│       │   │   │   ├── model/Models.kt      # Domain data classes, signaling events, LogLevel
+│       │   │   │   ├── security/
+│       │   │   │   │   ├── CryptoUtils.kt   # ECDH, ECDSA, HKDF-SHA256, AES-GCM-256 operations
+│       │   │   │   │   └── SecurityRepository.kt # KeyStore management, paired devices CRUD, envelopes
+│       │   │   │   ├── signaling/
+│       │   │   │   │   └── SignalingClient.kt # HiveMQ MQTT TLS signaling & encrypted exchange
+│       │   │   │   └── webrtc/
+│       │   │   │       └── WebRtcManager.kt # WebRTC PeerConnection, SDP offer/answer, DataChannel
+│       │   │   ├── service/
+│       │   │   │   └── CameraMonitorService.kt # Sticky foreground streaming service & 15s standby
+│       │   │   ├── time/TimeProvider.kt     # Clock abstraction for deterministic coroutine tests
 │       │   │   ├── log/
 │       │   │   │   └── AppLogger.kt         # Ring-buffer UI logs, rolling disk files, zip export
 │       │   │   └── ui/
 │       │   │       ├── home/HomeScreen.kt           # Mode selection, pairing summaries, top bar
-│       │   │       ├── camera/CameraScreen.kt       # Camera mode preview, OLED blackout saver
-│       │   │       ├── viewer/ViewerScreen.kt       # WebRTC video surface, overlay controls
+│       │   │       ├── camera/CameraModeScreen.kt   # Camera mode preview, OLED blackout saver
+│       │   │       ├── viewer/ViewerModeScreen.kt   # WebRTC video surface, overlay controls
 │       │   │       ├── pairing/
 │       │   │       │   ├── CameraPairingScreen.kt   # Displays QR code (PA sender)
 │       │   │       │   └── ViewerPairingScreen.kt   # ZXing QR code scanner (PB receiver)
 │       │   │       ├── devices/ManageDevicesScreen.kt # Paired devices list & revocation
 │       │   │       ├── log/LogViewerScreen.kt       # In-app log viewer, filters, verbosity menu
 │       │   │       ├── about/AboutScreen.kt         # App version, license, contributors card
-│       │   │       └── theme/                       # Material3 Color, Type, Theme definitions
+│       │   │       ├── common/                      # AudioRouting, Battery, Locale, QR helpers
+│       │   │       └── theme/                       # Material3 Color & Theme definitions
 │       │   └── res/
 │       │       ├── values/strings.xml               # English / Default strings
 │       │       ├── values-b+zh+Hant/strings.xml     # Traditional Chinese (Taiwan/HK)

@@ -84,4 +84,49 @@ class CryptoUtilsTest {
         val sig = CryptoUtils.sign(data, restored.private)
         assertTrue(CryptoUtils.verify(data, sig, restored.public))
     }
+
+    @Test
+    fun testEcdhKeyCachingAndDefensiveClone() {
+        val deviceA = CryptoUtils.generateSoftwareEcKeyPair()
+        val deviceB = CryptoUtils.generateSoftwareEcKeyPair()
+
+        val first = CryptoUtils.deriveEcdhKey(deviceA.private, deviceB.public)
+        val originalCopy = first.clone()
+
+        // Mutate the returned array to ensure the internal cache is not corrupted
+        first[0] = (first[0].toInt() xor 0xFF).toByte()
+
+        val second = CryptoUtils.deriveEcdhKey(deviceA.private, deviceB.public)
+        assertArrayEquals("Cached ECDH key must return a defensive clone unaffected by caller mutation", originalCopy, second)
+    }
+
+    @Test
+    fun testConcurrentEcdhAndSigningThreadSafety() {
+        val deviceA = CryptoUtils.generateSoftwareEcKeyPair()
+        val deviceB = CryptoUtils.generateSoftwareEcKeyPair()
+        val expectedShared = CryptoUtils.deriveEcdhKey(deviceA.private, deviceB.public)
+        val payload = "Concurrent ICE candidate envelope".toByteArray(Charsets.UTF_8)
+
+        val errors = java.util.concurrent.CopyOnWriteArrayList<Throwable>()
+        val threads = (1..16).map { index ->
+            Thread {
+                try {
+                    repeat(25) {
+                        if (index % 2 == 0) {
+                            val derived = CryptoUtils.deriveEcdhKey(deviceA.private, deviceB.public)
+                            assertArrayEquals(expectedShared, derived)
+                        } else {
+                            val sig = CryptoUtils.sign(payload, deviceA.private)
+                            assertTrue(CryptoUtils.verify(payload, sig, deviceA.public))
+                        }
+                    }
+                } catch (t: Throwable) {
+                    errors.add(t)
+                }
+            }
+        }
+        threads.forEach { it.start() }
+        threads.forEach { it.join(10_000L) }
+        assertTrue("Expected zero concurrency errors, but got: $errors", errors.isEmpty())
+    }
 }

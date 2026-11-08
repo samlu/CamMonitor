@@ -48,6 +48,10 @@ class CameraMonitorService : Service() {
          * re-opened in ~1-2s anyway.
          */
         const val NO_VIEWER_PAUSE_MS = 15_000L
+        const val MAX_CAMERA_RECOVERY_ATTEMPTS = 5
+
+        fun computeRecoveryDelayMs(attempt: Int): Long =
+            (1_000L shl attempt.coerceAtMost(5)).coerceAtMost(20_000L)
     }
 
     private val tag = "CameraMonitorService"
@@ -194,8 +198,12 @@ class CameraMonitorService : Service() {
     fun startStreaming() {
         val app = CamMonitorApp.instance
         if (isStreamingActive) {
-            AppLogger.i(tag, "startStreaming called but streaming is already active; ensuring camera capture is running")
-            app.webRtcManager.startCameraCapture()
+            if (_streamingState.value == CameraStreamingState.PAUSED_INACTIVITY) {
+                AppLogger.i(tag, "startStreaming called while in PAUSED_INACTIVITY; remaining in standby")
+            } else {
+                AppLogger.i(tag, "startStreaming called but streaming is already active; ensuring camera capture is running")
+                app.webRtcManager.startCameraCapture()
+            }
             return
         }
         isStreamingActive = true
@@ -230,7 +238,7 @@ class CameraMonitorService : Service() {
             }
         }
 
-        // Track active viewers count for 60s timeout and battery broadcast
+        // Track active viewers count for 15s timeout and battery broadcast
         viewersCountJob?.cancel()
         viewersCountJob = serviceScope.launch {
             app.webRtcManager.activeViewersCount.collect { count ->
@@ -282,17 +290,23 @@ class CameraMonitorService : Service() {
             AppLogger.i(tag, "Camera recovery already scheduled; ignoring duplicate request")
             return
         }
-        if (cameraRecoveryAttempts >= 5) {
-            AppLogger.w(tag, "Camera recovery aborted: 5 consecutive failures (waiting for a new viewer)")
+        if (cameraRecoveryAttempts >= MAX_CAMERA_RECOVERY_ATTEMPTS) {
+            AppLogger.w(tag, "Camera recovery aborted: $MAX_CAMERA_RECOVERY_ATTEMPTS consecutive failures (waiting for a new viewer)")
             return
         }
         val attempt = cameraRecoveryAttempts
-        val delayMs = (1_000L shl attempt.coerceAtMost(5)).coerceAtMost(20_000L)
+        val delayMs = computeRecoveryDelayMs(attempt)
         cameraRecoveryAttempts = attempt + 1
         cameraRecoveryJob = serviceScope.launch {
-            AppLogger.w(tag, "Camera lost — recovery attempt ${attempt + 1}/5 in ${delayMs}ms")
+            AppLogger.w(tag, "Camera lost — recovery attempt ${attempt + 1}/$MAX_CAMERA_RECOVERY_ATTEMPTS in ${delayMs}ms")
             delay(delayMs)
-            app.webRtcManager.startCameraCapture()
+            if (_streamingState.value == CameraStreamingState.STREAMING ||
+                _streamingState.value == CameraStreamingState.WAITING_FOR_VIEWERS
+            ) {
+                app.webRtcManager.startCameraCapture()
+            } else {
+                AppLogger.i(tag, "Camera recovery skipped: service state is ${_streamingState.value}")
+            }
         }
     }
 
@@ -330,7 +344,12 @@ class CameraMonitorService : Service() {
         inactivityJob = serviceScope.launch {
             AppLogger.i(tag, "Inactivity timer started: ${NO_VIEWER_PAUSE_MS / 1000}s countdown until camera pause")
             delay(NO_VIEWER_PAUSE_MS)
+            if (CamMonitorApp.instance.webRtcManager.activeViewersCount.value > 0) {
+                AppLogger.i(tag, "Inactivity timer elapsed, but activeViewersCount > 0; keeping camera active")
+                return@launch
+            }
             AppLogger.i(tag, "0 viewers for ${NO_VIEWER_PAUSE_MS / 1000}s: Stopping camera and pausing")
+            resetCameraRecovery()
             CamMonitorApp.instance.webRtcManager.stopCameraCapture()
             _streamingState.value = CameraStreamingState.PAUSED_INACTIVITY
             updateNotification(getString(R.string.notification_standby_waiting))
@@ -414,7 +433,9 @@ class CameraMonitorService : Service() {
             resumeStreamingFromPause()
         } else {
             app.webRtcManager.startCameraCapture()
-            startInactivityTimer()
+            if (app.webRtcManager.activeViewersCount.value == 0) {
+                startInactivityTimer()
+            }
         }
 
         val pc = app.webRtcManager.createPeerConnection(senderId) { candidate ->
@@ -488,12 +509,16 @@ class CameraMonitorService : Service() {
             AppLogger.w(tag, "Cannot send ${msg.javaClass.simpleName} to $viewerId: Viewer not found in paired viewers list")
             return
         }
-        val remotePubKey = com.a0soft.gphone.camonitor.data.security.CryptoUtils.publicKeyFromBase64(viewer.publicKeyBase64)
-        val key = com.a0soft.gphone.camonitor.data.security.CryptoUtils.deriveEcdhKey(app.securityRepository.getKeyPair().private, remotePubKey)
 
-        serviceScope.launch {
-            val sent = app.signalingClient.sendSignalingMessage(viewerId, msg, key)
-            AppLogger.d(tag, "Sent ${msg.javaClass.simpleName} to $viewerId (success=$sent)")
+        serviceScope.launch(Dispatchers.IO) {
+            try {
+                val remotePubKey = com.a0soft.gphone.camonitor.data.security.CryptoUtils.publicKeyFromBase64(viewer.publicKeyBase64)
+                val key = com.a0soft.gphone.camonitor.data.security.CryptoUtils.deriveEcdhKey(app.securityRepository.getKeyPair().private, remotePubKey)
+                val sent = app.signalingClient.sendSignalingMessage(viewerId, msg, key)
+                AppLogger.d(tag, "Sent ${msg.javaClass.simpleName} to $viewerId (success=$sent)")
+            } catch (e: Exception) {
+                AppLogger.e(tag, "Failed sending ${msg.javaClass.simpleName} to $viewerId", e)
+            }
         }
     }
 
