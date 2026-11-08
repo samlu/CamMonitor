@@ -162,6 +162,13 @@
     <string name="about_open_source_notice">本專案採 Apache 2.0 授權條款開放原始碼。</string>
     <string name="about_view_on_github">在 GitHub 上檢視專案</string>
     <string name="about_github_url">https://github.com/samlu/CamMonitor</string>
+    <string name="about_contributors_title">貢獻者</string>
+    <string name="about_contributors_subtitle">感謝所有協助讓 CamMonitor 變得更好的開發者與貢獻者。</string>
+    <string name="about_contributor_samlu_role">專案發起人與核心架構維護</string>
+    <string name="about_contributor_owwhale_role">日誌管線重構、相機解析度修復與簡體中文</string>
+    <string name="about_contributor_eltociear_role">日語本地化</string>
+    <string name="about_view_all_contributors">在 GitHub 上檢視完整貢獻者名冊</string>
+    <string name="about_contributors_github_url">https://github.com/samlu/CamMonitor/graphs/contributors</string>
     <!-- Permissions Rationale & Recovery -->
     <string name="permission_dialog_title">需要必要權限</string>
     <string name="permission_camera_reason">相機：用於視訊串流與掃描配對 QR 碼。</string>

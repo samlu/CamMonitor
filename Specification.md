@@ -480,6 +480,13 @@ Every signaling envelope sent over the public MQTT broker is structured as:
     * Label: `"View on GitHub"` (`Button` with `Icons.Default.OpenInNew`).
     * Triggers external `Intent.ACTION_VIEW` targeting `https://github.com/samlu/CamMonitor`.
   * Plaintext Repository URL display (`BodySmall`, muted outline color).
+* **Contributors Card (`ElevatedCard`):**
+  * Bundled static list of repository contributors with localized contribution domains:
+    * `samlu` (`@samlu`): Creator & Core Maintainer (`about_contributor_samlu_role`).
+    * `OWWhale` (`@OWWhale`): Logging Pipeline, Camera Engine & i18n (`about_contributor_owwhale_role`).
+    * `Ikko Eltociear Ashimine` (`@eltociear`): Japanese Localization (`about_contributor_eltociear_role`).
+  * Each contributor row displays an initial avatar, GitHub handle, localized contribution description, and external link icon directing to their GitHub profile.
+  * External Link Button: `"View All Contributors on GitHub"` targeting `https://github.com/samlu/CamMonitor/graphs/contributors`.
 
 ---
 

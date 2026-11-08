@@ -162,6 +162,13 @@
     <string name="about_open_source_notice">本项目采用 Apache 2.0 许可协议开源。</string>
     <string name="about_view_on_github">在 GitHub 上查看项目</string>
     <string name="about_github_url">https://github.com/samlu/CamMonitor</string>
+    <string name="about_contributors_title">贡献者</string>
+    <string name="about_contributors_subtitle">感谢所有帮助让 CamMonitor 变得更好的开发者与贡献者。</string>
+    <string name="about_contributor_samlu_role">项目发起人与核心架构维护</string>
+    <string name="about_contributor_owwhale_role">日志管线重构、相机分辨率修复与简体中文</string>
+    <string name="about_contributor_eltociear_role">日语本地化</string>
+    <string name="about_view_all_contributors">在 GitHub 上查看完整贡献者名册</string>
+    <string name="about_contributors_github_url">https://github.com/samlu/CamMonitor/graphs/contributors</string>
     <!-- Permissions Rationale & Recovery -->
     <string name="permission_dialog_title">需要必要权限</string>
     <string name="permission_camera_reason">相机：用于视频串流与扫描配对二维码。</string>

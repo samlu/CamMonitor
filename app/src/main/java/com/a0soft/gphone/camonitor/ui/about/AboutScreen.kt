@@ -3,13 +3,16 @@ package com.a0soft.gphone.camonitor.ui.about
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -18,10 +21,64 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.a0soft.gphone.camonitor.BuildConfig
 import com.a0soft.gphone.camonitor.R
+
+/**
+ * AI AGENT INSTRUCTION / MAINTENANCE PROMPT:
+ * -----------------------------------------------------------------------------------------
+ * When new PRs are merged or new contributors contribute to CamMonitor:
+ *
+ * 1. HOW TO RETRIEVE CONTRIBUTOR INFORMATION:
+ *    - Run: `git log --format='%aN <%aE>' | sort -u` or inspect merged GitHub PR metadata.
+ *    - Identify the contributor's display name, GitHub username/handle (e.g., "@username"),
+ *      GitHub profile URL (`https://github.com/username`), and their primary contribution domain.
+ *
+ * 2. REQUIRED FILES TO UPDATE:
+ *    a. [AboutScreen.kt]:
+ *       - Append a new [ContributorInfo] entry to [CONTRIBUTORS] below.
+ *    b. String Resource Files (MUST update all 4 locales for parity):
+ *       - `res/values/strings.xml` (Default/English): Define `about_contributor_<id>_role`
+ *       - `res/values-b+zh+Hant/strings.xml` (Traditional Chinese)
+ *       - `res/values-b+zh+Hans/strings.xml` (Simplified Chinese)
+ *       - `res/values-ja/strings.xml` (Japanese)
+ *    c. [Specification.md]:
+ *       - Update Section 5.7 ("About Screen" -> "Contributors Card") with the new entry.
+ *
+ * 3. VERIFICATION:
+ *    - Run `./gradlew testDebugUnitTest` to ensure `LocaleResourcesTest` passes without missing keys.
+ * -----------------------------------------------------------------------------------------
+ */
+private data class ContributorInfo(
+    val name: String,
+    val handle: String,
+    val roleResId: Int,
+    val githubUrl: String
+)
+
+private val CONTRIBUTORS = listOf(
+    ContributorInfo(
+        name = "samlu",
+        handle = "@samlu",
+        roleResId = R.string.about_contributor_samlu_role,
+        githubUrl = "https://github.com/samlu"
+    ),
+    ContributorInfo(
+        name = "OWWhale",
+        handle = "@OWWhale",
+        roleResId = R.string.about_contributor_owwhale_role,
+        githubUrl = "https://github.com/OWWhale"
+    ),
+    ContributorInfo(
+        name = "Ikko Eltociear Ashimine",
+        handle = "@eltociear",
+        roleResId = R.string.about_contributor_eltociear_role,
+        githubUrl = "https://github.com/eltociear"
+    )
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -159,6 +216,129 @@ fun AboutScreen(
                         color = MaterialTheme.colorScheme.primary,
                         textAlign = TextAlign.Center
                     )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // Contributors Card
+            ElevatedCard(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.elevatedCardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer
+                )
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Groups,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = stringResource(R.string.about_contributors_title),
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = stringResource(R.string.about_contributors_subtitle),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    CONTRIBUTORS.forEachIndexed { index, contributor ->
+                        if (index > 0) {
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp))
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(contributor.githubUrl)).apply {
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    }
+                                    context.startActivity(intent)
+                                }
+                                .padding(vertical = 4.dp, horizontal = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                modifier = Modifier.size(38.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = contributor.name.take(1).uppercase(),
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = contributor.name,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = contributor.handle,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.outline
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = stringResource(contributor.roleResId),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.outline,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    val contributorsGraphUrl = stringResource(R.string.about_contributors_github_url)
+                    OutlinedButton(
+                        onClick = {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(contributorsGraphUrl)).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            context.startActivity(intent)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(stringResource(R.string.about_view_all_contributors))
+                    }
                 }
             }
         }
