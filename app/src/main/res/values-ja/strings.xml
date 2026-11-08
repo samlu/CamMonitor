@@ -51,6 +51,7 @@
     <string name="camera_viewers_count_short">%1$d/%2$d</string>
     <string name="camera_intercom_live">インターホン通話中（ビューアーが発話中）</string>
     <string name="camera_black_screen">画面消灯</string>
+    <string name="camera_unlock_hint">スワイプしてロック解除</string>
     <string name="camera_exit_button">カメラを終了</string>
     <string name="camera_paused_title">カメラ一時停止中</string>
     <string name="camera_paused_description">15秒間ビューアーが接続されなかったため、バッテリー節約のためにカメラセンサーを停止しました。待機モード中です。ビューアーが接続すると、カメラは自動的に再開します。</string>

@@ -51,6 +51,7 @@
     <string name="camera_viewers_count_short">%1$d/%2$d</string>
     <string name="camera_intercom_live">Intercom Live (Viewer Speaking)</string>
     <string name="camera_black_screen">Black Screen</string>
+    <string name="camera_unlock_hint">Swipe to unlock</string>
     <string name="camera_exit_button">Exit Camera</string>
     <string name="camera_paused_title">Camera Paused</string>
     <string name="camera_paused_description">No viewers connected for 15 seconds. Camera sensor stopped to preserve battery. Standby mode active — camera will automatically wake up when a viewer connects.</string>

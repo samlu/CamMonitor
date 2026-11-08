@@ -20,7 +20,7 @@ CamMonitor turns your spare Android phone into a private, zero-account home secu
   - 1 Camera can stream to up to **2 viewers** simultaneously.
   - 1 Viewer can pair with up to **8 different cameras** (e.g., Living Room, Front Door, Baby Nursery).
 - **Smart Battery & Screen Protection:**
-  - **OLED Black Screen:** Camera screen turns completely black after 1 minute of inactivity to prevent OLED burn-in and save power. Tap anywhere to wake.
+  - **OLED Black Screen & Touch Guard:** Screen turns completely black after 60 seconds of inactivity (or tap the **Black Screen** button) to prevent OLED burn-in and save power. Touch input is locked to prevent stray taps; swipe to unlock.
   - **Auto-Standby Mode:** If no viewers are watching for 15 seconds, the camera sensor shuts down to preserve battery and automatically wakes when a viewer connects.
   - **Hardware Longevity & Anti-Overheating:** Deliberately avoids 24/7 continuous video recording and persistent AI object detection to prevent phone overheating, battery swelling, and camera sensor wear. (Users can use AI tools to add these functions if specifically needed).
 - **Remote Controls from Viewer:**
@@ -68,8 +68,8 @@ Before first use, pair your two devices:
 2. Mount or position your phone facing the area you want to monitor.
 3. **Screen Behavior:**
    - **HUD Overlay:** The top bar shows streaming resolution/FPS (`720p 15fps`), active viewer count (`0/2` in portrait, `0/2 Viewers` in landscape), Night mode status, and flashlight status.
-   - **OLED Black Screen:** After 60 seconds without touch, the display turns completely black to conserve power and protect the screen. **Tap anywhere on the screen** to turn the display back on.
-   - **Manual Black Screen:** Tap the **Black Screen** button at the bottom left anytime to turn off the display immediately.
+   - **Screen Stays On:** While in Camera Mode, the display is kept awake so the stream and preview never die mid-session.
+   - **OLED Black Screen:** After 60 seconds without touch (or by tapping the **Black Screen** button at the bottom left), the display switches off and locks touch input. **Swipe to unlock**; the system Back key is ignored while locked.
    - **Camera Standby:** If no viewer connects within 15 seconds, the camera enters standby mode to save battery. It will wake up automatically as soon as a paired viewer connects.
 4. **To Exit:** Tap **Exit Camera** (or press the Back button and confirm).
 
