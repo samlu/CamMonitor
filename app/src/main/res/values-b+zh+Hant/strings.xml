@@ -6,9 +6,9 @@
     <string name="exit_viewer_mode">退出觀看模式</string>
     <string name="rotate_90">旋轉</string>
     <string name="notification_channel_name">CamMonitor 服務</string>
-    <string name="notification_channel_description">持續鏡頭串流的前台服務通知</string>
+    <string name="notification_channel_description">持續鏡頭串流的前景服務通知</string>
     <string name="notification_title">CamMonitor 運作中</string>
-    <string name="notification_text">鏡頭串流正在後台持續運作</string>
+    <string name="notification_text">鏡頭串流正在背景持續運作</string>
     <string name="notification_waiting_for_viewers">等待觀看端連線</string>
     <string name="notification_streaming_live">正在即時串流給觀看端</string>
     <string name="notification_standby_waiting">鏡頭待命模式（感光元件已暫停以節省電力）。等待觀看端連線...</string>
@@ -50,7 +50,7 @@
     <string name="camera_viewers_count">%1$d/%2$d 觀看端</string>
     <string name="camera_viewers_count_short">%1$d/%2$d</string>
     <string name="camera_intercom_live">對講通話中（觀看端發話）</string>
-    <string name="camera_black_screen">熄屏模式</string>
+    <string name="camera_black_screen">關閉螢幕</string>
     <string name="camera_unlock_hint">滑動解鎖</string>
     <string name="camera_exit_button">退出鏡頭</string>
     <string name="camera_paused_title">鏡頭已暫停</string>
@@ -80,7 +80,7 @@
     <string name="cd_audio_playback_off">音訊播放關閉</string>
     <string name="viewer_reconnect_prompt">鏡頭連線中斷。正在自動重新連線，或輕觸立即重試。</string>
     <string name="viewer_reconnect_now">立即重新連線</string>
-    <string name="viewer_symmetric_nat_desc">P2P 直接連線因電信商對稱型 NAT 失敗。請將裝置連線至 Wi-Fi 或相同的區域網路。</string>
+    <string name="viewer_symmetric_nat_desc">P2P 直接連線因電信業者對稱型 NAT 失敗。請將裝置連線至 Wi-Fi 或相同的區域網路。</string>
     <string name="viewer_connecting_to_title">正在連線至 %1$s</string>
     <string name="viewer_usually_connects_in">通常於 ~%1$s 秒內完成連線</string>
     <string name="viewer_step_network_active">正在連線至網路...</string>
@@ -107,18 +107,18 @@
     <string name="cd_pairing_qr_code">配對 QR 碼</string>
     <string name="camera_pairing_otp_expires">OTP 有效時間剩餘 %1$02d:%2$02d</string>
     <string name="camera_pairing_slot_available">剩餘可用名額 %1$d/%2$d</string>
-    <string name="camera_pairing_instructions">請在裝置 B 上開啟 CamMonitor，點選「啟動觀看模式」並掃描此條碼。</string>
+    <string name="camera_pairing_instructions">請在裝置 B 上開啟 CamMonitor，點選「啟動觀看模式」並掃描此 QR 碼。</string>
 
     <!-- Viewer Pairing Screen -->
     <string name="viewer_pairing_title">掃描鏡頭 QR 碼</string>
     <string name="viewer_pairing_align_qr">將 QR 碼對準框線以進行配對</string>
     <string name="viewer_pairing_invalid_qr">無效的 CamMonitor QR 碼格式</string>
-    <string name="viewer_pairing_connecting_broker">已識別有效 QR 碼，正在連線至訊令伺服器...</string>
+    <string name="viewer_pairing_connecting_broker">已辨識出有效 QR 碼，正在連線至訊令伺服器...</string>
     <string name="viewer_pairing_broker_failed">伺服器連線失敗，正在重試...</string>
     <string name="viewer_pairing_authenticating">正在與 %1$s 進行驗證...</string>
     <string name="viewer_pairing_success">配對成功！正在啟動觀看端...</string>
     <string name="viewer_pairing_timeout">配對逾時。請重新對準 QR 碼重試。</string>
-    <string name="viewer_pairing_limit_reached">已達相機數量上限（最多 %1$d 台相機）。</string>
+    <string name="viewer_pairing_limit_reached">已達鏡頭數量上限（最多 %1$d 台鏡頭）。</string>
 
     <!-- Manage Devices Screen -->
     <string name="manage_devices_pair_device">配對裝置</string>
@@ -135,13 +135,13 @@
     <!-- Log Viewer Screen -->
     <string name="log_share_title">分享 CamMonitor 記錄</string>
     <string name="log_share_description">分享記錄</string>
-    <string name="log_level_verbose">詳細日誌已開啟（含偵錯資訊）</string>
-    <string name="log_level_normal">標準日誌（點按開啟詳細日誌）</string>
-    <string name="log_level_menu_title">日誌詳細度</string>
-    <string name="log_level_debug_title">詳細日誌 (DEBUG)</string>
-    <string name="log_level_debug_desc">記錄所有診斷細節與偵錯資訊</string>
-    <string name="log_level_info_title">標準日誌 (INFO)</string>
-    <string name="log_level_info_desc">過濾除錯日誌，降低發熱與節省儲存空間</string>
+    <string name="log_level_verbose">詳細記錄已開啟（含除錯資訊）</string>
+    <string name="log_level_normal">標準記錄（輕觸開啟詳細記錄）</string>
+    <string name="log_level_menu_title">記錄詳細度</string>
+    <string name="log_level_debug_title">詳細記錄 (DEBUG)</string>
+    <string name="log_level_debug_desc">記錄所有診斷細節與除錯資訊</string>
+    <string name="log_level_info_title">標準記錄 (INFO)</string>
+    <string name="log_level_info_desc">過濾除錯記錄，降低機身發熱與節省儲存空間</string>
     <string name="log_clear_description">清除記錄</string>
     <string name="log_filter_all">全部</string>
 
@@ -171,7 +171,7 @@
     <string name="about_contributors_title">貢獻者</string>
     <string name="about_contributors_subtitle">感謝所有協助讓 CamMonitor 變得更好的開發者與貢獻者。</string>
     <string name="about_contributor_samlu_role">專案發起人與核心架構維護</string>
-    <string name="about_contributor_owwhale_role">日誌管線重構、相機解析度修復與簡體中文</string>
+    <string name="about_contributor_owwhale_role">記錄架構重構、相機解析度修正與簡體中文</string>
     <string name="about_contributor_eltociear_role">日語本地化</string>
     <string name="about_view_all_contributors">在 GitHub 上檢視完整貢獻者名冊</string>
     <string name="about_contributors_github_url">https://github.com/samlu/CamMonitor/graphs/contributors</string>
