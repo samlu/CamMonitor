@@ -89,4 +89,10 @@ class BlackScreenUnlockPolicyTest {
     fun testTapWithoutMovementNeverUnlocks() {
         assertFalse(BlackScreenUnlockPolicy.shouldUnlock(0f, 0f, 1000f, 1_000L))
     }
+
+    @Test
+    fun testShouldKeepScreenOnOnlyWhenUnlocked() {
+        assertTrue(BlackScreenUnlockPolicy.shouldKeepScreenOn(isLocked = false))
+        assertFalse(BlackScreenUnlockPolicy.shouldKeepScreenOn(isLocked = true))
+    }
 }

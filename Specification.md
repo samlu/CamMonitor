@@ -35,7 +35,7 @@ CamMonitor is a private, zero-account, peer-to-peer encrypted home surveillance 
   * `androidx.security:security-crypto:1.1.0-alpha06` (`EncryptedSharedPreferences`).
   * Android Keystore (`AndroidKeyStore`) with hardware-backed ECDSA NIST P-256 keys.
 * **Foreground Service:**
-  * `CameraMonitorService.kt` keeps streaming active in the background with WakeLock and WifiLock.
+  * `CameraMonitorService.kt` keeps streaming active in the background with a partial `WakeLock`. `WifiLock` is managed dynamically: acquired in low-latency mode (`WIFI_MODE_FULL_LOW_LATENCY` / `WIFI_MODE_FULL_HIGH_PERF`) only during active WebRTC streaming with $\ge 1$ connected viewer, and released during standby/inactivity (0 viewers) so the Wi-Fi radio can enter standard power-saving DTIM sleep while receiving MQTT keepalive pings.
 
 ### 1.2 Directory & File Map
 
@@ -399,7 +399,15 @@ Every signaling envelope sent over the public MQTT broker is structured as:
   * A dim `Swipe to unlock` hint appears on lock or tap and fades out after **1.5 s** (restarting the 1.5 s timer on each tap).
   * The system back key is swallowed while locked.
 * **Brightness:** `0.01f` while locked, `BRIGHTNESS_OVERRIDE_NONE` (system brightness) while unlocked or on exit.
-* **Screen Awake:** `FLAG_KEEP_SCREEN_ON` is held for the whole streaming session, so the display never sleeps mid-stream. Turning the panel off is therefore always an explicit action, never a system timeout.
+* **Screen Awake & Power Conservation:**
+  * `FLAG_KEEP_SCREEN_ON` is held while actively viewing the unlocked camera screen (`!isLocked`).
+  * When the user locks the black screen (`isLocked == true`), `FLAG_KEEP_SCREEN_ON` is released, allowing Android's display subsystem and display controller to power off completely and the SoC to enter deep suspend while Partial WakeLock and MQTT keepalive sustain background signaling readiness. Upon user touch and deliberate swipe to unlock (`isLocked == false`), `FLAG_KEEP_SCREEN_ON` is immediately restored so the camera monitor preview remains continuously awake.
+  > [!IMPORTANT]
+  > **Display Power Architecture Gotcha (Fix 1)**:
+  > Never hold `FLAG_KEEP_SCREEN_ON` while locked. On modern OLED panels, even with 100% black pixels (`#000000`) at `0.01` brightness, keeping `FLAG_KEEP_SCREEN_ON` sets `mHoldingDisplaySuspendBlocker = true` in Android's `PowerManagerService`. This forces the display subsystem, hardware display controller, and SurfaceFlinger to remain continuously energized, drawing ~180-240 mA and preventing the device SoC from entering deep sleep. The Touch Guard (swallowing stray taps and requiring a deliberate swipe to unlock) is enforced entirely by Compose `pointerInput` (`BlackScreenUnlockPolicy`) and does NOT depend on keeping the display awake.
+  >
+  > **Dynamic WifiLock Architecture Gotcha (Fix 2)**:
+  > Never hold `WifiLock` continuously during 0-viewer standby. Holding `WIFI_MODE_FULL_LOW_LATENCY` or `HIGH_PERF` disables 802.11 DTIM power save polling, forcing the Wi-Fi physical radio to remain awake 100% of the time (~60-80 mA continuous drain, consuming 629 mAh overnight). `WifiLock` MUST be acquired dynamically ONLY when `activeViewersCount > 0` (active WebRTC RTP video/audio streaming), and released when `activeViewersCount == 0`. MQTT TLS signaling keepalive (30s) functions reliably over standard 802.11 DTIM sleep without packet loss.
 * **Burn-in Protection:** No static persistent text is rendered.
 
 #### 5.3.3 Inactivity / Standby View (After 15 s of 0 Viewers)
@@ -669,7 +677,7 @@ flowchart LR
 | `android.permission.POST_NOTIFICATIONS` | Yes | No | 33 | Sticky Foreground Service notification |
 | `android.permission.FOREGROUND_SERVICE` | Yes | No | 28 | Background service persistence |
 | `android.permission.FOREGROUND_SERVICE_CAMERA` | Yes | No | 34 | Background camera capture permission |
-| `android.permission.WAKE_LOCK` | Yes | No | 28 | Partial WakeLock & High-Perf WifiLock to sustain CPU and Wi-Fi throughput during OLED black screen |
+| `android.permission.WAKE_LOCK` | Yes | No | 28 | Partial WakeLock & dynamic Low-Latency/High-Perf WifiLock (acquired only during active streaming) to sustain CPU and Wi-Fi throughput without draining battery during standby |
 | `android.permission.MODIFY_AUDIO_SETTINGS` | Yes | Yes | 28 | Speakerphone & Hardware AEC routing |
 
 ### 7.3 FileProvider Configuration (Log Export)

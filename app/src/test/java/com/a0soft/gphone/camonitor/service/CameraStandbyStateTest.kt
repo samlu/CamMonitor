@@ -400,4 +400,46 @@ class CameraStandbyStateTest {
         runCurrent()
         assertEquals("Pending camera recovery must not wake sensor after PAUSED_INACTIVITY", 0, startCameraCount)
     }
+
+    @Test
+    fun testWifiLockAcquiredOnlyDuringActiveStreamingWithViewers() = runTest {
+        var wifiLockHeld = false
+        fun acquireWifiLock() { wifiLockHeld = true }
+        fun releaseWifiLock() { wifiLockHeld = false }
+
+        val activeViewers = MutableStateFlow(0)
+        val streamingState = MutableStateFlow(CameraStreamingState.WAITING_FOR_VIEWERS)
+
+        val viewersCountJob = launch {
+            activeViewers.collect { count ->
+                if (count > 0) {
+                    acquireWifiLock()
+                    streamingState.value = CameraStreamingState.STREAMING
+                } else if (streamingState.value == CameraStreamingState.STREAMING ||
+                    streamingState.value == CameraStreamingState.WAITING_FOR_VIEWERS) {
+                    releaseWifiLock()
+                    streamingState.value = CameraStreamingState.WAITING_FOR_VIEWERS
+                }
+            }
+        }
+
+        // Initially 0 viewers (standby / waiting) -> WifiLock NOT held
+        runCurrent()
+        assertFalse("WifiLock must not be held when activeViewers == 0", wifiLockHeld)
+        assertEquals(CameraStreamingState.WAITING_FOR_VIEWERS, streamingState.value)
+
+        // Viewer connects (count = 1) -> WifiLock acquired
+        activeViewers.value = 1
+        runCurrent()
+        assertTrue("WifiLock must be acquired when activeViewers > 0", wifiLockHeld)
+        assertEquals(CameraStreamingState.STREAMING, streamingState.value)
+
+        // Viewer disconnects (count = 0) -> WifiLock released
+        activeViewers.value = 0
+        runCurrent()
+        assertFalse("WifiLock must be released when activeViewers drops to 0", wifiLockHeld)
+        assertEquals(CameraStreamingState.WAITING_FOR_VIEWERS, streamingState.value)
+
+        viewersCountJob.cancel()
+    }
 }

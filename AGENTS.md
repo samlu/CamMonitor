@@ -104,3 +104,11 @@ $apk = Get-ChildItem app\build\outputs\apk\debug\*.apk | Sort-Object LastWriteTi
 4. **Log Verbosity & Thermal Control**:
    - The top bar bug icon (`Icons.Default.BugReport`) opens the verbosity menu (`Verbose (DEBUG)` vs `Standard (INFO)`).
    - High-rate frame logs must be checked against `AppLogger.minLevel` to avoid disk fill and thermal throttling on older devices.
+5. **Display Keep-Awake & Black Screen Power (Gotcha #1)**:
+   - `FLAG_KEEP_SCREEN_ON` MUST be held ONLY while unlocked (`!isLocked`).
+   - When entering the OLED Black Screen (`isLocked == true`), `FLAG_KEEP_SCREEN_ON` MUST be released. Even on OLED panels displaying pure black (`#000000`) at 0.01 brightness, keeping `FLAG_KEEP_SCREEN_ON` blocks Android display suspend (`mHoldingDisplaySuspendBlocker`), burning ~180-240 mA continuously and preventing the SoC from entering deep sleep.
+   - The touch guard is enforced by Compose `pointerInput` (`BlackScreenUnlockPolicy`) and does NOT depend on keeping the display awake.
+6. **Dynamic WifiLock Lifecycle (Gotcha #2)**:
+   - `WifiLock` (`WIFI_MODE_FULL_LOW_LATENCY` / `HIGH_PERF`) MUST NOT be held continuously during 0-viewer standby.
+   - Holding `WifiLock` disables 802.11 DTIM power save polling, forcing the Wi-Fi radio to stay awake 100% of the time (~60-80 mA continuous drain).
+   - Acquire `WifiLock` ONLY when `activeViewersCount > 0` (active WebRTC video/audio streaming); release it when `activeViewersCount == 0`. MQTT TLS signaling keepalive (30s) functions reliably over standard 802.11 DTIM sleep.

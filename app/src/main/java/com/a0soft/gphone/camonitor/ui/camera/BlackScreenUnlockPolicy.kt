@@ -19,6 +19,22 @@ object BlackScreenUnlockPolicy {
 
     const val LOCKED_BRIGHTNESS = 0.01f
 
+    /**
+     * Display keep-awake policy:
+     * - Returns true when UNLOCKED (!isLocked): Keeps the display awake so live camera
+     *   monitoring and preview never time out or sleep while the user is actively viewing.
+     * - Returns false when LOCKED (isLocked == true): Clears FLAG_KEEP_SCREEN_ON so the
+     *   physical display panel and display controller can turn off completely, allowing the
+     *   device SoC to enter deep sleep (Doze).
+     *
+     * CAUTION: Never hold FLAG_KEEP_SCREEN_ON while locked. On modern OLED panels, even with
+     * 100% black pixels (#000000) at 0.01 brightness, keeping the window awake blocks display
+     * suspend (PowerManagerService.Display blocker), consuming ~180-240 mA continuously and
+     * burning battery overnight. The touch guard (swallowing stray taps) is enforced in UI
+     * via pointerInput and does NOT require keeping the display awake.
+     */
+    fun shouldKeepScreenOn(isLocked: Boolean): Boolean = !isLocked
+
     private const val SWIPE_FRACTION = 0.3f
     private const val MIN_SWIPE_PX = 120f
 

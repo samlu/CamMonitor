@@ -118,7 +118,6 @@ class CameraMonitorService : Service() {
         com.a0soft.gphone.camonitor.ui.common.LocaleHelper.applyCurrentLocale(this)
         AppLogger.i(tag, "CameraMonitorService created")
         acquireWakeLock()
-        acquireWifiLock()
         startForegroundServiceNotification()
         com.a0soft.gphone.camonitor.ui.common.AudioRoutingManager.routeToSpeaker(this)
     }
@@ -148,20 +147,59 @@ class CameraMonitorService : Service() {
         AppLogger.i(tag, "Partial WakeLock acquired (unbounded, released on destroy)")
     }
 
-    @Suppress("DEPRECATION")
+    // =========================================================================
+    // POWER ARCHITECTURE GOTCHA (Fix 2):
+    // DO NOT hold WifiLock continuously during 0-viewer standby!
+    //
+    // Common Developer Mistake:
+    // Developers may be tempted to call acquireWifiLock() in onCreate() for the service's
+    // entire lifetime to "ensure connections never fail".
+    //
+    // The Cost:
+    // Holding WIFI_MODE_FULL_LOW_LATENCY or WIFI_MODE_FULL_HIGH_PERF disables 802.11 DTIM
+    // power-save polling. The Wi-Fi physical radio is forced to stay powered at high duty
+    // cycles 100% of the time, consuming ~60-80 mA continuously (~629 mAh drained overnight).
+    //
+    // Why Standby Does NOT Need WifiLock:
+    // When 0 viewers are connected, no WebRTC video/audio frames are moving. The only network
+    // traffic is MQTT signaling over TLS (TCP port 8883). In standard 802.11 DTIM sleep, the
+    // router buffers incoming packets for 100-300 ms until the next DTIM beacon, which TCP
+    // handles easily without packet loss. HiveMQ's 30s keepalive ensures the socket and NAT
+    // remain active.
+    //
+    // The Resolution:
+    // WifiLock is managed DYNAMICALLY:
+    // - Acquire WifiLock ONLY when activeViewersCount > 0 (active STREAMING with live video/audio).
+    // - Release WifiLock whenever activeViewersCount == 0 (WAITING_FOR_VIEWERS or PAUSED_INACTIVITY).
+    // =========================================================================
     private fun acquireWifiLock() {
+        if (wifiLock?.isHeld == true) return
         try {
             val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
-            wifiLock = wifiManager.createWifiLock(
-                android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF,
-                "CamMonitor:StreamingWifiLock"
-            ).apply {
+            val lockMode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                android.net.wifi.WifiManager.WIFI_MODE_FULL_LOW_LATENCY
+            } else {
+                @Suppress("DEPRECATION")
+                android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF
+            }
+            wifiLock = wifiManager.createWifiLock(lockMode, "CamMonitor:StreamingWifiLock").apply {
                 setReferenceCounted(false)
                 acquire()
             }
-            AppLogger.d(tag, "High-Perf WifiLock acquired")
+            AppLogger.d(tag, "Streaming WifiLock acquired (mode=$lockMode)")
         } catch (e: Exception) {
             AppLogger.w(tag, "Failed acquiring WifiLock: ${e.message}")
+        }
+    }
+
+    private fun releaseWifiLock() {
+        if (wifiLock?.isHeld == true) {
+            try {
+                wifiLock?.release()
+                AppLogger.d(tag, "Streaming WifiLock released")
+            } catch (e: Exception) {
+                AppLogger.w(tag, "Failed releasing WifiLock: ${e.message}")
+            }
         }
     }
 
@@ -243,12 +281,14 @@ class CameraMonitorService : Service() {
         viewersCountJob = serviceScope.launch {
             app.webRtcManager.activeViewersCount.collect { count ->
                 if (count > 0) {
+                    acquireWifiLock()
                     _streamingState.value = CameraStreamingState.STREAMING
                     updateNotification(getString(R.string.notification_streaming_live))
                     cancelInactivityTimer()
                     startBatteryBroadcast()
                 } else if (_streamingState.value == CameraStreamingState.STREAMING ||
                     _streamingState.value == CameraStreamingState.WAITING_FOR_VIEWERS) {
+                    releaseWifiLock()
                     _streamingState.value = CameraStreamingState.WAITING_FOR_VIEWERS
                     updateNotification(getString(R.string.notification_waiting_for_viewers))
                     stopBatteryBroadcast()
@@ -263,6 +303,7 @@ class CameraMonitorService : Service() {
     fun stopStreaming() {
         if (!isStreamingActive) return
         isStreamingActive = false
+        releaseWifiLock()
         signalingJob?.cancel()
         signalingJob = null
         signalingClientJob?.cancel()
@@ -613,10 +654,8 @@ class CameraMonitorService : Service() {
             wakeLock?.release()
             wakeLock = null
         }
-        if (wifiLock?.isHeld == true) {
-            wifiLock?.release()
-            wifiLock = null
-        }
+        releaseWifiLock()
+        wifiLock = null
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 CamMonitorApp.instance.signalingClient.stopListening()

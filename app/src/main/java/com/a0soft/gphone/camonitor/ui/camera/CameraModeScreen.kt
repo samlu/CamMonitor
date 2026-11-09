@@ -181,17 +181,43 @@ fun CameraModeScreen(
         }
     }
 
-    // Keep the display awake for the whole camera session.
+    // =========================================================================
+    // POWER ARCHITECTURE GOTCHA (Fix 1):
+    // DO NOT hold FLAG_KEEP_SCREEN_ON 24/7 during locked black screen!
     //
-    // The old build only dimmed the panel to 1% and never touched the screen-off
-    // timer, so the system still slept after the configured timeout: on an AMOLED
-    // that looks identical to a real screen-off, which is exactly why the device
-    // was unreachable at 6am. FLAG_KEEP_SCREEN_ON is the only app-side way to stop
-    // the system from entering Doze — and on AMOLED a fully black window at 1%
-    // brightness costs almost nothing.
-    DisposableEffect(window) {
-        window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        AppLogger.i("CameraModeScreen", "Screen kept on for camera session")
+    // Common Developer Mistake:
+    // In PR #6, developers assumed that an AMOLED screen displaying pure black (#000000)
+    // at 0.01 brightness consumes virtually zero power, so FLAG_KEEP_SCREEN_ON was held
+    // continuously for the entire streaming session to "prevent sleep".
+    //
+    // The Cost:
+    // On modern Android hardware, holding FLAG_KEEP_SCREEN_ON forces PowerManagerService
+    // to maintain `mHoldingDisplaySuspendBlocker = true`. Even with black pixels, the
+    // hardware display panel, display controller, and SurfaceFlinger remain fully powered,
+    // consuming ~180-240mA continuously (2451 mAh drain overnight) and preventing the
+    // SoC from entering deep suspend (Doze).
+    //
+    // The Resolution:
+    // Keep the display awake ONLY while unlocked (!isLocked) so the live preview doesn't
+    // sleep while a user is actively monitoring.
+    // When locked (isLocked == true), release FLAG_KEEP_SCREEN_ON so the display hardware
+    // powers off and the SoC enters deep suspend while CameraMonitorService sustains
+    // background signaling via PARTIAL_WAKE_LOCK.
+    //
+    // NOTE: The Touch Guard (preventing stray touches) is handled by BlackScreenUnlockPolicy
+    // and pointerInput; it does NOT depend on FLAG_KEEP_SCREEN_ON. If the screen is woken
+    // (via tap-to-wake or power button), isLocked remains true and stray taps are swallowed.
+    // =========================================================================
+    DisposableEffect(window, isLocked) {
+        if (window != null) {
+            if (BlackScreenUnlockPolicy.shouldKeepScreenOn(isLocked)) {
+                window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                AppLogger.i("CameraModeScreen", "Screen keep-on active (unlocked)")
+            } else {
+                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                AppLogger.i("CameraModeScreen", "Screen keep-on released (locked black screen)")
+            }
+        }
         onDispose {
             window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             AppLogger.i("CameraModeScreen", "Screen keep-on released")
