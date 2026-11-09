@@ -16,6 +16,49 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+val appVersionName = "1.0.8"
+
+fun computeAndValidateVersionCode(version: String): Int {
+    val regex = Regex("""^v?(\d+)\.(\d+)\.(\d+)(?:-(?:([a-zA-Z]+)[.-]?)?(\d{1,2}))?$""")
+    val match = regex.matchEntire(version.trim())
+        ?: throw GradleException(
+            "[VersionCode Error] Malformed versionName: '$version'. Must follow 'X.Y.Z' or 'X.Y.Z-betaNN' format."
+        )
+
+    val major = match.groupValues[1].toLong()
+    val minor = match.groupValues[2].toLong()
+    val patch = match.groupValues[3].toLong()
+    val preReleaseName = match.groupValues[4]
+    val preReleaseNum = match.groupValues[5]
+
+    if (major > 21L) {
+        throw GradleException("[VersionCode Error] Major version ($major) in '$version' exceeds 21 (Android 32-bit limit).")
+    }
+    if (minor > 999L) {
+        throw GradleException("[VersionCode Error] Minor version ($minor) in '$version' exceeds 3 digits (999).")
+    }
+    if (patch > 999L) {
+        throw GradleException("[VersionCode Error] Patch version ($patch) in '$version' exceeds 3 digits (999).")
+    }
+
+    val stage = if (preReleaseName.isEmpty() && preReleaseNum.isEmpty()) {
+        99L
+    } else {
+        val num = if (preReleaseNum.isEmpty()) 1L else preReleaseNum.toLong()
+        if (num < 1L || num >= 99L) {
+            throw GradleException("[VersionCode Error] Pre-release number ($num) in '$version' must be between 1 and 98.")
+        }
+        num
+    }
+
+    val computed = major * 100_000_000L + minor * 100_000L + patch * 100L + stage
+    if (computed <= 0L || computed > Int.MAX_VALUE) {
+        throw GradleException("[VersionCode Error] Computed versionCode ($computed) exceeds positive 32-bit integer range.")
+    }
+
+    return computed.toInt()
+}
+
 android {
     namespace = "com.a0soft.gphone.camonitor"
     compileSdk = 37
@@ -24,8 +67,8 @@ android {
         applicationId = "com.a0soft.gphone.camonitor"
         minSdk = 28
         targetSdk = 37
-        versionCode = 9
-        versionName = "1.0.8"
+        versionCode = computeAndValidateVersionCode(appVersionName)
+        versionName = appVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

@@ -8,7 +8,7 @@ CamMonitor is a peer-to-peer camera monitoring Android application running acros
 * **Testability & Quality Assurance:** Architected for 100% deterministic testability with interface-driven abstraction layers, fake implementations, Coroutine `TestDispatcher` time control, and comprehensive Unit, Integration, and Compose UI test suites.
 * **Platform & SDK Targets:**
   * **Application ID / Package Name:** `com.a0soft.gphone.camonitor`
-  * **Current App Version:** `1.0.8` (`versionCode = 9`)
+  * **Current App Version:** `1.0.8` (`versionCode = 100000899`)
   * **Minimum SDK (`minSdk`):** `28` (Android 9 Pie)
   * **Target SDK (`targetSdk`):** `37` (Android 17)
   * **Compile SDK (`compileSdk`):** `37`
@@ -64,6 +64,7 @@ CamMonitor/
 │       │   │   │   ├── update/
 │       │   │   │   │   ├── ReleaseInfo.kt       # GitHub Release model & asset parser
 │       │   │   │   │   ├── SemVer.kt            # Semantic Versioning comparator
+│       │   │   │   │   ├── VersionCodeHelper.kt # Formula & validation for 32-bit positive versionCode
 │       │   │   │   │   ├── ReleaseCheckResult.kt # Sealed class for update check outcomes
 │       │   │   │   │   ├── ReleaseChecker.kt    # GitHub Releases REST API client
 │       │   │   │   │   └── UpdatePreferenceManager.kt # Throttling, skipped versions, and cached updates
@@ -851,6 +852,14 @@ flowchart TD
   * `testShouldCheckRespectsCooldown()`: Verifies 24-hour throttling cooldown prevents spamming GitHub API.
   * `testSkippedVersionPersistence()`: Verifies user skip preference suppresses notifications for the skipped version while allowing higher versions.
   * `testCachedUpdatePersistence()`: Verifies cached release info is saved and retrievable offline.
+* **Version Code Generator & Guardrail Tests (`VersionCodeHelperTest.kt`):**
+  * `testFinalReleaseBasic()`: Verifies standard release encoding (`1.0.8` $\to$ `100000899`, `1.0.9` $\to$ `100000999`, `1.1.0` $\to$ `100100099`).
+  * `testPreReleaseBetaAndRc()`: Verifies pre-release encoding (`1.0.8-beta01` $\to$ `100000801`, `1.0.8-beta03` $\to$ `100000803`, `1.0.8-rc02` $\to$ `100000802`).
+  * `testStrictMonotonicOrdering()`: Asserts `1.0.8-beta01 < 1.0.8-beta03 < 1.0.8 < 1.0.9-beta01`.
+  * `testIllegalMinorExceedsThreeDigits()`, `testIllegalPatchExceedsThreeDigits()`: Asserts builds reject inputs like `1.1234.4567`.
+  * `testIllegalMajorExceedsLimit()`: Asserts majors $> 21$ are rejected to prevent 32-bit positive integer overflow.
+  * `testIllegalPreReleaseNum99()`: Enforces `99` is strictly reserved for final release.
+  * `testMalformedStrings()`: Rejects `1.0`, `1.0.8.4`, non-numeric strings, and empty strings.
 
 ---
 
@@ -901,6 +910,24 @@ CamMonitor is distributed as a standalone APK via GitHub Releases. To keep users
 * Cooldown interval: 24 hours between automated checks to respect GitHub API rate limits (60 req/hr unauthenticated).
 * Skipped Version: Allows user to skip a specific version (`setSkippedVersion(version)`). `ReleaseCheckWorker` checks skipped version and suppresses alerts if `remote <= skipped`.
 * Cached Update: Caches `ReleaseInfo` locally so the Home Screen and About Screen can render update availability instantly without requiring redundant network queries.
+
+### 9.5 VersionCode Generation & Pre-Release Ordering (`VersionCodeHelper`)
+To guarantee that every pre-release and final release provides a strictly monotonic upgrade path and prevents downgrade/duplicate installation errors on Android:
+* **Positional Slot Encoding Formula**:
+  $$\text{versionCode} = \text{major} \times 100,000,000 + \text{minor} \times 100,000 + \text{patch} \times 100 + \text{stage}$$
+* **Slot Allocation**:
+  * `major`: $0\text{--}21$ (maximum limit ensures total value remains strictly within Android 32-bit signed positive integer range $\le 2,147,483,647$).
+  * `minor`: $0\text{--}999$ (3 decimal digits).
+  * `patch`: $0\text{--}999$ (3 decimal digits).
+  * `stage`:
+    * Pre-releases (`-beta01` $\dots$ `-beta98`, `-rc01` $\dots$ `-rc98`): $01\text{--}98$.
+    * Final release (no suffix): `99`.
+* **Ordering Invariant**:
+  $$\text{beta01} (100000801) < \text{beta03} (100000803) < \text{final } 1.0.8 (100000899) < 1.0.9\text{-beta01} (100000901)$$
+* **Build-Time Guardrails**:
+  * Implemented directly in `app/build.gradle.kts` and shared in `VersionCodeHelper.kt`.
+  * Throws immediate `GradleException` / `IllegalArgumentException` during project evaluation if `versionName` contains minor/patch $> 999$ (e.g. `1.1234.4567`), major $> 21$, illegal pre-release numbers, or malformed version patterns.
+
 
 
 
