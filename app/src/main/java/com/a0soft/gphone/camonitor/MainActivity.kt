@@ -118,6 +118,14 @@ class MainActivity : ComponentActivity() {
         appWentToBackground = true
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.action == com.a0soft.gphone.camonitor.ui.common.UpdateNotificationHelper.ACTION_SHOW_UPDATE) {
+            com.a0soft.gphone.camonitor.ui.common.UpdateNotificationHelper.dismissUpdateNotification(this)
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         val latestTag = com.a0soft.gphone.camonitor.ui.common.LocaleHelper.getCurrentLanguageTag(this)

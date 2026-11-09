@@ -182,4 +182,17 @@
     <string name="permission_notification_reason">通知: カメラの監視をバックグラウンドで継続するために必要です。</string>
     <string name="permission_open_settings">設定を開く</string>
     <string name="permission_grant">許可する</string>
+
+    <!-- App Update Detection -->
+    <string name="notification_channel_updates">アプリアップデート</string>
+    <string name="notification_channel_updates_desc">CamMonitor の新バージョン通知</string>
+    <string name="update_banner_title">新しいバージョンがあります: %1$s</string>
+    <string name="update_banner_subtitle">現在のバージョン: %1$s</string>
+    <string name="update_notification_text">CamMonitor の新しいバージョンが利用可能です。タップして確認してください。</string>
+    <string name="update_action_view">確認して更新</string>
+    <string name="update_action_skip">このバージョンをスキップ</string>
+    <string name="update_action_remind_later">後で通知</string>
+    <string name="update_check_manual">アップデートを確認</string>
+    <string name="update_status_latest">CamMonitor は最新です (%1$s)</string>
+    <string name="update_status_failed">アップデートの確認に失敗しました</string>
 </resources>

@@ -182,4 +182,17 @@
     <string name="permission_notification_reason">通知：用于在后台持续稳定运行监控服务。</string>
     <string name="permission_open_settings">打开应用设置</string>
     <string name="permission_grant">授权</string>
+
+    <!-- App Update Detection -->
+    <string name="notification_channel_updates">应用程序更新</string>
+    <string name="notification_channel_updates_desc">CamMonitor 新版本发布通知</string>
+    <string name="update_banner_title">发现新版本：%1$s</string>
+    <string name="update_banner_subtitle">当前版本：%1$s</string>
+    <string name="update_notification_text">CamMonitor 已发布新版本，点击即可查看更新。</string>
+    <string name="update_action_view">查看并更新</string>
+    <string name="update_action_skip">跳过此版本</string>
+    <string name="update_action_remind_later">稍后提醒</string>
+    <string name="update_check_manual">检查更新</string>
+    <string name="update_status_latest">CamMonitor 已是最新版本 (%1$s)</string>
+    <string name="update_status_failed">检查更新失败</string>
 </resources>

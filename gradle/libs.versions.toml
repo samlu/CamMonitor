@@ -15,6 +15,7 @@ junit = "4.13.2"
 extJunit = "1.2.1"
 espresso = "3.6.1"
 turbine = "1.2.0"
+workManager = "2.10.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -52,6 +53,9 @@ stream-webrtc = { group = "io.getstream", name = "stream-webrtc-android", versio
 # Coroutines
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+
+# WorkManager
+androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "workManager" }
 
 # Testing
 junit = { group = "junit", name = "junit", version.ref = "junit" }

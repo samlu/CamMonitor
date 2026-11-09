@@ -182,4 +182,17 @@
     <string name="permission_notification_reason">Notifications: Required to keep camera monitoring running in the background.</string>
     <string name="permission_open_settings">Open Settings</string>
     <string name="permission_grant">Grant</string>
+
+    <!-- App Update Detection -->
+    <string name="notification_channel_updates">App Updates</string>
+    <string name="notification_channel_updates_desc">Notifications for new CamMonitor app versions</string>
+    <string name="update_banner_title">New Version Available: %1$s</string>
+    <string name="update_banner_subtitle">Current version: %1$s</string>
+    <string name="update_notification_text">A new version of CamMonitor is available. Tap to view and update.</string>
+    <string name="update_action_view">View &amp; Update</string>
+    <string name="update_action_skip">Skip This Version</string>
+    <string name="update_action_remind_later">Remind Later</string>
+    <string name="update_check_manual">Check for Updates</string>
+    <string name="update_status_latest">CamMonitor is up to date (%1$s)</string>
+    <string name="update_status_failed">Failed to check for updates</string>
 </resources>

@@ -36,6 +36,10 @@ CamMonitor is a private, zero-account, peer-to-peer encrypted home surveillance 
   * Android Keystore (`AndroidKeyStore`) with hardware-backed ECDSA NIST P-256 keys.
 * **Foreground Service:**
   * `CameraMonitorService.kt` keeps streaming active in the background with a partial `WakeLock`. `WifiLock` is managed dynamically: acquired in low-latency mode (`WIFI_MODE_FULL_LOW_LATENCY` / `WIFI_MODE_FULL_HIGH_PERF`) only during active WebRTC streaming with $\ge 1$ connected viewer, and released during standby/inactivity (0 viewers) so the Wi-Fi radio can enter standard power-saving DTIM sleep while receiving MQTT keepalive pings.
+* **Background Tasks & Update Engine:**
+  * **Android Jetpack WorkManager 2.10.0** (`androidx.work:work-runtime-ktx`) for resilient 24-hour periodic background tasks surviving app terminations and device reboots.
+  * Direct GitHub Releases REST API check (`/repos/samlu/CamMonitor/releases/latest`) with pure Kotlin SemVer comparison.
+  * Status bar system notifications when a new release is detected while the app is in the background or closed.
 
 ### 1.2 Directory & File Map
 
@@ -57,6 +61,12 @@ CamMonitor/
 │       │   │   │   │   ├── CameraXVideoCapturer.kt # CameraX binding, sensor mapping, Night extension
 │       │   │   │   │   └── TorchManager.kt  # Camera flashlight state & hardware control
 │       │   │   │   ├── model/Models.kt      # Domain data classes, signaling events, LogLevel
+│       │   │   │   ├── update/
+│       │   │   │   │   ├── ReleaseInfo.kt       # GitHub Release model & asset parser
+│       │   │   │   │   ├── SemVer.kt            # Semantic Versioning comparator
+│       │   │   │   │   ├── ReleaseCheckResult.kt # Sealed class for update check outcomes
+│       │   │   │   │   ├── ReleaseChecker.kt    # GitHub Releases REST API client
+│       │   │   │   │   └── UpdatePreferenceManager.kt # Throttling, skipped versions, and cached updates
 │       │   │   │   ├── security/
 │       │   │   │   │   ├── CryptoUtils.kt   # ECDH, ECDSA, HKDF-SHA256, AES-GCM-256 operations
 │       │   │   │   │   └── SecurityRepository.kt # KeyStore management, paired devices CRUD, envelopes
@@ -66,11 +76,16 @@ CamMonitor/
 │       │   │   │       └── WebRtcManager.kt # WebRTC PeerConnection, SDP offer/answer, DataChannel
 │       │   │   ├── service/
 │       │   │   │   └── CameraMonitorService.kt # Sticky foreground streaming service & 15s standby
+│       │   │   ├── worker/
+│       │   │   │   ├── ReleaseCheckWorker.kt    # CoroutineWorker querying GitHub releases
+│       │   │   │   └── UpdateWorkScheduler.kt   # WorkManager periodic check enqueue & policy
 │       │   │   ├── time/TimeProvider.kt     # Clock abstraction for deterministic coroutine tests
 │       │   │   ├── log/
 │       │   │   │   └── AppLogger.kt         # Ring-buffer UI logs, rolling disk files, zip export
 │       │   │   └── ui/
-│       │   │       ├── home/HomeScreen.kt           # Mode selection, pairing summaries, top bar
+│       │   │       ├── home/
+│       │   │       │   ├── HomeScreen.kt        # Mode selection, pairing summaries, top bar
+│       │   │       │   └── UpdateBannerCard.kt  # Non-blocking M3 update notification card
 │       │   │       ├── camera/CameraModeScreen.kt   # Camera mode preview, OLED blackout saver
 │       │   │       ├── viewer/ViewerModeScreen.kt   # WebRTC video surface, overlay controls
 │       │   │       ├── pairing/
@@ -79,7 +94,7 @@ CamMonitor/
 │       │   │       ├── devices/ManageDevicesScreen.kt # Paired devices list & revocation
 │       │   │       ├── log/LogViewerScreen.kt       # In-app log viewer, filters, verbosity menu
 │       │   │       ├── about/AboutScreen.kt         # App version, license, contributors card
-│       │   │       ├── common/                      # AudioRouting, Battery, Locale, QR helpers
+│       │   │       ├── common/                      # AudioRouting, Battery, Locale, QR, Lifecycle, Notifications
 │       │   │       └── theme/                       # Material3 Color & Theme definitions
 │       │   └── res/
 │       │       ├── values/strings.xml               # English / Default strings
@@ -287,10 +302,18 @@ Every signaling envelope sent over the public MQTT broker is structured as:
 * **Top App Bar:**
   * Title: `"CamMonitor"` (HeadlineMedium, bold).
   * Actions:
-    * `IconButton(Icons.Default.Language)` $\to$ Opens **Language Selector Menu** (`"System Default"`, `"English"`, `"繁體中文"`).
+    * `IconButton(Icons.Default.Language)` $\to$ Opens **Language Selector Menu** (`"System Default"`, `"English"`, `"繁體中文"`, `"简体中文"`, `"日本語"`).
     * `IconButton(Icons.Default.Description)` $\to$ Opens **In-App Log Viewer**.
     * `IconButton(Icons.Default.Devices)` $\to$ Opens **Paired Devices Management**.
     * `IconButton(Icons.Default.Info)` $\to$ Opens **About Screen** (`AppScreen.ABOUT`).
+* **Release Update Banner (`UpdateBannerCard`):**
+  * Rendered conditionally above mode selection cards when a newer GitHub release is detected and not skipped.
+  * Styling: Material 3 `ElevatedCard` using `SecondaryContainer` color and `Icons.Default.SystemUpdate`.
+  * Text: Displays localized version announcement (`"Version vX.Y.Z Available"`) with changelog / release notes preview.
+  * Actions:
+    * `"View & Update"` (`Button`): Launches external browser via `Intent.ACTION_VIEW` targeting GitHub release URL.
+    * `"Skip This Version"` (`TextButton`): Persists skipped version to `UpdatePreferenceManager`; suppresses subsequent notifications for this version.
+    * Close icon (`"X"`): Dismisses card for current app session without skipping permanently.
 * **Body Layout & Adaptive Orientation:**
   * Enabled with vertical scroll (`Modifier.verticalScroll(rememberScrollState())`) to guarantee complete access across all screen densities and font scales.
   * **Portrait Mode:** Cards are centered vertically in a `Column` with 24dp vertical spacing.
@@ -555,6 +578,11 @@ Every signaling envelope sent over the public MQTT broker is structured as:
   * App Icon: Layered vector squircle (96dp, dark background `#121212` with cyan/emerald foreground).
   * App Title: `"CamMonitor"` (HeadlineMedium, bold).
   * Version String: `"Version 1.0.8"` (`BuildConfig.VERSION_NAME`, BodyLarge, muted outline color).
+  * **Check for Updates Action (`FilledTonalButton`):**
+    * Allows users to manually query GitHub Releases on demand.
+    * Icon: `Icons.Default.Refresh` or a 16dp `CircularProgressIndicator` while checking.
+    * Inline Feedback: Text status indicating `"Checking for updates..."`, `"You're on the latest version"`, or network error.
+    * Update Found: Dynamically reveals `UpdateBannerCard` with update details and browser navigation button.
 * **Application Summary Card (`ElevatedCard`):**
   * Short Description: Multi-line overview emphasizing zero-account, P2P encryption, OLED power management, and 2-way talkback.
   * Open Source Notice: License declaration (Apache License 2.0).
@@ -806,6 +834,26 @@ flowchart TD
 
 ---
 
+#### 8.2.7 Update Engine & SemVer Unit Tests (`test/update/`)
+* **Semantic Versioning Tests (`SemVerTest.kt`):**
+  * `testSemVerParsingBasic()`: Verifies standard `major.minor.patch` parsing (`1.0.8`).
+  * `testSemVerParsingWithPrefixV()`: Verifies tag stripping (`v1.0.8` $\to$ `1.0.8`).
+  * `testSemVerComparisonGreaterMinor()`, `testSemVerComparisonGreaterPatch()`: Verifies ordering rules (`1.1.0 > 1.0.8`, `1.0.9 > 1.0.8`).
+  * `testSemVerComparisonEquality()`: Verifies `v1.0.8 == 1.0.8`.
+  * `testSemVerPreReleaseOrdering()`: Verifies `1.0.8 > 1.0.8-alpha`.
+  * `testSemVerTwoPartVersion()`: Verifies normalization of 2-part version tags (`1.2` $\to$ `1.2.0`).
+* **Release Checker REST API Tests (`ReleaseCheckerTest.kt`):**
+  * `testParseValidGitHubReleaseJson()`: Verifies parsing tag name, release notes, published timestamp, and APK download URLs from GitHub Releases REST payload.
+  * `testSemVerComparisonMatchesLatestTag()`: Validates detection of update availability vs up-to-date state.
+  * `testParseEmptyAssetsList()`: Handles releases without pre-compiled APK assets safely without NPE.
+* **Update Preferences Tests (`UpdatePreferenceManagerTest.kt`):**
+  * `testShouldCheckWhenFirstTime()`: Verifies first launch triggers release check immediately.
+  * `testShouldCheckRespectsCooldown()`: Verifies 24-hour throttling cooldown prevents spamming GitHub API.
+  * `testSkippedVersionPersistence()`: Verifies user skip preference suppresses notifications for the skipped version while allowing higher versions.
+  * `testCachedUpdatePersistence()`: Verifies cached release info is saved and retrievable offline.
+
+---
+
 ## 8.3 Automated Multi-Device Test Runner (`scripts/run_real_device_tests.py`)
 To validate regression-free operation between physical devices, an automated test runner script orchestrates testing over ADB:
 1. **Device Discovery:** Identifies attached devices (`Pixel 6 Pro: 192.168.100.107:5555` as Camera, `Pixel 8 Pro: 192.168.100.136:5555` as Viewer).
@@ -818,5 +866,41 @@ To validate regression-free operation between physical devices, an automated tes
    - Toggles torch from Viewer and verifies Camera flashlight state synchronization.
    - Triggers Push-to-Talk intercom from Viewer and verifies Camera speaker talkback routing.
 5. **Report Generation:** Summarizes test results with pass/fail metrics.
+
+---
+
+## 9. Automatic Release Detection & Update Notification
+
+### 9.1 Overview & Constraints
+CamMonitor is distributed as a standalone APK via GitHub Releases. To keep users informed without reliance on Google Play services or intrusive permissions:
+* Uses Android Jetpack **WorkManager** (`androidx.work:work-runtime-ktx`) to schedule a 24-hour periodic check (`PeriodicWorkRequestBuilder<ReleaseCheckWorker>`).
+* Network constraint: `NetworkType.CONNECTED` ensures tasks run only when network connectivity is present.
+* Battery constraint: `setRequiresBatteryNotLow(true)` ensures background checks do not run when device battery is critically low.
+* Background vs Foreground policy:
+  * When app is in background or closed (`!AppLifecycleObserver.isAppInForeground`), posts a high-priority Android **System Status Bar Notification** targeting notification channel `cammonitor_update_channel`. Tapping the notification brings CamMonitor to the foreground on the Home Screen with the update banner highlighted.
+  * When app is active in foreground, suppresses the status bar notification and displays the non-blocking `UpdateBannerCard` on the Home Screen.
+  * Allows background checks and notifications to run normally during active Camera Mode (`CameraMonitorService`).
+
+### 9.2 Semantic Versioning (`SemVer`)
+* Pure Kotlin JVM implementation parsing `major.minor.patch[-prerelease][+build]`.
+* Normalizes leading tag prefixes (e.g., `v1.0.8` $\to$ `1.0.8`).
+* Implements `Comparable<SemVer>`:
+  * Compares numerical `major`, `minor`, `patch` components in order.
+  * Pre-release versions (`1.0.8-alpha`) have lower precedence than normal releases (`1.0.8`).
+
+### 9.3 Release Checker & GitHub REST API
+* Endpoint: `https://api.github.com/repos/samlu/CamMonitor/releases/latest`
+* Headers: `Accept: application/vnd.github.v3+json`, `User-Agent: CamMonitor-App`.
+* Parses tag name, release title, changelog/body, release page HTML URL, published timestamp, and APK asset download URL.
+* Evaluates result against `BuildConfig.VERSION_NAME`:
+  * Returns `ReleaseCheckResult.UpdateAvailable(release)` if remote > local.
+  * Returns `ReleaseCheckResult.UpToDate` if remote $\le$ local.
+  * Returns `ReleaseCheckResult.Error(throwable)` on network timeout, 404, or parsing failure.
+
+### 9.4 Preferences & Throttling (`UpdatePreferenceManager`)
+* Cooldown interval: 24 hours between automated checks to respect GitHub API rate limits (60 req/hr unauthenticated).
+* Skipped Version: Allows user to skip a specific version (`setSkippedVersion(version)`). `ReleaseCheckWorker` checks skipped version and suppresses alerts if `remote <= skipped`.
+* Cached Update: Caches `ReleaseInfo` locally so the Home Screen and About Screen can render update availability instantly without requiring redundant network queries.
+
 
 

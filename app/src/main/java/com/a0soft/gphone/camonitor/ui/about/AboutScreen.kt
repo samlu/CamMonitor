@@ -14,7 +14,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -26,6 +26,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.a0soft.gphone.camonitor.BuildConfig
 import com.a0soft.gphone.camonitor.R
+import com.a0soft.gphone.camonitor.data.update.ReleaseCheckResult
+import com.a0soft.gphone.camonitor.data.update.ReleaseChecker
+import com.a0soft.gphone.camonitor.data.update.ReleaseInfo
+import com.a0soft.gphone.camonitor.data.update.UpdatePreferenceManager
+import com.a0soft.gphone.camonitor.ui.home.UpdateBannerCard
+import kotlinx.coroutines.launch
 
 /**
  * AI AGENT INSTRUCTION / MAINTENANCE PROMPT:
@@ -87,6 +93,21 @@ fun AboutScreen(
 ) {
     val context = LocalContext.current
     val githubUrl = stringResource(R.string.about_github_url)
+    val scope = rememberCoroutineScope()
+    val updatePrefs = remember { UpdatePreferenceManager(context) }
+    var isCheckingUpdate by remember { mutableStateOf(false) }
+    var updateStatusMessage by remember { mutableStateOf<String?>(null) }
+    var availableRelease by remember { mutableStateOf<ReleaseInfo?>(null) }
+
+    LaunchedEffect(Unit) {
+        val cached = updatePrefs.getCachedRelease()
+        if (cached != null && !updatePrefs.isVersionSkipped(cached.versionName)) {
+            val eval = ReleaseChecker.evaluateRelease(cached, BuildConfig.VERSION_NAME)
+            if (eval is ReleaseCheckResult.UpdateAvailable) {
+                availableRelease = cached
+            }
+        }
+    }
 
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
@@ -151,6 +172,75 @@ fun AboutScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Check for Updates Button
+            OutlinedButton(
+                onClick = {
+                    if (isCheckingUpdate) return@OutlinedButton
+                    isCheckingUpdate = true
+                    updateStatusMessage = null
+                    availableRelease = null
+                    scope.launch {
+                        val result = ReleaseChecker.checkLatestRelease()
+                        isCheckingUpdate = false
+                        when (result) {
+                            is ReleaseCheckResult.UpdateAvailable -> {
+                                updatePrefs.saveCachedRelease(result.release)
+                                availableRelease = result.release
+                                updateStatusMessage = null
+                            }
+                            is ReleaseCheckResult.UpToDate -> {
+                                updateStatusMessage = context.getString(R.string.update_status_latest, BuildConfig.VERSION_NAME)
+                            }
+                            is ReleaseCheckResult.Error -> {
+                                updateStatusMessage = context.getString(R.string.update_status_failed)
+                            }
+                        }
+                    }
+                },
+                enabled = !isCheckingUpdate
+            ) {
+                if (isCheckingUpdate) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+                Text(stringResource(R.string.update_check_manual))
+            }
+
+            updateStatusMessage?.let { msg ->
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = msg,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+
+            availableRelease?.let { release ->
+                Spacer(modifier = Modifier.height(12.dp))
+                UpdateBannerCard(
+                    release = release,
+                    onViewUpdate = { url ->
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        context.startActivity(intent)
+                    },
+                    onSkipVersion = { version ->
+                        updatePrefs.skipVersion(version)
+                        availableRelease = null
+                    },
+                    onDismiss = {
+                        availableRelease = null
+                    }
+                )
+            }
 
             Spacer(modifier = Modifier.height(28.dp))
 

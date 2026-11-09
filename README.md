@@ -29,8 +29,9 @@ CamMonitor turns your spare Android phone into a private, zero-account home secu
   - **Push-to-Talk (PTT) Intercom:** Hold the microphone button on the viewer to speak through the camera phone.
   - **Orientation & Fit Controls:** Rotate incoming video in 90° increments ($0^\circ \to 90^\circ \to 180^\circ \to 270^\circ$) and toggle between Aspect Fit (full uncropped view) and Aspect Fill.
   - **Battery Monitoring:** View real-time battery percentages and charging statuses for both the camera and viewer devices.
+- **Automatic Release Detection & Notifications:** Periodically checks GitHub Releases via WorkManager (every 24 hours) with zero Google Play dependencies. Sends a system status bar notification when a new version is released even when the app is closed, and renders a convenient update banner card on the Home Screen and About Screen.
 - **Local Diagnostics:** Built-in rolling log viewer with instant share/export for troubleshooting.
-- **Multi-Language:** English, Traditional Chinese (繁體中文), and Japanese (日本語).
+- **Multi-Language:** English, Traditional Chinese (繁體中文), Simplified Chinese (简体中文), and Japanese (日本語).
 
 ---
 

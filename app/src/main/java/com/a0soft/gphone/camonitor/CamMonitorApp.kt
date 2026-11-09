@@ -18,6 +18,7 @@ class CamMonitorApp : Application() {
 
     companion object {
         const val NOTIFICATION_CHANNEL_ID = "cammonitor_service_channel"
+        const val UPDATE_NOTIFICATION_CHANNEL_ID = "cammonitor_update_channel"
         lateinit var instance: CamMonitorApp
             private set
     }
@@ -51,20 +52,30 @@ class CamMonitorApp : Application() {
         webRtcManager = WebRtcManager(this)
         torchManager = TorchManager(this)
 
+        com.a0soft.gphone.camonitor.ui.common.AppLifecycleObserver.init(this)
         createNotificationChannel()
+        com.a0soft.gphone.camonitor.worker.UpdateWorkScheduler.schedulePeriodicCheck(this)
     }
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
+            val serviceChannel = NotificationChannel(
                 NOTIFICATION_CHANNEL_ID,
                 getString(R.string.notification_channel_name),
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
                 description = getString(R.string.notification_channel_description)
             }
+            val updateChannel = NotificationChannel(
+                UPDATE_NOTIFICATION_CHANNEL_ID,
+                getString(R.string.notification_channel_updates),
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+                description = getString(R.string.notification_channel_updates_desc)
+            }
             val manager = getSystemService(NotificationManager::class.java)
-            manager?.createNotificationChannel(channel)
+            manager?.createNotificationChannel(serviceChannel)
+            manager?.createNotificationChannel(updateChannel)
         }
     }
 

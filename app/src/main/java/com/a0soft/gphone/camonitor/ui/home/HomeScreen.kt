@@ -1,6 +1,8 @@
 package com.a0soft.gphone.camonitor.ui.home
 
+import android.content.Intent
 import android.content.res.Configuration
+import android.net.Uri
 import android.os.Build
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -22,10 +24,17 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.a0soft.gphone.camonitor.BuildConfig
 import com.a0soft.gphone.camonitor.CamMonitorApp
 import com.a0soft.gphone.camonitor.R
 import com.a0soft.gphone.camonitor.data.security.SecurityRepository
+import com.a0soft.gphone.camonitor.data.update.ReleaseCheckResult
+import com.a0soft.gphone.camonitor.data.update.ReleaseChecker
+import com.a0soft.gphone.camonitor.data.update.ReleaseInfo
+import com.a0soft.gphone.camonitor.data.update.UpdatePreferenceManager
 import com.a0soft.gphone.camonitor.ui.common.LocaleHelper
+import com.a0soft.gphone.camonitor.ui.common.UpdateNotificationHelper
+import com.a0soft.gphone.camonitor.log.AppLogger
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,6 +55,39 @@ fun HomeScreen(
     var showLanguageDialog by remember { mutableStateOf(false) }
     var pairedViewers by remember { mutableStateOf(securityRepo.getPairedViewers()) }
     var pairedCameras by remember { mutableStateOf(securityRepo.getPairedCameras()) }
+
+    val updatePrefs = remember { UpdatePreferenceManager(context) }
+    var availableRelease by remember { mutableStateOf<ReleaseInfo?>(null) }
+
+    LaunchedEffect(Unit) {
+        // Dismiss any existing update notification since the user opened the app
+        UpdateNotificationHelper.dismissUpdateNotification(context)
+
+        // 1. Check cached release first
+        val cached = updatePrefs.getCachedRelease()
+        AppLogger.i("HomeScreen", "Cached release lookup: $cached")
+        if (cached != null && !updatePrefs.isVersionSkipped(cached.versionName)) {
+            val eval = ReleaseChecker.evaluateRelease(cached, BuildConfig.VERSION_NAME)
+            AppLogger.i("HomeScreen", "Evaluated cached release: $eval")
+            if (eval is ReleaseCheckResult.UpdateAvailable) {
+                availableRelease = cached
+            } else {
+                updatePrefs.clearCachedRelease()
+            }
+        }
+
+        // 2. Fresh check if 24h cooldown elapsed
+        if (updatePrefs.shouldCheck()) {
+            val result = ReleaseChecker.checkLatestRelease()
+            updatePrefs.recordCheck()
+            if (result is ReleaseCheckResult.UpdateAvailable) {
+                if (!updatePrefs.isVersionSkipped(result.release.versionName)) {
+                    updatePrefs.saveCachedRelease(result.release)
+                    availableRelease = result.release
+                }
+            }
+        }
+    }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -303,16 +345,45 @@ fun HomeScreen(
                 contentAlignment = Alignment.Center
             ) {
                 if (isLandscape) {
-                    Row(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(IntrinsicSize.Max)
                             .padding(horizontal = 24.dp, vertical = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        CameraCard(isLandscape = true, modifier = Modifier.weight(1f).fillMaxHeight())
-                        ViewerCard(isLandscape = true, modifier = Modifier.weight(1f).fillMaxHeight())
+                        availableRelease?.let { release ->
+                            UpdateBannerCard(
+                                release = release,
+                                onViewUpdate = { url ->
+                                    try {
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        }
+                                        context.startActivity(intent)
+                                    } catch (e: Exception) {
+                                        AppLogger.w("HomeScreen", "Failed to open release URL: ${e.message}")
+                                    }
+                                },
+                                onSkipVersion = { version ->
+                                    updatePrefs.skipVersion(version)
+                                    availableRelease = null
+                                },
+                                onDismiss = {
+                                    availableRelease = null
+                                }
+                            )
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(IntrinsicSize.Max),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CameraCard(isLandscape = true, modifier = Modifier.weight(1f).fillMaxHeight())
+                            ViewerCard(isLandscape = true, modifier = Modifier.weight(1f).fillMaxHeight())
+                        }
                     }
                 } else {
                     Column(
@@ -322,6 +393,28 @@ fun HomeScreen(
                         verticalArrangement = Arrangement.spacedBy(24.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
+                        availableRelease?.let { release ->
+                            UpdateBannerCard(
+                                release = release,
+                                onViewUpdate = { url ->
+                                    try {
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        }
+                                        context.startActivity(intent)
+                                    } catch (e: Exception) {
+                                        AppLogger.w("HomeScreen", "Failed to open release URL: ${e.message}")
+                                    }
+                                },
+                                onSkipVersion = { version ->
+                                    updatePrefs.skipVersion(version)
+                                    availableRelease = null
+                                },
+                                onDismiss = {
+                                    availableRelease = null
+                                }
+                            )
+                        }
                         CameraCard(isLandscape = false, modifier = Modifier.fillMaxWidth())
                         ViewerCard(isLandscape = false, modifier = Modifier.fillMaxWidth())
                     }
