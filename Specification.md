@@ -455,7 +455,7 @@ Every signaling envelope sent over the public MQTT broker is structured as:
   * Incoming frame dimensions and orientation are observed dynamically via WebRTC `RendererCommon.RendererEvents.onFrameResolutionChanged(width, height, rotation)`.
   * **Aspect Fit (Default):** The surface view layout dimensions are constrained to match the incoming video's exact aspect ratio inside the screen bounds. If orientation mismatches occur (PA in landscape and PB in portrait, or PA in portrait and PB in landscape), the video is letterboxed or pillarboxed with clean black borders so that 100% of the camera field of view is visible without cropping.
   * **Aspect Fill Toggle:** Tapping the Fit/Fill toggle button or double-tapping the video surface toggles between Aspect Fit (full uncropped frame) and Aspect Fill (zoomed to fill entire screen).
-* **Rotation Handling:** WebRTC incoming frames are dynamically rotated in hardware via a proxy `VideoSink` (`(frame.rotation + userRotation) % 360`) delivering into `SurfaceViewRenderer` / `SurfaceEglRenderer`. The OpenGL texture matrix natively rotates each frame ($0^\circ \to 90^\circ \to 180^\circ \to 270^\circ$) without 2D Compose transforms, automatically firing `onFrameResolutionChanged` to update the layout aspect ratio and guarantee that the rotated frame fits seamlessly within the screen viewport without clipping or distortion.
+* **Rotation Handling:** WebRTC incoming frames are dynamically rotated in hardware via a proxy `VideoSink` (`(frame.rotation + userRotation) % 360`) delivering into `SurfaceViewRenderer` / `SurfaceEglRenderer`. The OpenGL texture matrix natively rotates each frame (0° → 90° → 180° → 270°) without 2D Compose transforms, automatically firing `onFrameResolutionChanged` to update the layout aspect ratio and guarantee that the rotated frame fits seamlessly within the screen viewport without clipping or distortion.
 * **Touch to Toggle Controls:** Single tap on video toggles overlay HUD visibility (auto-hides after 5s of inactivity).
 * **Double Tap Gesture:** Double tapping the video viewport toggles between Aspect Fit and Aspect Fill modes.
 
@@ -485,7 +485,7 @@ Every signaling envelope sent over the public MQTT broker is structured as:
 * **Row of Floating Action Controls:**
   1. **Rotate 90° Button (`FilledTonalIconButton`):**
      * Icon: `Icons.Default.Rotate90DegreesCw`.
-     * Tapping increments rotation: $0^\circ \to 90^\circ \to 180^\circ \to 270^\circ \to 0^\circ$.
+     * Tapping increments rotation: 0° → 90° → 180° → 270° → 0°.
   2. **Aspect Ratio Toggle Button (`FilledTonalIconButton`):**
      * Icon: `Icons.Default.Fullscreen` (when in Fit mode) / `Icons.Default.FitScreen` (when in Fill mode).
      * Toggles between **Aspect Fit** (entire uncropped camera frame visible with letterboxing/pillarboxing) and **Aspect Fill** (zooms to fill entire screen).
@@ -637,9 +637,9 @@ flowchart LR
       * **Debounce Window:** 1,500 ms to eliminate jitter or rapid cycling under fluctuating lighting.
   * **Orientation & Rotation Normalization:**
     * Maps physical device rotation dynamically:
-      * `Surface.ROTATION_0` (Portrait): Texture rotation $-90^\circ$, Frame rotation $90^\circ$.
-      * `Surface.ROTATION_90` (Landscape): Texture rotation $0^\circ$, Frame rotation $0^\circ$.
-      * `Surface.ROTATION_270` (Reverse Landscape): Texture rotation $180^\circ$, Frame rotation $180^\circ$.
+      * `Surface.ROTATION_0` (Portrait): Texture rotation -90°, Frame rotation 90°.
+      * `Surface.ROTATION_90` (Landscape): Texture rotation 0°, Frame rotation 0°.
+      * `Surface.ROTATION_270` (Reverse Landscape): Texture rotation 180°, Frame rotation 180°.
     * Guarantees incoming frames are displayed 100% upright in both landscape and portrait device orientations.
 * **Audio Pipeline:** 16 kHz mono Opus codec. Hardware Acoustic Echo Cancellation (AEC) and Noise Suppression (NS) enabled.
   * **Bidirectional Audio Intercom:** Viewer device (PB) captures microphone audio and streams it to Camera device (PA) via a dedicated WebRTC `SEND_RECV` audio transceiver.
@@ -791,7 +791,7 @@ flowchart TD
 * `testBounded15SecondCountdownAndMax5AttemptsLifecycle()`: Verifies virtual time progression across 5 retry attempts (`3s` intervals) and deterministic timeout transition at `15s`.
 * `testNightModeThreshold_HysteresisAndDebounce()`: Verifies ambient light sensor triggers Night mode when illuminance drops strictly below 10 lux and exits when rising above 25 lux, with 1500ms debounce preventing jitter.
 * `testBatteryHelperFormatPercentage()`: Verifies battery text formatting with charging indicator (e.g., `"85%⚡"`, `"42%"`, `"--%"`).
-* `testRotationState_TapRotateButton_IncrementsBy90Degrees()`: Verifies sequence $0^\circ \to 90^\circ \to 180^\circ \to 270^\circ \to 0^\circ$.
+* `testRotationState_TapRotateButton_IncrementsBy90Degrees()`: Verifies sequence 0° → 90° → 180° → 270° → 0°.
 
 #### 8.2.4 Jetpack Compose UI Tests (`androidTest/ui/`)
 * `homeScreen_displaysModeSelectionCards()`: Asserts "Start Camera Mode" and "Start Viewer Mode" cards are visible and clickable.
