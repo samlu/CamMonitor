@@ -303,7 +303,7 @@ Every signaling envelope sent over the public MQTT broker is structured as:
 
 ## 5. Detailed UI Screen Specifications
 
-### 5.1 Screen 1: Mode Selection (Home Screen)
+### 5.1 Screen 1: Operational Command Center (Home Screen)
 * **Top App Bar:**
   * Title: `"CamMonitor"` (HeadlineMedium, bold).
   * Actions:
@@ -311,9 +311,20 @@ Every signaling envelope sent over the public MQTT broker is structured as:
     * `IconButton(Icons.Default.Description)` $\to$ Opens **In-App Log Viewer**.
     * `IconButton(Icons.Default.Devices)` $\to$ Opens **Paired Devices Management**.
     * `IconButton(Icons.Default.Info)` $\to$ Opens **About Screen** (`AppScreen.ABOUT`).
+* **Hardware Pre-Flight Telemetry Bar (`HardwarePreflightBar`):**
+  * Integrated directly below the top bar, providing instantaneous hardware status before deployment.
+  * Real-time reactive updates via registered `ACTION_BATTERY_CHANGED` receiver and `ConnectivityManager.NetworkCallback`.
+  * **Battery Status:** Displays percentage and charging state:
+    * Charging: `"<pct>% ⚡ Charging"` (`Icons.Default.BatteryChargingFull`, Primary tint).
+    * Low Battery ($\le 20\%$ and not charging): `"<pct>% ⚠️ Low Battery"` (`Icons.Default.BatteryStd`, Error tint).
+    * Normal: `"<pct>% Battery"` (`Icons.Default.BatteryStd`).
+  * **Network Transport Status:**
+    * Wi-Fi: `"Wi-Fi Ready"` (`Icons.Default.Wifi`).
+    * Cellular: `"Cellular Data"` (`Icons.Default.SignalCellularAlt`).
+    * Disconnected: `"No Network"` (`Icons.Default.WifiOff`, Error tint).
 * **Release Update Banner (`UpdateBannerCard`):**
-  * Rendered conditionally above mode selection cards when a newer GitHub release is detected and not skipped.
-  * Styling: Material 3 `ElevatedCard` using `SecondaryContainer` color and `Icons.Default.SystemUpdate`.
+  * Rendered conditionally above operational cards when a newer GitHub release is detected and not skipped.
+  * Styling: Material 3 `OutlinedCard` using `SurfaceContainerHigh` color and `Icons.Default.SystemUpdate`.
   * Text: Displays localized version announcement (`"Version vX.Y.Z Available"`) with changelog / release notes preview.
   * Actions:
     * `"View & Update"` (`Button`): Launches external browser via `Intent.ACTION_VIEW` targeting GitHub release URL.
@@ -321,50 +332,40 @@ Every signaling envelope sent over the public MQTT broker is structured as:
     * Close icon (`"X"`): Dismisses card for current app session without skipping permanently.
 * **Body Layout & Adaptive Orientation:**
   * Enabled with vertical scroll (`Modifier.verticalScroll(rememberScrollState())`) to guarantee complete access across all screen densities and font scales.
-  * **Portrait Mode:** Cards are centered vertically in a `Column` with 24dp vertical spacing.
-  * **Landscape Mode:** Cards adapt dynamically into a side-by-side `Row` with 16dp spacing where each card takes equal width (`Modifier.weight(1f)`) and equal height (`height(IntrinsicSize.Max)` and `fillMaxHeight()`), ensuring 100% of both cards and their action buttons are fully visible without cropping and symmetrically aligned.
-  1. **Camera Mode Card:**
-     * Icon: `Icons.Default.Videocam` (48dp, Primary color tint).
-     * Title: `"Start Camera Mode"` (TitleLarge).
-     * Subtitle: Dynamic status:
-       * 0 paired viewers: `"No viewers paired (tap to pair)"`.
-       * 1 paired viewer: `"Paired with <Viewer Name>"`.
-       * 2 paired viewers: `"2 viewers paired (broadcasting ready)"`.
-     * Current Camera Name Pill: e.g. `"Camera Name: Living Room Cam"` with edit pencil icon button.
-     * Paired Viewers Summary Row:
-       * Label: `"Paired Viewers (<count>/2)"`.
-       * Action: `"Pair Viewer"` button with `+` icon (visible if count $< 2$) $\to$ Launches QR code display.
-     * Click Action:
-       * If 0 viewers: Navigates to Screen 5.2.1 (Camera Pairing QR Display).
-       * If $\ge 1$ viewers: Directly starts Camera Mode streaming.
-  2. **Viewer Mode Card:**
-     * Icon: `Icons.Default.Visibility` (48dp, Secondary color tint).
-     * Title: `"Start Viewer Mode"` (TitleLarge).
-     * Subtitle: Dynamic status:
-       * 0 paired cameras: `"No paired camera (tap to pair)"`.
-       * 1 paired camera: `"Paired with <Camera Name>"`.
-       * $>1$ paired cameras: `"<N> cameras paired (tap to choose)"`.
-     * Paired Cameras Summary Row:
-       * Label: `"Paired Cameras (<count>/8)"`.
-       * Action: `"Pair Camera"` button with `+` icon (visible if count $< 8$).
-     * Click Action:
-       * If 0 cameras: Navigates to Screen 5.2.2 (Viewer Pairing QR Scanner).
-       * If 1 camera: Directly launches Viewer Mode targeting that camera.
-       * If $>1$ cameras: Opens **Camera Selection Dialog**.
-* **Camera Selection Dialog (Compose AlertDialog):**
-  * Trigger: Tapping Viewer Mode Card when multiple cameras ($>1$) are paired.
-  * Title: `"Select Camera to View"`.
-  * Subtitle: `"Choose which camera stream to view:"`.
-  * Camera List (`LazyColumn`):
-    * Displays each paired camera with `Icons.Default.Videocam`, camera name, truncated ID snippet, connect arrow, and a quick-remove red trash icon (`Icons.Default.Delete`).
-    * Tapping any camera immediately launches Viewer Mode connecting to that camera.
-    * Tapping trash icon immediately unpairs the camera.
-  * Bottom Action:
-    * `"Pair Another Camera (<count>/8)"` button (visible if count $< 8$) to launch QR scanner.
-  * Dismiss Action: `[Cancel]`.
+  * **Portrait Mode:** Sections are arranged vertically with 16dp spacing (`HardwarePreflightBar` $\to$ `UpdateBannerCard` $\to$ `BroadcasterConsoleCard` $\to$ `MonitoredCamerasSection`).
+  * **Landscape Mode:** Operational consoles adapt dynamically into a side-by-side `Row` with 16dp spacing where Broadcaster Console occupies the left column (`weight(1f)`) and Monitored Cameras occupies the right column (`weight(1f)`), both constrained to `height(IntrinsicSize.Max)` and `fillMaxHeight()`.
+* **Consoles & Interactive Sections:**
+  1. **Broadcaster Console Card (`BroadcasterConsoleCard`):**
+     * Styling: Material 3 `OutlinedCard` (`RoundedCornerShape(20.dp)`, `surfaceContainerHigh`, 1dp outline variant border).
+     * Header:
+       * Squircle Icon: `Icons.Default.Videocam` (40dp squircle with `primaryContainer` alpha 0.4, Primary cyan tint).
+       * Title: `"BROADCASTER (THIS DEVICE)"` (labelSmall, bold, primary tint).
+       * Subtitle: Dynamic authorized viewer status (`"<count>/2 Viewers Authorized"` vs `"No viewers paired yet"`).
+       * Action: `IconButton(Icons.Default.PersonAdd)` (visible if viewer count $< 2$) $\to$ Launches QR code display.
+     * Camera Name Chip:
+       * Encapsulated in a rounded tonal surface (`RoundedCornerShape(10.dp)`) displaying `"Camera Name: <Name>"` with `Icons.AutoMirrored.Filled.Label` and edit pencil.
+       * Tapping opens **Camera Name Edit Dialog**.
+     * Dual Launch Action Buttons:
+       * `[🌙 Stealth (Black)]` (`FilledTonalButton`): Directly launches Camera Mode into the OLED Black Screen touch-guard (`initialLocked = true`, 0.01 brightness, `FLAG_KEEP_SCREEN_ON` released) without blinding the room with a bright viewfinder first.
+       * `[▶ Start Camera]` (`Button`, Primary Cyan): Standard live camera launch with live local viewfinder active.
+       * If 0 viewers are paired, tapping either button routes directly to Camera Pairing QR Display.
+  2. **Monitored Cameras Section (`MonitoredCamerasSection`):**
+     * Header: `"MONITORED CAMERAS (<count>)"` (labelMedium, bold) with `TextButton("+ Pair Camera")` (visible if count $< 8$).
+     * Camera List: Each paired camera renders as a first-class `DirectCameraTile`:
+       * Squircle Icon: `Icons.Default.Videocam` (42dp, `secondaryContainer` alpha 0.35).
+       * Name & Metadata: Camera name (titleMedium, bold) with truncated ID snippet (`ID: %1$s...`) and pairing timestamp (`Paired: <Date>`) rendered on dedicated lines to prevent truncation.
+       * Direct Launch CTA: `FilledTonalButton("Connect ▶")` $\to$ Immediately initiates WebRTC connection and launches Viewer Mode targeting that camera with **zero modal dialogs**.
+       * Remove Action: `IconButton(Icons.Default.DeleteOutline)` $\to$ Opens **Unpair Camera Confirmation Dialog**.
+     * Empty State: When 0 cameras are paired, renders an inviting dashed/outlined card with `Icons.Default.QrCodeScanner`, `"Pair a New Camera"`, and `"Tap to scan QR code from another CamMonitor device"`.
+* **Unpair Camera Confirmation Dialog (Compose AlertDialog):**
+  * Trigger: Tapping the delete trash icon on any `DirectCameraTile`.
+  * Icon: `Icons.Default.Warning` (Error tint).
+  * Title: `"Unpair Camera"`.
+  * Message: `"Are you sure you want to unpair \"<Camera Name>\"? You will need to scan its QR code again to reconnect."`.
+  * Buttons: `[Cancel]` and `[Unpair]` (Button in `MaterialTheme.colorScheme.error`).
 * **Camera Name Edit Dialog (Compose AlertDialog):**
-  * Trigger: Tapping the edit pencil on Camera Mode card or inside Camera Mode settings.
-  * Title: `"Rename Camera"`
+  * Trigger: Tapping the camera name chip on the Broadcaster card or inside Camera Mode settings.
+  * Title: `"Rename Camera"`.
   * Input: `OutlinedTextField` with character counter (`0/32`) and single-line restriction.
   * Buttons: `[Cancel]` and `[Save]`.
 
@@ -539,7 +540,7 @@ Every signaling envelope sent over the public MQTT broker is structured as:
 ### 5.5 Screen 5: Manage Paired Devices Screen
 * **Top Bar:** Title `"Paired Devices"`, Back button.
 * **Device List:**
-  * Displays paired cards (up to 8 cameras or 2 viewers):
+  * Displays paired cards (up to 8 cameras or 2 viewers, styled with `ElevatedCard` using `surfaceContainerHigh` `#2A2A2A`):
     * Device alias and ID snippet (e.g., `Living Room Cam • Paired Oct 14 • ID: 7fc9ef3e...`).
     * Trailing `IconButton(Icons.Default.Delete)` with red tint.
 * **Delete Confirmation Dialog:**
@@ -588,14 +589,14 @@ Every signaling envelope sent over the public MQTT broker is structured as:
     * Icon: `Icons.Default.Refresh` or a 16dp `CircularProgressIndicator` while checking.
     * Inline Feedback: Text status indicating `"Checking for updates..."`, `"You're on the latest version"`, or network error.
     * Update Found: Dynamically reveals `UpdateBannerCard` with update details and browser navigation button.
-* **Application Summary Card (`ElevatedCard`):**
+* **Application Summary Card (`ElevatedCard`, `surfaceContainerHigh` `#2A2A2A`):**
   * Short Description: Multi-line overview emphasizing zero-account, P2P encryption, OLED power management, and 2-way talkback.
   * Open Source Notice: License declaration (Apache License 2.0).
   * External GitHub Link Button:
     * Label: `"View on GitHub"` (`Button` with `Icons.Default.OpenInNew`).
     * Triggers external `Intent.ACTION_VIEW` targeting `https://github.com/samlu/CamMonitor`.
   * Plaintext Repository URL display (`BodySmall`, muted outline color).
-* **Contributors Card (`ElevatedCard`):**
+* **Contributors Card (`ElevatedCard`, `surfaceContainerHigh` `#2A2A2A`):**
   * Bundled static list of repository contributors with localized contribution domains:
     * `samlu` (`@samlu`): Creator & Core Maintainer (`about_contributor_samlu_role`).
     * `OWWhale` (`@OWWhale`): Logging Pipeline, Camera Engine & i18n (`about_contributor_owwhale_role`).

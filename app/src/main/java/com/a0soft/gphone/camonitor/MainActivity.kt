@@ -239,6 +239,7 @@ class MainActivity : ComponentActivity() {
         val currentScreen = backStack.lastOrNull() ?: AppScreen.HOME
         val securityRepo = remember { CamMonitorApp.instance.securityRepository }
         var selectedCameraDeviceId by remember { mutableStateOf<String?>(null) }
+        var startCameraInStealth by remember { mutableStateOf(false) }
 
         fun navigateTo(screen: AppScreen) {
             backStack.add(screen)
@@ -265,12 +266,13 @@ class MainActivity : ComponentActivity() {
         when (currentScreen) {
             AppScreen.HOME -> {
                 HomeScreen(
-                    onStartCameraMode = {
+                    onStartCameraMode = { stealth ->
                         checkAndRequestPermissions(getCameraPermissions()) {
                             val viewerCount = securityRepo.getPairedViewers().size
                             if (viewerCount == 0) {
                                 navigateTo(AppScreen.CAMERA_PAIRING)
                             } else {
+                                startCameraInStealth = stealth
                                 navigateTo(AppScreen.CAMERA_MODE)
                             }
                         }
@@ -305,7 +307,11 @@ class MainActivity : ComponentActivity() {
             }
             AppScreen.CAMERA_MODE -> {
                 CameraModeScreen(
-                    onExitCameraMode = { navigateBack() }
+                    initialLocked = startCameraInStealth,
+                    onExitCameraMode = {
+                        startCameraInStealth = false
+                        navigateBack()
+                    }
                 )
             }
             AppScreen.VIEWER_PAIRING -> {

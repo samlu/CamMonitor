@@ -45,6 +45,27 @@
     <string name="dialog_select_camera_title">选择要观看的镜头</string>
     <string name="dialog_choose_camera_stream">请选择要观看的镜头串流：</string>
 
+    <!-- Operational Home Command Center -->
+    <string name="home_hw_charging">%1$d%% ⚡ 充电中</string>
+    <string name="home_hw_battery">%1$d%% 电量</string>
+    <string name="home_hw_battery_low_warning">%1$d%% ⚠️ 电量过低</string>
+    <string name="home_hw_wifi_ready">Wi-Fi 已连接</string>
+    <string name="home_hw_cellular">移动网络</string>
+    <string name="home_hw_no_network">无网络连接</string>
+    <string name="home_section_broadcaster">广播端 (本设备)</string>
+    <string name="home_section_monitored_cameras">监控镜头列表 (%1$d)</string>
+    <string name="home_broadcaster_stealth_btn">极致黑屏</string>
+    <string name="home_broadcaster_start_btn">启动镜头</string>
+    <string name="home_broadcaster_viewers_authorized">%1$d/%2$d 个已授权观看端</string>
+    <string name="home_broadcaster_no_viewers">尚未配对任何观看端</string>
+    <string name="home_tile_connect_btn">连接</string>
+    <string name="home_tile_paired_date">配对时间: %1$s</string>
+    <string name="home_pair_camera_card">配对新镜头</string>
+    <string name="home_pair_camera_card_desc">轻触以扫描另一台 CamMonitor 设备的二维码</string>
+    <string name="home_confirm_unpair_title">解除镜头配对</string>
+    <string name="home_confirm_unpair_message">确定要解除与“%1$s”的配对吗？解除后需重新扫描二维码才能连接。</string>
+    <string name="home_confirm_unpair_action">解除配对</string>
+
     <!-- Camera Mode Screen -->
     <string name="camera_live_badge">720p %1$dfps</string>
     <string name="camera_viewers_count">%1$d/%2$d 观看端</string>

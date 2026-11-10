@@ -86,21 +86,22 @@ Before first use, pair your two devices:
 
 ### 2. Using Camera Mode (The Camera Phone)
 
-1. Open CamMonitor and tap **Start Camera Mode**.
+1. Open CamMonitor and tap **Start Camera** (or tap **Stealth (Black)** to launch directly into the OLED blackout touch-guard without illuminating the room).
 2. Mount or position your phone facing the area you want to monitor.
-3. **Screen Behavior:**
+3. Check the **Hardware Pre-Flight Bar** at the top of the Home Screen to confirm your charging status (`⚡ Charging`) and Wi-Fi connection before stepping away.
+4. **Screen Behavior:**
    - **HUD Overlay:** The top bar shows streaming resolution/FPS (`720p 15fps`), active viewer count (`0/2` in portrait, `0/2 Viewers` in landscape), Night mode status, and flashlight status.
    - **Screen Behavior & OLED Black Screen:** While previewing, the display is kept awake. After 60 seconds without touch (or by tapping the **Black Screen** button at the bottom left), the screen switches to black screen mode and releases keep-screen-on, allowing the panel to sleep and the SoC to enter deep suspend. **Swipe to unlock**; the system Back key is ignored while locked.
    - **Camera Standby & Dynamic Wi-Fi:** If no viewer connects within 15 seconds, the camera enters standby mode and releases high-performance Wi-Fi lock to save battery. It will wake up automatically as soon as a paired viewer connects.
-4. **To Exit:** Tap **Exit Camera** (or press the Back button and confirm).
+5. **To Exit:** Tap **Exit Camera** (or press the Back button and confirm).
 
 ---
 
 ### 3. Using Viewer Mode (Your Everyday Phone)
 
-1. Open CamMonitor and tap **Start Viewer Mode**.
-   - If you have multiple cameras paired, a dialog will appear allowing you to select which camera to watch.
-2. **Live Monitoring Controls:**
+1. Open CamMonitor and tap **Connect ▶** directly on any monitored camera tile to start streaming instantly with zero popup dialogs.
+2. If you want to add more cameras, tap **+ Pair Camera** (up to 8 cameras supported).
+3. **Live Monitoring Controls:**
    - **Top Bar:**
      - Camera device name and live status badge.
      - Dual battery monitor: displays camera battery level (e.g., `Cam 85%⚡`) and viewer battery level (`Viewer 90%`).

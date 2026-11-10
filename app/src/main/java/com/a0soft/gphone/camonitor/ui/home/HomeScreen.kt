@@ -1,17 +1,26 @@
 package com.a0soft.gphone.camonitor.ui.home
 
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.res.Configuration
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Build
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -20,27 +29,52 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.a0soft.gphone.camonitor.BuildConfig
 import com.a0soft.gphone.camonitor.CamMonitorApp
-import com.a0soft.gphone.camonitor.ui.devices.revokePairedDevice
 import com.a0soft.gphone.camonitor.R
+import com.a0soft.gphone.camonitor.data.model.PairedDevice
 import com.a0soft.gphone.camonitor.data.security.SecurityRepository
 import com.a0soft.gphone.camonitor.data.update.ReleaseCheckResult
 import com.a0soft.gphone.camonitor.data.update.ReleaseChecker
 import com.a0soft.gphone.camonitor.data.update.ReleaseInfo
 import com.a0soft.gphone.camonitor.data.update.UpdatePreferenceManager
+import com.a0soft.gphone.camonitor.log.AppLogger
+import com.a0soft.gphone.camonitor.ui.common.BatteryHelper
+import com.a0soft.gphone.camonitor.ui.common.BatteryInfo
 import com.a0soft.gphone.camonitor.ui.common.LocaleHelper
 import com.a0soft.gphone.camonitor.ui.common.UpdateNotificationHelper
-import com.a0soft.gphone.camonitor.log.AppLogger
+import com.a0soft.gphone.camonitor.ui.devices.revokePairedDevice
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+enum class NetworkType {
+    WIFI,
+    CELLULAR,
+    DISCONNECTED
+}
+
+private fun getNetworkStatus(context: Context): NetworkType {
+    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return NetworkType.DISCONNECTED
+    val activeNetwork = cm.activeNetwork ?: return NetworkType.DISCONNECTED
+    val caps = cm.getNetworkCapabilities(activeNetwork) ?: return NetworkType.DISCONNECTED
+    return when {
+        caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> NetworkType.WIFI
+        caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> NetworkType.CELLULAR
+        else -> NetworkType.DISCONNECTED
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
-    onStartCameraMode: () -> Unit,
+    onStartCameraMode: (startInStealth: Boolean) -> Unit,
     onPairNewViewer: () -> Unit,
     onStartViewerMode: (deviceId: String) -> Unit,
     onPairNewCamera: () -> Unit,
@@ -52,24 +86,22 @@ fun HomeScreen(
     val securityRepo = remember { CamMonitorApp.instance.securityRepository }
     var cameraName by remember { mutableStateOf(securityRepo.getDeviceName()) }
     var showRenameDialog by remember { mutableStateOf(false) }
-    var showSelectCameraDialog by remember { mutableStateOf(false) }
+    var cameraToUnpair by remember { mutableStateOf<PairedDevice?>(null) }
     var showLanguageDialog by remember { mutableStateOf(false) }
     var pairedViewers by remember { mutableStateOf(securityRepo.getPairedViewers()) }
     var pairedCameras by remember { mutableStateOf(securityRepo.getPairedCameras()) }
+    var batteryInfo by remember { mutableStateOf(BatteryHelper.getBatteryInfo(context)) }
+    var networkType by remember { mutableStateOf(getNetworkStatus(context)) }
 
     val updatePrefs = remember { UpdatePreferenceManager(context) }
     var availableRelease by remember { mutableStateOf<ReleaseInfo?>(null) }
 
     LaunchedEffect(Unit) {
-        // Dismiss any existing update notification since the user opened the app
         UpdateNotificationHelper.dismissUpdateNotification(context)
 
-        // 1. Check cached release first
         val cached = updatePrefs.getCachedRelease()
-        AppLogger.i("HomeScreen", "Cached release lookup: $cached")
         if (cached != null && !updatePrefs.isVersionSkipped(cached.versionName)) {
             val eval = ReleaseChecker.evaluateRelease(cached, BuildConfig.VERSION_NAME)
-            AppLogger.i("HomeScreen", "Evaluated cached release: $eval")
             if (eval is ReleaseCheckResult.UpdateAvailable) {
                 availableRelease = cached
             } else {
@@ -77,7 +109,6 @@ fun HomeScreen(
             }
         }
 
-        // 2. Fresh check if 24h cooldown elapsed
         if (updatePrefs.shouldCheck()) {
             val result = ReleaseChecker.checkLatestRelease()
             updatePrefs.recordCheck()
@@ -90,6 +121,43 @@ fun HomeScreen(
         }
     }
 
+    // Reactive hardware telemetry listeners (instant updates on plug/unplug or Wi-Fi change)
+    DisposableEffect(context) {
+        val batteryReceiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context?, intent: Intent?) {
+                batteryInfo = BatteryHelper.getBatteryInfo(context)
+            }
+        }
+        context.registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        val networkCallback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                networkType = getNetworkStatus(context)
+            }
+            override fun onLost(network: Network) {
+                networkType = getNetworkStatus(context)
+            }
+            override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
+                networkType = getNetworkStatus(context)
+            }
+        }
+        try {
+            cm?.registerDefaultNetworkCallback(networkCallback)
+        } catch (e: Exception) {
+            AppLogger.w("HomeScreen", "Failed to register network callback: ${e.message}")
+        }
+
+        onDispose {
+            try {
+                context.unregisterReceiver(batteryReceiver)
+            } catch (_: Exception) {}
+            try {
+                cm?.unregisterNetworkCallback(networkCallback)
+            } catch (_: Exception) {}
+        }
+    }
+
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -97,6 +165,8 @@ fun HomeScreen(
                 pairedViewers = securityRepo.getPairedViewers()
                 pairedCameras = securityRepo.getPairedCameras()
                 cameraName = securityRepo.getDeviceName()
+                batteryInfo = BatteryHelper.getBatteryInfo(context)
+                networkType = getNetworkStatus(context)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -107,208 +177,17 @@ fun HomeScreen(
 
     val scrollState = rememberScrollState()
 
-    @Composable
-    fun CameraCard(isLandscape: Boolean, modifier: Modifier = Modifier) {
-        ElevatedCard(
-            modifier = modifier
-                .clickable {
-                    val viewers = securityRepo.getPairedViewers()
-                    pairedViewers = viewers
-                    if (viewers.isEmpty()) {
-                        onPairNewViewer()
-                    } else {
-                        onStartCameraMode()
-                    }
-                },
-            colors = CardDefaults.elevatedCardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainer
-            )
-        ) {
-            Column(
-                modifier = if (isLandscape) {
-                    Modifier.fillMaxSize().padding(16.dp)
-                } else {
-                    Modifier.fillMaxWidth().padding(24.dp)
-                },
-                verticalArrangement = if (isLandscape) Arrangement.SpaceBetween else Arrangement.Top
-            ) {
-                Column {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Videocam,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(if (isLandscape) 40.dp else 48.dp)
-                        )
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = stringResource(R.string.start_camera_mode),
-                                style = if (isLandscape) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = when {
-                                    pairedViewers.isEmpty() -> stringResource(R.string.home_no_viewers_paired)
-                                    pairedViewers.size == 1 -> stringResource(R.string.home_paired_with, pairedViewers.first().name)
-                                    else -> stringResource(R.string.home_viewers_paired_ready, pairedViewers.size)
-                                },
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(if (isLandscape) 12.dp else 16.dp))
-
-                    // Camera Name & Rename action
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { showRenameDialog = true },
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = stringResource(R.string.home_camera_name_prefix, cameraName),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Icon(
-                            imageVector = Icons.Default.Edit,
-                            contentDescription = stringResource(R.string.action_rename),
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
-
-                if (pairedViewers.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(if (isLandscape) 10.dp else 16.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = stringResource(R.string.home_paired_viewers_count, pairedViewers.size, SecurityRepository.MAX_PAIRED_VIEWERS),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        if (pairedViewers.size < SecurityRepository.MAX_PAIRED_VIEWERS) {
-                            TextButton(
-                                onClick = onPairNewViewer,
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Add,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(stringResource(R.string.home_pair_viewer_button), style = MaterialTheme.typography.labelMedium)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    @Composable
-    fun ViewerCard(isLandscape: Boolean, modifier: Modifier = Modifier) {
-        ElevatedCard(
-            modifier = modifier
-                .clickable {
-                    val cameras = securityRepo.getPairedCameras()
-                    pairedCameras = cameras
-                    when {
-                        cameras.isEmpty() -> onPairNewCamera()
-                        cameras.size == 1 -> onStartViewerMode(cameras.first().deviceId)
-                        else -> showSelectCameraDialog = true
-                    }
-                },
-            colors = CardDefaults.elevatedCardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainer
-            )
-        ) {
-            Column(
-                modifier = if (isLandscape) {
-                    Modifier.fillMaxSize().padding(16.dp)
-                } else {
-                    Modifier.fillMaxWidth().padding(24.dp)
-                },
-                verticalArrangement = if (isLandscape) Arrangement.SpaceBetween else Arrangement.Top
-            ) {
-                Column {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Visibility,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.secondary,
-                            modifier = Modifier.size(if (isLandscape) 40.dp else 48.dp)
-                        )
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = stringResource(R.string.start_viewer_mode),
-                                style = if (isLandscape) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = when {
-                                    pairedCameras.isEmpty() -> stringResource(R.string.home_no_cameras_paired)
-                                    pairedCameras.size == 1 -> stringResource(R.string.home_paired_with, pairedCameras.first().name)
-                                    else -> stringResource(R.string.home_cameras_paired_choose, pairedCameras.size)
-                                },
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-
-                if (pairedCameras.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(if (isLandscape) 12.dp else 16.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = stringResource(R.string.home_paired_cameras_count, pairedCameras.size, SecurityRepository.MAX_PAIRED_CAMERAS),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        if (pairedCameras.size < SecurityRepository.MAX_PAIRED_CAMERAS) {
-                            TextButton(
-                                onClick = onPairNewCamera,
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Add,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(stringResource(R.string.home_pair_camera_button), style = MaterialTheme.typography.labelMedium)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.app_name), style = MaterialTheme.typography.titleLarge) },
+                title = {
+                    Text(
+                        text = stringResource(R.string.app_name),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                },
                 actions = {
                     IconButton(onClick = { showLanguageDialog = true }) {
                         Icon(Icons.Default.Language, contentDescription = stringResource(R.string.cd_language_settings))
@@ -339,91 +218,102 @@ fun HomeScreen(
                 (configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) ||
                 (configuration.screenWidthDp > configuration.screenHeightDp)
 
-            Box(
+            Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .verticalScroll(scrollState),
-                contentAlignment = Alignment.Center
+                    .verticalScroll(scrollState)
+                    .padding(horizontal = if (isLandscape) 24.dp else 20.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                // 1. Hardware Pre-Flight Telemetry Bar
+                HardwarePreflightBar(batteryInfo = batteryInfo, networkType = networkType)
+
+                // 2. Update Banner Card (if available)
+                availableRelease?.let { release ->
+                    UpdateBannerCard(
+                        release = release,
+                        onViewUpdate = { url ->
+                            try {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                context.startActivity(intent)
+                            } catch (e: Exception) {
+                                AppLogger.w("HomeScreen", "Failed to open release URL: ${e.message}")
+                            }
+                        },
+                        onSkipVersion = { version ->
+                            updatePrefs.skipVersion(version)
+                            availableRelease = null
+                        },
+                        onDismiss = {
+                            availableRelease = null
+                        }
+                    )
+                }
+
+                // 3. Operational Consoles (Adaptive Landscape vs Portrait)
                 if (isLandscape) {
-                    Column(
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 24.dp, vertical = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                            .height(IntrinsicSize.Max),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        availableRelease?.let { release ->
-                            UpdateBannerCard(
-                                release = release,
-                                onViewUpdate = { url ->
-                                    try {
-                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
-                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                        }
-                                        context.startActivity(intent)
-                                    } catch (e: Exception) {
-                                        AppLogger.w("HomeScreen", "Failed to open release URL: ${e.message}")
-                                    }
-                                },
-                                onSkipVersion = { version ->
-                                    updatePrefs.skipVersion(version)
-                                    availableRelease = null
-                                },
-                                onDismiss = {
-                                    availableRelease = null
-                                }
-                            )
-                        }
-                        Row(
+                        BroadcasterConsoleCard(
+                            cameraName = cameraName,
+                            pairedViewers = pairedViewers,
+                            onRename = { showRenameDialog = true },
+                            onStartNormal = {
+                                if (pairedViewers.isEmpty()) onPairNewViewer() else onStartCameraMode(false)
+                            },
+                            onStartStealth = {
+                                if (pairedViewers.isEmpty()) onPairNewViewer() else onStartCameraMode(true)
+                            },
+                            onPairViewer = onPairNewViewer,
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .height(IntrinsicSize.Max),
-                            horizontalArrangement = Arrangement.spacedBy(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            CameraCard(isLandscape = true, modifier = Modifier.weight(1f).fillMaxHeight())
-                            ViewerCard(isLandscape = true, modifier = Modifier.weight(1f).fillMaxHeight())
-                        }
+                                .weight(1f)
+                                .fillMaxHeight()
+                        )
+
+                        MonitoredCamerasSection(
+                            pairedCameras = pairedCameras,
+                            onConnect = onStartViewerMode,
+                            onPairCamera = onPairNewCamera,
+                            onConfirmRemoveCamera = { cameraToUnpair = it },
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                        )
                     }
                 } else {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        availableRelease?.let { release ->
-                            UpdateBannerCard(
-                                release = release,
-                                onViewUpdate = { url ->
-                                    try {
-                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
-                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                        }
-                                        context.startActivity(intent)
-                                    } catch (e: Exception) {
-                                        AppLogger.w("HomeScreen", "Failed to open release URL: ${e.message}")
-                                    }
-                                },
-                                onSkipVersion = { version ->
-                                    updatePrefs.skipVersion(version)
-                                    availableRelease = null
-                                },
-                                onDismiss = {
-                                    availableRelease = null
-                                }
-                            )
-                        }
-                        CameraCard(isLandscape = false, modifier = Modifier.fillMaxWidth())
-                        ViewerCard(isLandscape = false, modifier = Modifier.fillMaxWidth())
-                    }
+                    BroadcasterConsoleCard(
+                        cameraName = cameraName,
+                        pairedViewers = pairedViewers,
+                        onRename = { showRenameDialog = true },
+                        onStartNormal = {
+                            if (pairedViewers.isEmpty()) onPairNewViewer() else onStartCameraMode(false)
+                        },
+                        onStartStealth = {
+                            if (pairedViewers.isEmpty()) onPairNewViewer() else onStartCameraMode(true)
+                        },
+                        onPairViewer = onPairNewViewer,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    MonitoredCamerasSection(
+                        pairedCameras = pairedCameras,
+                        onConnect = onStartViewerMode,
+                        onPairCamera = onPairNewCamera,
+                        onConfirmRemoveCamera = { cameraToUnpair = it },
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             }
         }
     }
 
+    // Rename Camera Dialog
     if (showRenameDialog) {
         var tempName by remember { mutableStateOf(cameraName) }
         AlertDialog(
@@ -460,123 +350,48 @@ fun HomeScreen(
         )
     }
 
-    if (showSelectCameraDialog) {
+    // Unpair Camera Confirmation Dialog (Prevents accidental touchscreen mis-taps)
+    cameraToUnpair?.let { targetCamera ->
         AlertDialog(
-            onDismissRequest = { showSelectCameraDialog = false },
-            title = { Text(stringResource(R.string.dialog_select_camera_title)) },
+            onDismissRequest = { cameraToUnpair = null },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = { Text(stringResource(R.string.home_confirm_unpair_title)) },
             text = {
-                Column(
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = stringResource(R.string.dialog_choose_camera_stream),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                Text(stringResource(R.string.home_confirm_unpair_message, targetCamera.name))
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        revokePairedDevice(
+                            deviceId = targetCamera.deviceId,
+                            removeRecord = securityRepo::removePairedDevice,
+                            closePeer = { CamMonitorApp.instance.webRtcManager.closePeer(it) }
+                        )
+                        pairedCameras = securityRepo.getPairedCameras()
+                        cameraToUnpair = null
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error
                     )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 280.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(pairedCameras) { device ->
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                                )
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clickable {
-                                                showSelectCameraDialog = false
-                                                onStartViewerMode(device.deviceId)
-                                            }
-                                            .padding(vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Videocam,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(32.dp)
-                                        )
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = device.name,
-                                                style = MaterialTheme.typography.titleMedium
-                                            )
-                                            Text(
-                                                text = stringResource(R.string.device_id_format, device.deviceId.take(8)),
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                        Icon(
-                                            imageVector = Icons.Default.PlayArrow,
-                                            contentDescription = stringResource(R.string.action_connect),
-                                            tint = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                    IconButton(
-                                        onClick = {
-                                            revokePairedDevice(
-                                                deviceId = device.deviceId,
-                                                removeRecord = securityRepo::removePairedDevice,
-                                                closePeer = { CamMonitorApp.instance.webRtcManager.closePeer(it) }
-                                            )
-                                            pairedCameras = securityRepo.getPairedCameras()
-                                            if (pairedCameras.isEmpty()) {
-                                                showSelectCameraDialog = false
-                                            }
-                                        }
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Delete,
-                                            contentDescription = stringResource(R.string.action_remove_camera),
-                                            tint = MaterialTheme.colorScheme.error
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    if (pairedCameras.size < SecurityRepository.MAX_PAIRED_CAMERAS) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        OutlinedButton(
-                            onClick = {
-                                showSelectCameraDialog = false
-                                onPairNewCamera()
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(stringResource(R.string.home_pair_another_camera, pairedCameras.size, SecurityRepository.MAX_PAIRED_CAMERAS))
-                        }
-                    }
+                ) {
+                    Text(stringResource(R.string.home_confirm_unpair_action))
                 }
             },
-            confirmButton = {},
             dismissButton = {
-                TextButton(onClick = { showSelectCameraDialog = false }) {
+                TextButton(onClick = { cameraToUnpair = null }) {
                     Text(stringResource(R.string.action_cancel))
                 }
             }
         )
     }
 
+    // Language Selection Dialog
     if (showLanguageDialog) {
         val currentTag = remember { LocaleHelper.getCurrentLanguageTag(context) }
         var selectedTag by remember { mutableStateOf(currentTag) }
@@ -650,5 +465,441 @@ fun HomeScreen(
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun HardwarePreflightBar(
+    batteryInfo: BatteryInfo,
+    networkType: NetworkType
+) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Battery Status
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                val isLow = batteryInfo.percentage in 0..20 && !batteryInfo.isCharging
+                Icon(
+                    imageVector = if (batteryInfo.isCharging) Icons.Default.BatteryChargingFull else Icons.Default.BatteryStd,
+                    contentDescription = null,
+                    tint = if (isLow) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(16.dp)
+                )
+                Text(
+                    text = when {
+                        batteryInfo.isCharging -> stringResource(R.string.home_hw_charging, batteryInfo.percentage)
+                        isLow -> stringResource(R.string.home_hw_battery_low_warning, batteryInfo.percentage)
+                        else -> stringResource(R.string.home_hw_battery, batteryInfo.percentage)
+                    },
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (isLow) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                )
+            }
+
+            // Network Transport Status
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Icon(
+                    imageVector = when (networkType) {
+                        NetworkType.WIFI -> Icons.Default.Wifi
+                        NetworkType.CELLULAR -> Icons.Default.SignalCellularAlt
+                        NetworkType.DISCONNECTED -> Icons.Default.WifiOff
+                    },
+                    contentDescription = null,
+                    tint = if (networkType == NetworkType.DISCONNECTED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp)
+                )
+                Text(
+                    text = when (networkType) {
+                        NetworkType.WIFI -> stringResource(R.string.home_hw_wifi_ready)
+                        NetworkType.CELLULAR -> stringResource(R.string.home_hw_cellular)
+                        NetworkType.DISCONNECTED -> stringResource(R.string.home_hw_no_network)
+                    },
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (networkType == NetworkType.DISCONNECTED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun BroadcasterConsoleCard(
+    cameraName: String,
+    pairedViewers: List<PairedDevice>,
+    onRename: () -> Unit,
+    onStartNormal: () -> Unit,
+    onStartStealth: () -> Unit,
+    onPairViewer: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    OutlinedCard(
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.outlinedCardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            // Header: Broadcaster Icon + Section Title + Add Viewer Action
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .background(
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                                shape = RoundedCornerShape(12.dp)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Videocam,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = stringResource(R.string.home_section_broadcaster),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = if (pairedViewers.isNotEmpty()) {
+                                stringResource(R.string.home_broadcaster_viewers_authorized, pairedViewers.size, SecurityRepository.MAX_PAIRED_VIEWERS)
+                            } else {
+                                stringResource(R.string.home_broadcaster_no_viewers)
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                if (pairedViewers.size < SecurityRepository.MAX_PAIRED_VIEWERS) {
+                    IconButton(onClick = onPairViewer) {
+                        Icon(
+                            imageVector = Icons.Default.PersonAdd,
+                            contentDescription = stringResource(R.string.home_pair_viewer_button),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+
+            // Editable Camera Name Chip
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onRename() }
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Label,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = stringResource(R.string.home_camera_name_prefix, cameraName),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.Default.Edit,
+                        contentDescription = stringResource(R.string.action_rename),
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+
+            // Dual Launch Buttons: Stealth (Black) vs Standard Camera
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Stealth Black Screen Direct Launch
+                FilledTonalButton(
+                    onClick = onStartStealth,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.DarkMode,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = stringResource(R.string.home_broadcaster_stealth_btn),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                // Standard Live Camera Launch
+                Button(
+                    onClick = onStartNormal,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = stringResource(R.string.home_broadcaster_start_btn),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MonitoredCamerasSection(
+    pairedCameras: List<PairedDevice>,
+    onConnect: (deviceId: String) -> Unit,
+    onPairCamera: () -> Unit,
+    onConfirmRemoveCamera: (PairedDevice) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        // Section Header: Title + Pair Camera Button
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = stringResource(R.string.home_section_monitored_cameras, pairedCameras.size),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            if (pairedCameras.size < SecurityRepository.MAX_PAIRED_CAMERAS) {
+                TextButton(
+                    onClick = onPairCamera,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(stringResource(R.string.home_pair_camera_button), style = MaterialTheme.typography.labelMedium)
+                }
+            }
+        }
+
+        // Camera List or Empty State
+        if (pairedCameras.isEmpty()) {
+            OutlinedCard(
+                onClick = onPairCamera,
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.outlinedCardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                ),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.QrCodeScanner,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier.size(36.dp)
+                    )
+                    Text(
+                        text = stringResource(R.string.home_pair_camera_card),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = stringResource(R.string.home_pair_camera_card_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        } else {
+            pairedCameras.forEach { camera ->
+                DirectCameraTile(
+                    camera = camera,
+                    onConnect = { onConnect(camera.deviceId) },
+                    onRemove = { onConfirmRemoveCamera(camera) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DirectCameraTile(
+    camera: PairedDevice,
+    onConnect: () -> Unit,
+    onRemove: () -> Unit
+) {
+    val dateStr = remember(camera.pairedTimestamp) {
+        val sdf = SimpleDateFormat("MMM d", Locale.getDefault())
+        sdf.format(Date(camera.pairedTimestamp))
+    }
+
+    OutlinedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.outlinedCardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .background(
+                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.35f),
+                            shape = RoundedCornerShape(12.dp)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Videocam,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Text(
+                        text = camera.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = stringResource(R.string.device_id_format, camera.deviceId.take(8)),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = stringResource(R.string.home_tile_paired_date, dateStr),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                FilledTonalButton(
+                    onClick = onConnect,
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.home_tile_connect_btn),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
+
+                IconButton(
+                    onClick = onRemove,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.DeleteOutline,
+                        contentDescription = stringResource(R.string.action_remove_camera),
+                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        }
     }
 }

@@ -45,6 +45,27 @@
     <string name="dialog_select_camera_title">Select Camera to View</string>
     <string name="dialog_choose_camera_stream">Choose which camera stream to view:</string>
 
+    <!-- Operational Home Command Center -->
+    <string name="home_hw_charging">%1$d%% ⚡ Charging</string>
+    <string name="home_hw_battery">%1$d%% Battery</string>
+    <string name="home_hw_battery_low_warning">%1$d%% ⚠️ Low Battery</string>
+    <string name="home_hw_wifi_ready">Wi-Fi Ready</string>
+    <string name="home_hw_cellular">Cellular Data</string>
+    <string name="home_hw_no_network">No Network</string>
+    <string name="home_section_broadcaster">BROADCASTER (THIS DEVICE)</string>
+    <string name="home_section_monitored_cameras">MONITORED CAMERAS (%1$d)</string>
+    <string name="home_broadcaster_stealth_btn">Stealth (Black)</string>
+    <string name="home_broadcaster_start_btn">Start Camera</string>
+    <string name="home_broadcaster_viewers_authorized">%1$d/%2$d Viewers Authorized</string>
+    <string name="home_broadcaster_no_viewers">No viewers paired yet</string>
+    <string name="home_tile_connect_btn">Connect</string>
+    <string name="home_tile_paired_date">Paired: %1$s</string>
+    <string name="home_pair_camera_card">Pair a New Camera</string>
+    <string name="home_pair_camera_card_desc">Tap to scan QR code from another CamMonitor device</string>
+    <string name="home_confirm_unpair_title">Unpair Camera</string>
+    <string name="home_confirm_unpair_message">Are you sure you want to unpair \"%1$s\"? You will need to scan its QR code again to reconnect.</string>
+    <string name="home_confirm_unpair_action">Unpair</string>
+
     <!-- Camera Mode Screen -->
     <string name="camera_live_badge">720p %1$dfps</string>
     <string name="camera_viewers_count">%1$d/%2$d Viewers</string>

@@ -52,6 +52,7 @@ import org.webrtc.SurfaceViewRenderer
 
 @Composable
 fun CameraModeScreen(
+    initialLocked: Boolean = false,
     onExitCameraMode: () -> Unit
 ) {
     val context = LocalContext.current
@@ -74,7 +75,7 @@ fun CameraModeScreen(
     // Locked = "black screen" + touch guard. Entering it is the ONLY way to turn
     // the display off, and every entry point goes through enterLocked() so the
     // manual button and the 60s idle timer can never diverge.
-    var isLocked by rememberSaveable { mutableStateOf(false) }
+    var isLocked by rememberSaveable { mutableStateOf(initialLocked) }
     var idleSeconds by remember { mutableStateOf(0) }
     var cameraName by remember { mutableStateOf(securityRepo.getDeviceName()) }
     var showRenameDialog by remember { mutableStateOf(false) }
@@ -82,7 +83,7 @@ fun CameraModeScreen(
 
     // Gesture gate: ignore anything that happens in the first 300ms after locking
     // (the click that locked the screen, or a fast double tap).
-    var lockArmedAt by remember { mutableLongStateOf(0L) }
+    var lockArmedAt by remember { mutableLongStateOf(if (initialLocked) android.os.SystemClock.elapsedRealtime() else 0L) }
     var unlockHintTick by remember { mutableIntStateOf(0) }
     val showUnlockHint = unlockHintTick > 0
 
