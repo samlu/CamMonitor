@@ -12,6 +12,7 @@ class VersionCodeHelperTest {
         assertEquals(100_000_899, VersionCodeHelper.compute("v1.0.8"))
         assertEquals(100_000_999, VersionCodeHelper.compute("1.0.9"))
         assertEquals(100_100_099, VersionCodeHelper.compute("1.1.0"))
+        assertEquals(100_100_199, VersionCodeHelper.compute("1.1.1"))
         assertEquals(200_000_099, VersionCodeHelper.compute("2.0.0"))
     }
 

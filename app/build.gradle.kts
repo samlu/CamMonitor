@@ -16,7 +16,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
-val appVersionName = "1.1.0"
+val appVersionName = "1.1.1"
 
 fun computeAndValidateVersionCode(version: String): Int {
     val regex = Regex("""^v?(\d+)\.(\d+)\.(\d+)(?:-(?:([a-zA-Z]+)[.-]?)?(\d{1,2}))?$""")
