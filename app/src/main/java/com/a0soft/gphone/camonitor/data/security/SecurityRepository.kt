@@ -42,6 +42,13 @@ interface SecurityRepository {
     // Envelope Security
     fun createEnvelope(recipientId: String, plaintextJson: String, secretOrDerivedKey: ByteArray): SignalingEnvelope
     fun verifyAndDecryptEnvelope(envelope: SignalingEnvelope, secretOrDerivedKey: ByteArray, isOtpKey: Boolean = false): String?
+
+    /**
+     * Persisted anti-replay for SDP Offers: returns false if [timestamp] is not strictly newer than
+     * the last accepted Offer from [senderId]. Survives process restarts.
+     */
+    fun acceptOfferTimestamp(senderId: String, timestamp: Long): Boolean = true
+
     fun verifyEnvelopeSignature(envelope: SignalingEnvelope, publicKeyBase64: String): Boolean {
         return try {
             val pubKey = CryptoUtils.publicKeyFromBase64(publicKeyBase64)
@@ -70,6 +77,7 @@ class DefaultSecurityRepository(
     companion object {
         const val TIMESTAMP_TOLERANCE_MS = 120_000L // 2 minutes window for clock drift tolerance
         const val NONCE_RETENTION_MS = 120_000L
+        const val SECURE_PREFS_NAME = "cammonitor_secure_prefs"
         const val MAX_CONNECT_DURATION_SAMPLES = 3
         const val MIN_VALID_CONNECT_DURATION_MS = 100L
         const val MAX_VALID_CONNECT_DURATION_MS = 30_000L
@@ -80,23 +88,89 @@ class DefaultSecurityRepository(
         }
     }
 
-    private val prefs: SharedPreferences by lazy {
-        try {
-            val masterKey = MasterKey.Builder(context)
-                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .build()
-            EncryptedSharedPreferences.create(
-                context,
-                "cammonitor_secure_prefs",
-                masterKey,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            )
-        } catch (e: Exception) {
-            AppLogger.w("SecurityRepository", "Falling back to standard preferences: ${e.message}")
-            context.getSharedPreferences("cammonitor_prefs", Context.MODE_PRIVATE)
+    /** True when the encrypted store could not be opened and identity/pairings are memory-only. */
+    @Volatile
+    var isStorageEphemeral: Boolean = false
+        private set
+
+    private val prefs: SharedPreferences by lazy { openSecurePrefs(context) }
+
+    private fun openSecurePrefs(context: Context): SharedPreferences {
+        val result = SecureStorageRecovery.open(
+            create = {
+                val masterKey = MasterKey.Builder(context)
+                    .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                    .build()
+                EncryptedSharedPreferences.create(
+                    context,
+                    SECURE_PREFS_NAME,
+                    masterKey,
+                    EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                    EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+                )
+            },
+            wipe = {
+                AppLogger.e("SecurityRepository", "Secure storage unreadable twice; wiping it. Paired devices must be re-paired.")
+                context.deleteSharedPreferences(SECURE_PREFS_NAME)
+                try {
+                    java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+                        .deleteEntry(MasterKey.DEFAULT_MASTER_KEY_ALIAS)
+                } catch (e: Exception) {
+                    AppLogger.w("SecurityRepository", "Failed deleting master key alias: ${e.message}")
+                }
+            },
+            onAttemptFailed = { attempt, e ->
+                AppLogger.e("SecurityRepository", "Secure storage attempt #$attempt failed: ${e.message}", e)
+            }
+        )
+        val secure = result.value
+        if (secure == null) {
+            // Fail closed: never persist the identity key or pairings in plaintext.
+            isStorageEphemeral = true
+            AppLogger.e("SecurityRepository", "SECURE STORAGE UNAVAILABLE: identity and pairings are memory-only for this process")
+            return InMemorySharedPreferences()
         }
+        migrateLegacyPlaintextPrefs(context, secure)
+        return secure
     }
+
+    /** Moves (or at least scrubs) the plaintext file left behind by earlier builds' fallback. */
+    private fun migrateLegacyPlaintextPrefs(context: Context, secure: SharedPreferences) {
+        val legacy = context.getSharedPreferences(LegacyPrefsMigration.LEGACY_PREFS_NAME, Context.MODE_PRIVATE)
+        val legacyAll = legacy.all
+        if (legacyAll.isEmpty()) return
+        val entries = LegacyPrefsMigration.entriesToMigrate(legacyAll, secure.contains("device_id"))
+        if (entries.isNotEmpty()) {
+            val editor = secure.edit()
+            entries.forEach { (k, v) ->
+                when (v) {
+                    is String -> editor.putString(k, v)
+                    is Boolean -> editor.putBoolean(k, v)
+                    is Int -> editor.putInt(k, v)
+                    is Long -> editor.putLong(k, v)
+                    is Float -> editor.putFloat(k, v)
+                    is Set<*> -> editor.putStringSet(k, v.filterIsInstance<String>().toSet())
+                }
+            }
+            editor.commit()
+        }
+        context.deleteSharedPreferences(LegacyPrefsMigration.LEGACY_PREFS_NAME)
+        AppLogger.i("SecurityRepository", "Legacy plaintext preferences scrubbed (migrated=${entries.size} entries)")
+    }
+
+    private val offerReplayGuard = OfferReplayGuard(object : OfferTimestampStore {
+        override fun get(senderId: String): Long? =
+            prefs.getLong("offer_hwm_$senderId", Long.MIN_VALUE).takeIf { it != Long.MIN_VALUE }
+        override fun put(senderId: String, timestamp: Long) {
+            prefs.edit().putLong("offer_hwm_$senderId", timestamp).apply()
+        }
+        override fun remove(senderId: String) {
+            prefs.edit().remove("offer_hwm_$senderId").apply()
+        }
+    })
+
+    override fun acceptOfferTimestamp(senderId: String, timestamp: Long): Boolean =
+        offerReplayGuard.accept(senderId, timestamp)
 
     private val deviceId: String
     private var keyPair: KeyPair
@@ -134,7 +208,7 @@ class DefaultSecurityRepository(
 
         val usingSoftwareFallback = prefs.getBoolean("key_using_software_fallback", false)
         keyPair = try {
-            if (!usingSoftwareFallback && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            if (!usingSoftwareFallback && !isStorageEphemeral && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
                 CryptoUtils.getOrCreateDeviceKeyPair(alias)
             } else {
                 getOrCreateSoftwareKeyPair()
@@ -251,6 +325,7 @@ class DefaultSecurityRepository(
         current.removeAll { it.deviceId == deviceId }
         savePairedDevices(current)
         prefs.edit().remove("connect_durations_$deviceId").apply()
+        offerReplayGuard.forget(deviceId)
         AppLogger.i("SecurityRepository", "Removed paired device: $deviceId")
     }
 

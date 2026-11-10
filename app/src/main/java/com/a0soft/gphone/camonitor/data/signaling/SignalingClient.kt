@@ -374,6 +374,15 @@ class MqttSignalingClient(
                             AppLogger.i(tag, "Proof-of-Possession verified for ${message.javaClass.simpleName} from ${envelope.senderId}")
                         }
 
+                        // Persisted per-sender Offer high-water mark: survives process restarts, unlike the
+                        // in-memory nonce cache, so a captured Offer cannot be replayed after a restart.
+                        if (!usedOtpKey && message is SignalingMessage.Offer &&
+                            !securityRepository.acceptOfferTimestamp(envelope.senderId, envelope.timestamp)
+                        ) {
+                            AppLogger.w(tag, "Dropped replayed/stale Offer from ${envelope.senderId} (timestamp=${envelope.timestamp} not newer than last accepted Offer)")
+                            return@launch
+                        }
+
                         AppLogger.i(tag, "Received verified message [${message.javaClass.simpleName}] from ${envelope.senderId}")
                         _incomingMessages.emit(Pair(envelope.senderId, message))
                     } else {

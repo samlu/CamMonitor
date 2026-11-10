@@ -147,8 +147,11 @@ fun ManageDevicesScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        securityRepo.removePairedDevice(target.deviceId)
-                        CamMonitorApp.instance.webRtcManager.closePeer(target.deviceId)
+                        revokePairedDevice(
+                            deviceId = target.deviceId,
+                            removeRecord = securityRepo::removePairedDevice,
+                            closePeer = { CamMonitorApp.instance.webRtcManager.closePeer(it) }
+                        )
                         pairedList = securityRepo.getPairedDevices()
                         deviceToRevoke = null
                     }

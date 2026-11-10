@@ -142,7 +142,8 @@ sequenceDiagram
      * `cameraPublicKey`: String (Base64 X.509 encoded public key)
      * `cameraAlias`: String (e.g., "Living Room Cam")
      * `pairedTimestamp`: Long
-   * Whitelist and local device name are persisted in Android `EncryptedSharedPreferences` backed by `MasterKey`.
+   * Whitelist, local device name, and the software identity key (API 28–30, where Android Keystore lacks ECDH key agreement) are persisted in Android `EncryptedSharedPreferences` backed by `MasterKey`.
+   * **Secure storage failure model (fail closed, never plaintext on disk):** opening the store is retried once (transient Keystore errors); if it still fails, the corrupt store and master-key alias are wiped and recreated (user must re-pair); if that also fails, identity and pairings are held **in memory only** for the process (`InMemorySharedPreferences`) and an ERROR is logged. Plaintext `cammonitor_prefs` files written by earlier builds are migrated into the encrypted store (if it has no identity yet) and then deleted.
 
 ### 2.2 Pairing Security Lifecycle & Device Naming
 * **Device Name Configuration on PA:**
@@ -176,7 +177,8 @@ Every signaling envelope sent over the public MQTT broker is structured as:
 
 * **Verification Protocol on PA:**
   1. **Whitelist Check:** Is `senderId` present in PA's Authorized Viewer Whitelist? If NO $\to$ Silently discard.
-  2. **Replay Window Check:** Is `|currentTime - timestamp| < 30 seconds` AND is `nonce` unseen? If NO $\to$ Silently discard.
+  2. **Replay Window Check:** Is `|currentTime - timestamp| <= 120 seconds` AND is `nonce` unseen? If NO $\to$ Silently discard. The 120 s tolerance (`TIMESTAMP_TOLERANCE_MS`) is deliberate: spare Wi-Fi-only phones without SIM/NTP routinely drift 30–60 s versus the viewer. Nonces are cached in memory only (retention = tolerance), because persisting every trickle-ICE nonce would add flash writes and connect latency.
+  2a. **Offer High-Water Mark (restart-safe replay defense):** For SDP `OFFER` messages (ECDH-keyed only), PA additionally requires `timestamp` to be strictly greater than the last accepted Offer timestamp from the same `senderId`. The mark is persisted in the secure store (one small write per accepted Offer, never per ICE candidate) and cleared when the device is unpaired. This prevents a captured Offer from waking the camera after a process restart. Limitation: if a viewer's clock is stepped backwards after it sent a future-dated Offer, its Offers are rejected until its clock catches up (bounded by the 120 s tolerance).
   3. **Signature Verification:** Verify `signature` over `(senderId + recipientId + timestamp + nonce + ciphertext)` using the stored `viewerPublicKey`. If Invalid $\to$ Silently discard.
   4. **Decryption:** Decrypt `ciphertext` via AES-256-GCM using the shared secret derived from ECDH (PA Private Key + PB Public Key).
 * **Zero-Leakage Guarantee:** Unauthorized third parties cannot trigger camera activation, read SDP metadata, or inject malicious SDP offers.
@@ -744,7 +746,7 @@ flowchart LR
 To achieve fast, reliable, and deterministic test execution without reliance on physical Android hardware:
 1. **Clock & Time Abstraction (`TimeProvider`):**
    * Interface `TimeProvider` providing `currentTimeMillis()` and `delay()`.
-   * Replaced by `TestCoroutineScheduler` in unit tests, allowing 60-second timeouts, 5-minute OTP expirations, and 30-second replay windows to advance virtually in **< 5 milliseconds**.
+   * Replaced by `TestCoroutineScheduler` in unit tests, allowing 60-second timeouts, 5-minute OTP expirations, and 120-second replay windows to advance virtually in **< 5 milliseconds**.
 2. **Hardware & Network Decoupling via Interfaces:**
    * `SignalingClient`: Abstracts MQTT broker communication (faked with in-memory Channel in tests).
    * `PeerConnectionClient`: Abstracts WebRTC factory, SDP exchange, and DataChannel events.
@@ -766,8 +768,11 @@ flowchart TD
 * `testQrPayloadSerializationAndDeserialization()`: Verifies schema versioning, base64 key decoding, and JSON format.
 * `testEcdsaSignatureValidation_ValidSignature_Passes()`: Verifies message envelope authentication passes with valid sender key.
 * `testEcdsaSignatureValidation_TamperedCiphertext_Fails()`: Verifies that changing 1 bit in ciphertext fails signature verification and discards envelope.
-* `testAntiReplay_TimestampOlderThan30Seconds_Discards()`: Verifies expired envelopes are silently dropped.
+* `testAntiReplay_TimestampOlderThan120Seconds_Discards()`: Verifies expired envelopes are silently dropped.
 * `testAntiReplay_DuplicateNonce_Discards()`: Verifies duplicate nonce within window is rejected.
+* `OfferReplayGuardTest`: Verifies the persisted per-sender Offer high-water mark rejects a replayed Offer after a simulated process restart.
+* `SecureStorageRecoveryTest`: Verifies retry-without-wipe, wipe-and-recreate, fail-closed (no plaintext fallback), and legacy plaintext migration rules.
+* `DeviceRevocationTest`: Verifies every unpair path removes the record and closes the live WebRTC peer.
 * `testWhitelistEnforcement_UnknownSender_Discards()`: Verifies unauthenticated sender is dropped without decoding SDP.
 * `testOtpExpiration_After5Minutes_InvalidatesHandshake()`: Verifies OTP cannot be reused after expiry.
 

@@ -26,6 +26,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.a0soft.gphone.camonitor.BuildConfig
 import com.a0soft.gphone.camonitor.CamMonitorApp
+import com.a0soft.gphone.camonitor.ui.devices.revokePairedDevice
 import com.a0soft.gphone.camonitor.R
 import com.a0soft.gphone.camonitor.data.security.SecurityRepository
 import com.a0soft.gphone.camonitor.data.update.ReleaseCheckResult
@@ -529,7 +530,11 @@ fun HomeScreen(
                                     }
                                     IconButton(
                                         onClick = {
-                                            securityRepo.removePairedDevice(device.deviceId)
+                                            revokePairedDevice(
+                                                deviceId = device.deviceId,
+                                                removeRecord = securityRepo::removePairedDevice,
+                                                closePeer = { CamMonitorApp.instance.webRtcManager.closePeer(it) }
+                                            )
                                             pairedCameras = securityRepo.getPairedCameras()
                                             if (pairedCameras.isEmpty()) {
                                                 showSelectCameraDialog = false
