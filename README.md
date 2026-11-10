@@ -43,6 +43,27 @@ CamMonitor turns your spare Android phone into a private, zero-account home secu
 
 ---
 
+## Installation
+
+CamMonitor is distributed as a standalone APK via GitHub Releases with no Google Play account or cloud dependencies required.
+
+1. **Download the APK**:
+   - Open [**GitHub Releases**](https://github.com/samlu/CamMonitor/releases/latest) in your browser on both your Camera phone and your Viewer phone.
+   - Download the latest `Camonitor-vX.Y.Z.apk` file from the **Assets** section.
+2. **Install on Android**:
+   - Open the downloaded `.apk` file from your browser's download manager or a file manager app.
+   - If prompted with *"For your security, your phone is not allowed to install unknown apps from this source"*:
+     1. Tap **Settings** in the dialog prompt.
+     2. Toggle on **Allow from this source**.
+     3. Return to the installer and tap **Install** (or **Update**).
+3. **Grant Permissions**:
+   - On first launch, grant **Camera** and **Microphone** permissions (required for video streaming and push-to-talk talkback).
+   - On Android 13+, allow **Notifications** (required for the background streaming foreground service and release update alerts).
+
+*(Developers can also install directly via ADB: `adb install -r Camonitor-vX.Y.Z.apk`)*
+
+---
+
 ## Getting Started
 
 ### 1. One-Time Pairing
