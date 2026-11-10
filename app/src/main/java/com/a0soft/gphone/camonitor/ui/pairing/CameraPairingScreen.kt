@@ -114,9 +114,15 @@ fun CameraPairingScreen(
                     return@collect
                 }
                 AppLogger.i("CameraPairing", "Received PAIR_REQUEST from ${msg.pbName} ($senderId)")
+                val existing = securityRepo.getPairedDevice(msg.pbDeviceId)
+                if (existing != null && existing.publicKeyBase64 != msg.pbPublicKeyBase64) {
+                    AppLogger.w("CameraPairing", "PairRequest rejected: deviceId ${msg.pbDeviceId} already paired with different credentials")
+                    return@collect
+                }
+                val sanitizedName = msg.pbName.trim().take(32).filter { !it.isISOControl() }.ifEmpty { "Viewer" }
                 val newViewer = PairedDevice(
                     deviceId = msg.pbDeviceId,
-                    name = msg.pbName,
+                    name = sanitizedName,
                     publicKeyBase64 = msg.pbPublicKeyBase64,
                     pairedTimestamp = System.currentTimeMillis(),
                     role = "VIEWER"

@@ -160,7 +160,7 @@ fun ViewerModeScreen(
 
     val context = LocalContext.current
     val activity = context as? Activity
-    val prefs = remember { context.getSharedPreferences("cammonitor_prefs", Context.MODE_PRIVATE) }
+    val prefs = remember { context.getSharedPreferences("cammonitor_ui_prefs", Context.MODE_PRIVATE) }
     var showMicPermissionDialog by remember { mutableStateOf(false) }
     var isMicPermanentlyDenied by remember { mutableStateOf(false) }
     var reconnectTrigger by remember { mutableStateOf(0) }
@@ -437,10 +437,11 @@ fun ViewerModeScreen(
                         )
                         AppLogger.i("ViewerMode", "Received remote Answer from camera (+${elapsed}ms, step2=${step2Dur}ms, SDP size=${msg.sdp.length} chars). Applying to PeerConnection...")
                         msg.cameraName?.let { newName ->
-                            cameraName = newName
+                            val sanitized = newName.trim().take(32).filter { !it.isISOControl() }.ifEmpty { targetCamera.name }
+                            cameraName = sanitized
                             val existing = securityRepo.getPairedDevice(targetCamera.deviceId) ?: targetCamera
-                            securityRepo.addPairedDevice(existing.copy(name = newName))
-                            AppLogger.i("ViewerMode", "Updated paired camera name from Answer to: $newName")
+                            securityRepo.addPairedDevice(existing.copy(name = sanitized))
+                            AppLogger.i("ViewerMode", "Updated paired camera name from Answer to: $sanitized")
                         }
                         msg.fps?.let { newFps ->
                             streamFps = newFps
@@ -505,12 +506,13 @@ fun ViewerModeScreen(
         webRtcManager.dataChannelCommands.collect { (peerId, cmd) ->
             when (cmd) {
                 is ControlCommand.Rename -> {
-                    cameraName = cmd.name
+                    val sanitized = cmd.name.trim().take(32).filter { !it.isISOControl() }.ifEmpty { cameraName }
+                    cameraName = sanitized
                     // Update local storage
                     val existing = securityRepo.getPairedDevice(peerId) ?: targetCamera
                     if (existing != null) {
-                        securityRepo.addPairedDevice(existing.copy(name = cmd.name))
-                        AppLogger.i("ViewerMode", "Updated paired camera name from DataChannel to: ${cmd.name}")
+                        securityRepo.addPairedDevice(existing.copy(name = sanitized))
+                        AppLogger.i("ViewerMode", "Updated paired camera name from DataChannel to: $sanitized")
                     }
                 }
                 is ControlCommand.Battery -> {

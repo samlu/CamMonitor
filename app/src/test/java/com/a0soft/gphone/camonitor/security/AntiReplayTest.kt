@@ -30,8 +30,8 @@ class FakeSecurityRepository(
             return false
         }
         val now = timeProvider.currentTimeMillis()
-        // 1. Anti-Replay Timestamp Check (120 seconds window for clock drift tolerance)
-        if (kotlin.math.abs(now - timestamp) > DefaultSecurityRepository.TIMESTAMP_TOLERANCE_MS) {
+        // 1. Anti-Replay Timestamp Check (120 seconds window for clock drift tolerance, overflow-safe)
+        if (timestamp <= 0L || timestamp < now - DefaultSecurityRepository.TIMESTAMP_TOLERANCE_MS || timestamp > now + DefaultSecurityRepository.TIMESTAMP_TOLERANCE_MS) {
             return false
         }
         // 2. Anti-Replay Nonce Check (atomic reservation - S-04)
@@ -93,6 +93,18 @@ class AntiReplayTest {
         val nonce = "unique-nonce-3"
         val passed = securityRepo.verifyEnvelope(futureTimestamp, nonce, "pb-1")
         assertFalse("Future envelope beyond 120s must be rejected", passed)
+    }
+
+    @Test
+    fun testTimestampUnderflow_LongMinValue_Rejected() {
+        val passed = securityRepo.verifyEnvelope(Long.MIN_VALUE, "nonce-underflow", "pb-1")
+        assertFalse("Long.MIN_VALUE timestamp must be rejected", passed)
+    }
+
+    @Test
+    fun testTimestampNegativeOrZero_Rejected() {
+        assertFalse("Zero timestamp must be rejected", securityRepo.verifyEnvelope(0L, "nonce-zero", "pb-1"))
+        assertFalse("Negative timestamp must be rejected", securityRepo.verifyEnvelope(-1000L, "nonce-negative", "pb-1"))
     }
 
     @Test

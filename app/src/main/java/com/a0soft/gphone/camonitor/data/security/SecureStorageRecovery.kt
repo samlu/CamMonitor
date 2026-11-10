@@ -55,6 +55,13 @@ object LegacyPrefsMigration {
     private const val IDENTITY_KEY = "device_id"
 
     /**
+     * Whether the legacy file actually contains plaintext cryptographic identity keys that must be scrubbed.
+     */
+    fun hasLegacyIdentity(legacy: Map<String, *>): Boolean {
+        return legacy.containsKey(IDENTITY_KEY) || legacy.containsKey("device_priv_key")
+    }
+
+    /**
      * Entries to copy into the secure store. If the secure store already has an identity it wins and
      * nothing is copied (the legacy file is still scrubbed by the caller).
      */

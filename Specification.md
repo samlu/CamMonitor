@@ -143,20 +143,22 @@ sequenceDiagram
      * `cameraAlias`: String (e.g., "Living Room Cam")
      * `pairedTimestamp`: Long
    * Whitelist, local device name, and the software identity key (API 28–30, where Android Keystore lacks ECDH key agreement) are persisted in Android `EncryptedSharedPreferences` backed by `MasterKey`.
-   * **Secure storage failure model (fail closed, never plaintext on disk):** opening the store is retried once (transient Keystore errors); if it still fails, the corrupt store and master-key alias are wiped and recreated (user must re-pair); if that also fails, identity and pairings are held **in memory only** for the process (`InMemorySharedPreferences`) and an ERROR is logged. Plaintext `cammonitor_prefs` files written by earlier builds are migrated into the encrypted store (if it has no identity yet) and then deleted.
+   * **In-Memory Paired Device Cache (MQTT DoS Defense):** To protect against CPU, flash I/O, and thermal exhaustion attacks on the unauthenticated public MQTT broker (`cammonitor/<deviceId>/rx`), `DefaultSecurityRepository` caches parsed `PairedDevice` entries in a thread-safe `ConcurrentHashMap`. Incoming packet whitelist checks execute in $O(1)$ memory without invoking KeyStore/Tink AES-SIV hardware decryption.
+   * **Secure storage failure model (fail closed, never plaintext on disk):** opening the store is retried once (transient Keystore errors); if it still fails, the corrupt store and master-key alias are wiped and recreated (user must re-pair); if that also fails, identity and pairings are held **in memory only** for the process (`InMemorySharedPreferences`) and an ERROR is logged. Plaintext `cammonitor_prefs` files written by earlier builds are migrated into the encrypted store (if it has no identity yet) and then deleted only if legacy cryptographic identity keys were present. Non-security UI preferences (e.g. permission rationale history) reside in a separate `"cammonitor_ui_prefs"` store.
 
 ### 2.2 Pairing Security Lifecycle & Device Naming
 * **Device Name Configuration on PA:**
   * Default name generated as `"CamMonitor-" + last 4 chars of UUID` (e.g., `"CamMonitor-8A2F"`).
   * User can customize/rename this at any time via PA's UI.
-  * Name length: 1 to 32 UTF-8 characters.
+  * Name length: 1 to 32 UTF-8 characters. Input is sanitized to clamp to 32 characters and strip ISO control characters while preserving multilingual CJK text, spaces, and punctuation (`「」`, `&`, `#`).
 * **Ephemeral One-Time Token (OTP):**
   * The QR code payload contains a cryptographically random 256-bit pairing secret (`pairingOtp`).
   * The OTP is **single-use and short-lived** (expires after 5 minutes or immediately upon a successful pairing).
   * If the pairing screen on PA is dismissed or cancelled, the OTP is instantly discarded.
-* **Mutual Authentication Handshake:**
+* **Mutual Authentication Handshake & Identity Protection:**
   * PB encrypts its enrollment payload with a key derived from the OTP via HKDF-SHA256.
   * PA verifies the OTP. If valid, PA pins PB's public key into its hardware-backed whitelist.
+  * **Public Key Immutability Guard:** If a `PairRequest` claims a `deviceId` that is already paired but provides a different public key, PA rejects the handshake with a security warning. An existing device cannot be overwritten or displaced without being explicitly revoked first in "Manage Devices".
   * Once 2 viewers are paired, PA closes the pairing interface and rejects any further pairing requests.
 
 ### 2.3 Signaling Message Authentication & Anti-Replay
@@ -176,8 +178,8 @@ Every signaling envelope sent over the public MQTT broker is structured as:
 ```
 
 * **Verification Protocol on PA:**
-  1. **Whitelist Check:** Is `senderId` present in PA's Authorized Viewer Whitelist? If NO $\to$ Silently discard.
-  2. **Replay Window Check:** Is `|currentTime - timestamp| <= 120 seconds` AND is `nonce` unseen? If NO $\to$ Silently discard. The 120 s tolerance (`TIMESTAMP_TOLERANCE_MS`) is deliberate: spare Wi-Fi-only phones without SIM/NTP routinely drift 30–60 s versus the viewer. Nonces are cached in memory only (retention = tolerance), because persisting every trickle-ICE nonce would add flash writes and connect latency.
+  1. **Whitelist Check:** Is `senderId` present in PA's Authorized Viewer Whitelist? If NO $\to$ Silently discard (evaluated via in-memory cache).
+  2. **Replay Window Check:** Is `timestamp in (currentTime - 120s)..(currentTime + 120s)` (evaluated using overflow-safe bounds checks to prevent `Math.abs(Long.MIN_VALUE)` two's complement bypass) AND is `nonce` unseen? If NO $\to$ Silently discard. The 120 s tolerance (`TIMESTAMP_TOLERANCE_MS`) is deliberate: spare Wi-Fi-only phones without SIM/NTP routinely drift 30–60 s versus the viewer. Nonces are cached in memory only (retention = tolerance), because persisting every trickle-ICE nonce would add flash writes and connect latency.
   2a. **Offer High-Water Mark (restart-safe replay defense):** For SDP `OFFER` messages (ECDH-keyed only), PA additionally requires `timestamp` to be strictly greater than the last accepted Offer timestamp from the same `senderId`. The mark is persisted in the secure store (one small write per accepted Offer, never per ICE candidate) and cleared when the device is unpaired. This prevents a captured Offer from waking the camera after a process restart. Limitation: if a viewer's clock is stepped backwards after it sent a future-dated Offer, its Offers are rejected until its clock catches up (bounded by the 120 s tolerance).
   3. **Signature Verification:** Verify `signature` over `(senderId + recipientId + timestamp + nonce + ciphertext)` using the stored `viewerPublicKey`. If Invalid $\to$ Silently discard.
   4. **Decryption:** Decrypt `ciphertext` via AES-256-GCM using the shared secret derived from ECDH (PA Private Key + PB Public Key).

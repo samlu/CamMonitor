@@ -351,9 +351,15 @@ private suspend fun handleScannedQr(
                     retryJob.cancel()
                     securityRepo.clearPairingOtp()
                     AppLogger.i("ViewerPairing", "Received PAIR_CONFIRM from ${msg.paName}")
+                    val existing = securityRepo.getPairedDevice(msg.paDeviceId)
+                    if (existing != null && existing.publicKeyBase64 != msg.paPublicKeyBase64) {
+                        AppLogger.w("ViewerPairing", "PairConfirm rejected: deviceId ${msg.paDeviceId} already bound to a different public key")
+                        return@collect
+                    }
+                    val sanitizedName = msg.paName.trim().take(32).filter { !it.isISOControl() }.ifEmpty { "Camera" }
                     val pairedCam = PairedDevice(
                         deviceId = msg.paDeviceId,
-                        name = msg.paName,
+                        name = sanitizedName,
                         publicKeyBase64 = msg.paPublicKeyBase64,
                         pairedTimestamp = System.currentTimeMillis(),
                         role = "CAMERA"

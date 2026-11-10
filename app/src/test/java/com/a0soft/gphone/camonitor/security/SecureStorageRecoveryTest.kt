@@ -86,4 +86,12 @@ class SecureStorageRecoveryTest {
         val legacy = mapOf("night_mode_setting" to "AUTO")
         assertTrue(LegacyPrefsMigration.entriesToMigrate(legacy, secureHasIdentity = false).isEmpty())
     }
+
+    @Test
+    fun legacyMigration_DetectsLegacyIdentityKeys() {
+        assertTrue(LegacyPrefsMigration.hasLegacyIdentity(mapOf("device_id" to "123")))
+        assertTrue(LegacyPrefsMigration.hasLegacyIdentity(mapOf("device_priv_key" to "abc")))
+        assertFalse(LegacyPrefsMigration.hasLegacyIdentity(mapOf("has_requested_android.permission.CAMERA" to true)))
+        assertFalse(LegacyPrefsMigration.hasLegacyIdentity(emptyMap<String, Any>()))
+    }
 }

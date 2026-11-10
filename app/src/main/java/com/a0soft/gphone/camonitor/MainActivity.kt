@@ -178,13 +178,13 @@ class MainActivity : ComponentActivity() {
     }
 
     fun isPermanentlyDenied(permission: String): Boolean {
-        val prefs = getSharedPreferences("cammonitor_prefs", Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences("cammonitor_ui_prefs", Context.MODE_PRIVATE)
         val hasRequested = prefs.getBoolean("has_requested_$permission", false)
         return hasRequested && !ActivityCompat.shouldShowRequestPermissionRationale(this, permission)
     }
 
     fun markPermissionsRequested(permissions: List<String>) {
-        val prefs = getSharedPreferences("cammonitor_prefs", Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences("cammonitor_ui_prefs", Context.MODE_PRIVATE)
         prefs.edit().apply {
             permissions.forEach { putBoolean("has_requested_$it", true) }
         }.apply()

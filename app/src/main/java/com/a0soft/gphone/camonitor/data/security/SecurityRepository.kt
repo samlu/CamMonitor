@@ -112,6 +112,8 @@ class DefaultSecurityRepository(
             wipe = {
                 AppLogger.e("SecurityRepository", "Secure storage unreadable twice; wiping it. Paired devices must be re-paired.")
                 context.deleteSharedPreferences(SECURE_PREFS_NAME)
+                pairedDevicesCache.clear()
+                isCacheLoaded = true
                 try {
                     java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
                         .deleteEntry(MasterKey.DEFAULT_MASTER_KEY_ALIAS)
@@ -138,7 +140,7 @@ class DefaultSecurityRepository(
     private fun migrateLegacyPlaintextPrefs(context: Context, secure: SharedPreferences) {
         val legacy = context.getSharedPreferences(LegacyPrefsMigration.LEGACY_PREFS_NAME, Context.MODE_PRIVATE)
         val legacyAll = legacy.all
-        if (legacyAll.isEmpty()) return
+        if (legacyAll.isEmpty() || !LegacyPrefsMigration.hasLegacyIdentity(legacyAll)) return
         val entries = LegacyPrefsMigration.entriesToMigrate(legacyAll, secure.contains("device_id"))
         if (entries.isNotEmpty()) {
             val editor = secure.edit()
@@ -287,54 +289,67 @@ class DefaultSecurityRepository(
         otpExpiresAt = 0L
     }
 
-    override fun getPairedDevices(): List<PairedDevice> {
-        val jsonStr = prefs.getString("paired_devices", "[]") ?: "[]"
-        val list = mutableListOf<PairedDevice>()
-        try {
-            val arr = JSONArray(jsonStr)
-            for (i in 0 until arr.length()) {
-                list.add(PairedDevice.fromJson(arr.getJSONObject(i)))
+    private val pairedDevicesCache = java.util.concurrent.ConcurrentHashMap<String, PairedDevice>()
+    @Volatile private var isCacheLoaded = false
+
+    private fun ensureCacheLoaded(): java.util.concurrent.ConcurrentHashMap<String, PairedDevice> {
+        if (!isCacheLoaded) {
+            synchronized(pairedDevicesCache) {
+                if (!isCacheLoaded) {
+                    val jsonStr = prefs.getString("paired_devices", "[]") ?: "[]"
+                    try {
+                        val arr = JSONArray(jsonStr)
+                        for (i in 0 until arr.length()) {
+                            val dev = PairedDevice.fromJson(arr.getJSONObject(i))
+                            pairedDevicesCache[dev.deviceId] = dev
+                        }
+                    } catch (e: Exception) {
+                        AppLogger.e("SecurityRepository", "Failed to parse paired devices into cache", e)
+                    }
+                    isCacheLoaded = true
+                }
             }
-        } catch (e: Exception) {
-            AppLogger.e("SecurityRepository", "Failed to parse paired devices", e)
         }
-        return list
+        return pairedDevicesCache
+    }
+
+    override fun getPairedDevices(): List<PairedDevice> {
+        return ensureCacheLoaded().values.toList()
     }
 
     override fun addPairedDevice(device: PairedDevice, maxLimit: Int): Boolean {
-        val current = getPairedDevices().toMutableList()
+        val cache = ensureCacheLoaded()
+        val current = cache.values.toMutableList()
         val roleCount = when (device.role) {
             "CAMERA" -> current.count { it.role != "VIEWER" }
             "VIEWER" -> current.count { it.role != "CAMERA" }
             else -> current.size
         }
-        if (roleCount >= maxLimit && current.none { it.deviceId == device.deviceId }) {
+        if (roleCount >= maxLimit && !cache.containsKey(device.deviceId)) {
             AppLogger.w("SecurityRepository", "Cannot add paired device: Max $maxLimit devices reached for role ${device.role ?: "ALL"}")
             return false
         }
-        current.removeAll { it.deviceId == device.deviceId }
-        current.add(device)
-
-        savePairedDevices(current)
+        cache[device.deviceId] = device
+        savePairedDevices(cache.values.toList())
         AppLogger.i("SecurityRepository", "Paired new device: ${device.name} (${device.deviceId}) [roleCount=${roleCount + 1}/$maxLimit]")
         return true
     }
 
     override fun removePairedDevice(deviceId: String) {
-        val current = getPairedDevices().toMutableList()
-        current.removeAll { it.deviceId == deviceId }
-        savePairedDevices(current)
+        val cache = ensureCacheLoaded()
+        cache.remove(deviceId)
+        savePairedDevices(cache.values.toList())
         prefs.edit().remove("connect_durations_$deviceId").apply()
         offerReplayGuard.forget(deviceId)
         AppLogger.i("SecurityRepository", "Removed paired device: $deviceId")
     }
 
     override fun isDeviceWhitelisted(deviceId: String): Boolean {
-        return getPairedDevices().any { it.deviceId == deviceId }
+        return ensureCacheLoaded().containsKey(deviceId)
     }
 
     override fun getPairedDevice(deviceId: String): PairedDevice? {
-        return getPairedDevices().firstOrNull { it.deviceId == deviceId }
+        return ensureCacheLoaded()[deviceId]
     }
 
     private fun savePairedDevices(list: List<PairedDevice>) {
@@ -385,9 +400,9 @@ class DefaultSecurityRepository(
 
         val now = timeProvider.currentTimeMillis()
 
-        // 1. Anti-Replay Timestamp Check (120 seconds window for clock drift tolerance)
-        if (kotlin.math.abs(now - envelope.timestamp) > TIMESTAMP_TOLERANCE_MS) {
-            AppLogger.w("SecurityRepository", "Envelope discarded: Timestamp expired (delta: ${now - envelope.timestamp}ms)")
+        // 1. Anti-Replay Timestamp Check (120 seconds window for clock drift tolerance, overflow-safe)
+        if (envelope.timestamp <= 0L || envelope.timestamp < now - TIMESTAMP_TOLERANCE_MS || envelope.timestamp > now + TIMESTAMP_TOLERANCE_MS) {
+            AppLogger.w("SecurityRepository", "Envelope discarded: Timestamp expired or invalid (timestamp: ${envelope.timestamp}, now: $now)")
             return null
         }
 
