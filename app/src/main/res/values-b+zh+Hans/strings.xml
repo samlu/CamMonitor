@@ -52,6 +52,13 @@
     <string name="home_hw_wifi_ready">Wi-Fi 已连接</string>
     <string name="home_hw_cellular">移动网络</string>
     <string name="home_hw_no_network">无网络连接</string>
+    <string name="home_hw_ethernet">以太网已连接</string>
+    <string name="home_hw_no_internet">无法连接互联网</string>
+    <string name="home_low_battery_hint">电量仅剩 %1$d%% 且未充电，建议先接上充电器再放着不管。</string>
+    <string name="home_stealth_intro_title">即将进入黑屏</string>
+    <string name="home_stealth_intro_message">屏幕将全黑并锁定触控，以节省电量并避免照亮房间。稍等片刻后向任意方向滑动即可解锁。屏幕关闭时镜头仍持续推流。</string>
+    <string name="home_stealth_intro_confirm">进入黑屏</string>
+    <string name="home_compact_pair_hint">请先配对观看端，才能将此手机用作镜头</string>
     <string name="home_section_broadcaster">广播端 (本设备)</string>
     <string name="home_section_monitored_cameras">监控镜头列表 (%1$d)</string>
     <string name="home_broadcaster_stealth_btn">极致黑屏</string>

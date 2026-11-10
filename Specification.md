@@ -318,10 +318,14 @@ Every signaling envelope sent over the public MQTT broker is structured as:
     * Charging: `"<pct>% ⚡ Charging"` (`Icons.Default.BatteryChargingFull`, Primary tint).
     * Low Battery ($\le 20\%$ and not charging): `"<pct>% ⚠️ Low Battery"` (`Icons.Default.BatteryStd`, Error tint).
     * Normal: `"<pct>% Battery"` (`Icons.Default.BatteryStd`).
-  * **Network Transport Status:**
-    * Wi-Fi: `"Wi-Fi Ready"` (`Icons.Default.Wifi`).
-    * Cellular: `"Cellular Data"` (`Icons.Default.SignalCellularAlt`).
+  * **Network Transport Status** (pure mapping in `classifyNetwork()`, `HomeLogic.kt`; reads `NET_CAPABILITY_INTERNET` / `NET_CAPABILITY_VALIDATED`):
+    * Wi-Fi (validated): `"Wi-Fi Ready"` (`Icons.Default.Wifi`).
+    * Ethernet (validated): `"Ethernet Connected"` (`Icons.Default.SettingsEthernet`) — wired dock setups are never reported as disconnected.
+    * Cellular (validated): `"Cellular Data"` (`Icons.Default.SignalCellularAlt`).
+    * Network attached but not validated (captive portal / dead uplink): `"No Internet"` (`Icons.Default.WifiOff`, `StatusWarning` amber tint). Never shown as "Wi-Fi Ready".
     * Disconnected: `"No Network"` (`Icons.Default.WifiOff`, Error tint).
+  * Battery uses `isBatteryLow(percentage, isCharging)` (≤ 20% and not charging).
+  * Battery is observed through a `BroadcastReceiver` (`ContextCompat.RECEIVER_NOT_EXPORTED`) and network through `registerDefaultNetworkCallback`, both registered/unregistered in a `DisposableEffect`.
 * **Release Update Banner (`UpdateBannerCard`):**
   * Rendered conditionally above operational cards when a newer GitHub release is detected and not skipped.
   * Styling: Material 3 `OutlinedCard` using `SurfaceContainerHigh` color and `Icons.Default.SystemUpdate`.
@@ -332,11 +336,12 @@ Every signaling envelope sent over the public MQTT broker is structured as:
     * Close icon (`"X"`): Dismisses card for current app session without skipping permanently.
 * **Body Layout & Adaptive Orientation:**
   * Enabled with vertical scroll (`Modifier.verticalScroll(rememberScrollState())`) to guarantee complete access across all screen densities and font scales.
-  * **Portrait Mode:** Sections are arranged vertically with 16dp spacing (`HardwarePreflightBar` $\to$ `UpdateBannerCard` $\to$ `BroadcasterConsoleCard` $\to$ `MonitoredCamerasSection`).
-  * **Landscape Mode:** Operational consoles adapt dynamically into a side-by-side `Row` with 16dp spacing where Broadcaster Console occupies the left column (`weight(1f)`) and Monitored Cameras occupies the right column (`weight(1f)`), both constrained to `height(IntrinsicSize.Max)` and `fillMaxHeight()`.
+  * **Portrait Mode:** Sections are arranged vertically with 16dp spacing (`HardwarePreflightBar` $\to$ `UpdateBannerCard` $\to$ first console $\to$ second console). Order is role-adaptive (see below).
+  * **Landscape Mode:** The two consoles sit side by side in a `Row` with 16dp spacing, first console in the left column (`weight(1f)`) and second in the right (`weight(1f)`), both constrained to `height(IntrinsicSize.Max)` and `fillMaxHeight()`.
+  * **Role-adaptive ordering (`homeLayoutFor()` in `HomeLogic.kt`):** default `BROADCASTER_FIRST` = Broadcaster Console, then Monitored Cameras. When `pairedCameras > 0 && pairedViewers == 0` (a viewer-only device) the layout becomes `CAMERAS_FIRST`: Monitored Cameras first and the Broadcaster collapses into `CompactBroadcasterRow`. Because the camera cannot be launched until a viewer is paired, the row offers exactly one action — a `FilledTonalButton("Pair Viewer")` (with `PersonAdd`) that opens the pairing QR (and clears any stealth intent) — plus a one-line hint ("Pair a viewer to use this phone as a camera"). The title + camera-name area is tappable (pencil icon) and opens the Rename dialog so the camera can be renamed before it is ever started. Stealth/Start appear on the full Broadcaster card as soon as one viewer is paired. Any other combination keeps the default order so the screen does not reshuffle. Each section composable is declared once and placed per orientation, so portrait and landscape cannot diverge.
 * **Consoles & Interactive Sections:**
   1. **Broadcaster Console Card (`BroadcasterConsoleCard`):**
-     * Styling: Material 3 `OutlinedCard` (`RoundedCornerShape(20.dp)`, `surfaceContainerHigh`, 1dp outline variant border).
+      * Styling: Material 3 `OutlinedCard` (`RoundedCornerShape(20.dp)`). To keep "this phone as camera" visually distinct from the remote-camera tiles below, the card has a faint cyan wash (`primary` alpha 0.08 composited over `surfaceContainerHigh`) and a `primary` alpha 0.45 1dp border (also applied to `CompactBroadcasterRow`). Camera tiles stay neutral (`surfaceContainerHigh`, `outlineVariant` border).
      * Header:
        * Squircle Icon: `Icons.Default.Videocam` (40dp squircle with `primaryContainer` alpha 0.4, Primary cyan tint).
        * Title: `"BROADCASTER (THIS DEVICE)"` (labelSmall, bold, primary tint).
@@ -345,20 +350,24 @@ Every signaling envelope sent over the public MQTT broker is structured as:
      * Camera Name Chip:
        * Encapsulated in a rounded tonal surface (`RoundedCornerShape(10.dp)`) displaying `"Camera Name: <Name>"` with `Icons.AutoMirrored.Filled.Label` and edit pencil.
        * Tapping opens **Camera Name Edit Dialog**.
+      * Low-battery hint (`shouldWarnLowBatteryBeforeBroadcast()`): when battery is ≤ 30% and not charging, an inline amber `BatteryAlert` row (`"Battery at N% and not charging. Plug in before leaving the camera running."`) is shown directly above the launch buttons. Threshold is deliberately earlier than the red pre-flight-bar threshold (≤ 20%). Shown on the full Broadcaster card (not on the compact viewer-only row).
      * Dual Launch Action Buttons:
        * `[🌙 Stealth (Black)]` (`FilledTonalButton`): Directly launches Camera Mode into the OLED Black Screen touch-guard (`initialLocked = true`, 0.01 brightness, `FLAG_KEEP_SCREEN_ON` released) without blinding the room with a bright viewfinder first.
+        * **First-run explanation (once):** the very first Stealth launch shows an `AlertDialog` ("Going dark": screen turns fully black and locks, swipe in any direction after a moment to unlock, camera keeps streaming) with `[Go dark]` / `[Cancel]`. Confirming sets `stealth_intro_seen = true` in the non-security `"cammonitor_ui_prefs"` store and launches; later launches go straight through. Cancel leaves the flag unset.
        * `[▶ Start Camera]` (`Button`, Primary Cyan): Standard live camera launch with live local viewfinder active.
-       * If 0 viewers are paired, tapping either button routes directly to Camera Pairing QR Display.
+       * If 0 viewers are paired, tapping either button routes to Camera Pairing QR Display first (`broadcasterLaunchRoute()` → `PAIR_VIEWER_FIRST`). The Stealth choice is preserved across the pairing detour (`StealthLaunchIntent`), so after a successful pairing the camera still starts in the mode the user picked. The intent is cleared whenever the user leaves Camera Pairing or Camera Mode (including via system Back) and by the explicit `PersonAdd` / Manage Devices pairing entry points, so it can never leak into a later normal launch.
   2. **Monitored Cameras Section (`MonitoredCamerasSection`):**
      * Header: `"MONITORED CAMERAS (<count>)"` (labelMedium, bold) with `TextButton("+ Pair Camera")` (visible if count $< 8$).
      * Camera List: Each paired camera renders as a first-class `DirectCameraTile`:
-       * Squircle Icon: `Icons.Default.Videocam` (42dp, `secondaryContainer` alpha 0.35).
-       * Name & Metadata: Camera name (titleMedium, bold) with truncated ID snippet (`ID: %1$s...`) and pairing timestamp (`Paired: <Date>`) rendered on dedicated lines to prevent truncation.
+        * Spacing: in portrait the two consoles are separated by 28dp (16dp column spacing + 12dp spacer) — larger than the 16dp used between other Home elements.
+        * Squircle Icon: `Icons.Default.Visibility` (42dp, `secondaryContainer` alpha 0.35) — deliberately different from the Broadcaster card's `Videocam` so "watch" and "be the camera" are never the same glyph.
+       * Name & Metadata: Camera name (titleMedium, bold) and pairing date (`Paired: <Date>`, locale-aware pattern from `DateFormat.getBestDateTimePattern(locale, "MMMd")`). The device-ID snippet is intentionally not shown on the tile (debug-only noise); IDs remain visible in Manage Devices.
+       * Whole-tile tap: The entire tile is clickable (`combinedClickable`, clipped to the 16dp shape) and connects immediately — large touch target.
        * Direct Launch CTA: `FilledTonalButton("Connect ▶")` $\to$ Immediately initiates WebRTC connection and launches Viewer Mode targeting that camera with **zero modal dialogs**.
-       * Remove Action: `IconButton(Icons.Default.DeleteOutline)` $\to$ Opens **Unpair Camera Confirmation Dialog**.
+       * Unpair shortcut: **Long-press** the tile (accessibility long-click label `"Remove Camera"`) $\to$ opens **Unpair Camera Confirmation Dialog**. There is no always-visible trash button on the tile (a mis-tap next to `Connect` is costly); the regular entry point remains Manage Devices.
      * Empty State: When 0 cameras are paired, renders an inviting dashed/outlined card with `Icons.Default.QrCodeScanner`, `"Pair a New Camera"`, and `"Tap to scan QR code from another CamMonitor device"`.
 * **Unpair Camera Confirmation Dialog (Compose AlertDialog):**
-  * Trigger: Tapping the delete trash icon on any `DirectCameraTile`.
+  * Trigger: Long-pressing a `DirectCameraTile`.
   * Icon: `Icons.Default.Warning` (Error tint).
   * Title: `"Unpair Camera"`.
   * Message: `"Are you sure you want to unpair \"<Camera Name>\"? You will need to scan its QR code again to reconnect."`.

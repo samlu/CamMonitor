@@ -67,7 +67,8 @@ android {
         applicationId = "com.a0soft.gphone.camonitor"
         minSdk = 28
         targetSdk = 37
-        versionCode = computeAndValidateVersionCode(appVersionName)
+        // Use 100200099 to avoid downgrade rejection on devices updated during test cycle
+        versionCode = maxOf(computeAndValidateVersionCode(appVersionName), 100200099)
         versionName = appVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

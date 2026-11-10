@@ -52,6 +52,13 @@
     <string name="home_hw_wifi_ready">Wi-Fi Ready</string>
     <string name="home_hw_cellular">Cellular Data</string>
     <string name="home_hw_no_network">No Network</string>
+    <string name="home_hw_ethernet">Ethernet Connected</string>
+    <string name="home_hw_no_internet">No Internet</string>
+    <string name="home_low_battery_hint">Battery at %1$d%% and not charging. Plug in before leaving the camera running.</string>
+    <string name="home_stealth_intro_title">Going dark</string>
+    <string name="home_stealth_intro_message">The screen will turn fully black and lock to save power and avoid lighting up the room. Swipe in any direction (after a short moment) to unlock. The camera keeps streaming while the screen is off.</string>
+    <string name="home_stealth_intro_confirm">Go dark</string>
+    <string name="home_compact_pair_hint">Pair a viewer to use this phone as a camera</string>
     <string name="home_section_broadcaster">BROADCASTER (THIS DEVICE)</string>
     <string name="home_section_monitored_cameras">MONITORED CAMERAS (%1$d)</string>
     <string name="home_broadcaster_stealth_btn">Stealth (Black)</string>

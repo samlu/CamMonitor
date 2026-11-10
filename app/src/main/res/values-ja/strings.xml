@@ -52,6 +52,13 @@
     <string name="home_hw_wifi_ready">Wi-Fi 接続済み</string>
     <string name="home_hw_cellular">モバイル通信</string>
     <string name="home_hw_no_network">ネットワーク未接続</string>
+    <string name="home_hw_ethernet">有線LAN接続済み</string>
+    <string name="home_hw_no_internet">インターネット未接続</string>
+    <string name="home_low_battery_hint">バッテリー残量 %1$d%% で未充電です。放置する前に充電器を接続してください。</string>
+    <string name="home_stealth_intro_title">画面を消灯します</string>
+    <string name="home_stealth_intro_message">電力を節約し部屋を照らさないよう、画面が真っ黒になりタッチもロックされます。少し待ってから任意の方向にスワイプすると解除できます。画面が消えていてもカメラは配信を続けます。</string>
+    <string name="home_stealth_intro_confirm">消灯して開始</string>
+    <string name="home_compact_pair_hint">この端末をカメラとして使うには、先にビューアーをペアリングしてください</string>
     <string name="home_section_broadcaster">配信端末 (このデバイス)</string>
     <string name="home_section_monitored_cameras">監視カメラ一覧 (%1$d)</string>
     <string name="home_broadcaster_stealth_btn">消灯ステルス</string>

@@ -31,7 +31,10 @@ import com.a0soft.gphone.camonitor.service.CameraMonitorService
 import com.a0soft.gphone.camonitor.ui.about.AboutScreen
 import com.a0soft.gphone.camonitor.ui.camera.CameraModeScreen
 import com.a0soft.gphone.camonitor.ui.devices.ManageDevicesScreen
+import com.a0soft.gphone.camonitor.ui.home.BroadcasterLaunchRoute
 import com.a0soft.gphone.camonitor.ui.home.HomeScreen
+import com.a0soft.gphone.camonitor.ui.home.StealthLaunchIntent
+import com.a0soft.gphone.camonitor.ui.home.broadcasterLaunchRoute
 import com.a0soft.gphone.camonitor.ui.log.LogViewerScreen
 import com.a0soft.gphone.camonitor.ui.pairing.CameraPairingScreen
 import com.a0soft.gphone.camonitor.ui.pairing.ViewerPairingScreen
@@ -239,7 +242,7 @@ class MainActivity : ComponentActivity() {
         val currentScreen = backStack.lastOrNull() ?: AppScreen.HOME
         val securityRepo = remember { CamMonitorApp.instance.securityRepository }
         var selectedCameraDeviceId by remember { mutableStateOf<String?>(null) }
-        var startCameraInStealth by remember { mutableStateOf(false) }
+        val stealthIntent = remember { StealthLaunchIntent() }
 
         fun navigateTo(screen: AppScreen) {
             backStack.add(screen)
@@ -248,6 +251,10 @@ class MainActivity : ComponentActivity() {
         fun navigateBack() {
             if (backStack.size > 1) {
                 val popped = backStack.removeAt(backStack.size - 1)
+                if (popped == AppScreen.CAMERA_MODE || popped == AppScreen.CAMERA_PAIRING) {
+                    // Never let a stealth request leak into a later, unrelated camera launch.
+                    stealthIntent.clear()
+                }
                 if (popped == AppScreen.CAMERA_MODE) {
                     val stopIntent = android.content.Intent(this@MainActivity, com.a0soft.gphone.camonitor.service.CameraMonitorService::class.java)
                     stopService(stopIntent)
@@ -268,17 +275,17 @@ class MainActivity : ComponentActivity() {
                 HomeScreen(
                     onStartCameraMode = { stealth ->
                         checkAndRequestPermissions(getCameraPermissions()) {
-                            val viewerCount = securityRepo.getPairedViewers().size
-                            if (viewerCount == 0) {
-                                navigateTo(AppScreen.CAMERA_PAIRING)
-                            } else {
-                                startCameraInStealth = stealth
-                                navigateTo(AppScreen.CAMERA_MODE)
+                            // Stealth intent survives the pairing detour so the camera still starts dark afterwards.
+                            stealthIntent.request(stealth)
+                            when (broadcasterLaunchRoute(securityRepo.getPairedViewers().size)) {
+                                BroadcasterLaunchRoute.PAIR_VIEWER_FIRST -> navigateTo(AppScreen.CAMERA_PAIRING)
+                                BroadcasterLaunchRoute.START_CAMERA -> navigateTo(AppScreen.CAMERA_MODE)
                             }
                         }
                     },
                     onPairNewViewer = {
                         checkAndRequestPermissions(getCameraPermissions()) {
+                            stealthIntent.clear()
                             navigateTo(AppScreen.CAMERA_PAIRING)
                         }
                     },
@@ -307,9 +314,8 @@ class MainActivity : ComponentActivity() {
             }
             AppScreen.CAMERA_MODE -> {
                 CameraModeScreen(
-                    initialLocked = startCameraInStealth,
+                    initialLocked = stealthIntent.pending,
                     onExitCameraMode = {
-                        startCameraInStealth = false
                         navigateBack()
                     }
                 )
@@ -334,6 +340,7 @@ class MainActivity : ComponentActivity() {
                 ManageDevicesScreen(
                     onPairNewViewer = {
                         checkAndRequestPermissions(getCameraPermissions()) {
+                            stealthIntent.clear()
                             navigateTo(AppScreen.CAMERA_PAIRING)
                         }
                     },

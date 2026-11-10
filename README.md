@@ -86,9 +86,9 @@ Before first use, pair your two devices:
 
 ### 2. Using Camera Mode (The Camera Phone)
 
-1. Open CamMonitor and tap **Start Camera** (or tap **Stealth (Black)** to launch directly into the OLED blackout touch-guard without illuminating the room).
+1. Open CamMonitor and tap **Start Camera** (or tap **Stealth (Black)** to launch directly into the OLED blackout touch-guard without illuminating the room; the first time, a short dialog explains that the screen goes black and how to swipe to unlock). If the battery is 30% or lower and not charging, an amber hint above the buttons reminds you to plug in. If no viewer is paired yet, you'll be taken to the pairing QR first and the camera then starts in the mode you chose (Stealth stays Stealth).
 2. Mount or position your phone facing the area you want to monitor.
-3. Check the **Hardware Pre-Flight Bar** at the top of the Home Screen to confirm your charging status (`⚡ Charging`) and Wi-Fi connection before stepping away.
+3. Check the **Hardware Pre-Flight Bar** at the top of the Home Screen to confirm your charging status (`⚡ Charging`) and network before stepping away. It updates live when you plug/unplug or the network changes, and shows `No Internet` (amber) when the network is attached but has no working internet (e.g. captive portal), and `Ethernet Connected` for wired setups.
 4. **Screen Behavior:**
    - **HUD Overlay:** The top bar shows streaming resolution/FPS (`720p 15fps`), active viewer count (`0/2` in portrait, `0/2 Viewers` in landscape), Night mode status, and flashlight status.
    - **Screen Behavior & OLED Black Screen:** While previewing, the display is kept awake. After 60 seconds without touch (or by tapping the **Black Screen** button at the bottom left), the screen switches to black screen mode and releases keep-screen-on, allowing the panel to sleep and the SoC to enter deep suspend. **Swipe to unlock**; the system Back key is ignored while locked.
@@ -99,8 +99,8 @@ Before first use, pair your two devices:
 
 ### 3. Using Viewer Mode (Your Everyday Phone)
 
-1. Open CamMonitor and tap **Connect ▶** directly on any monitored camera tile to start streaming instantly with zero popup dialogs.
-2. If you want to add more cameras, tap **+ Pair Camera** (up to 8 cameras supported).
+1. Open CamMonitor and tap anywhere on a monitored camera tile (or its **Connect ▶** button) to start streaming instantly with zero popup dialogs. Long-press a tile to unpair that camera (a confirmation dialog follows).
+2. If you want to add more cameras, tap **+ Pair Camera** (up to 8 cameras supported). On a phone that only watches (cameras paired, no viewers paired), the camera list is shown first and the Broadcaster section collapses into a compact row.
 3. **Live Monitoring Controls:**
    - **Top Bar:**
      - Camera device name and live status badge.

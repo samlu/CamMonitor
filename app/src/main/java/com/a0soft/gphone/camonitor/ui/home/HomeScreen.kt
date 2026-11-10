@@ -13,6 +13,7 @@ import android.os.Build
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
@@ -26,12 +27,16 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -50,26 +55,27 @@ import com.a0soft.gphone.camonitor.ui.common.BatteryInfo
 import com.a0soft.gphone.camonitor.ui.common.LocaleHelper
 import com.a0soft.gphone.camonitor.ui.common.UpdateNotificationHelper
 import com.a0soft.gphone.camonitor.ui.devices.revokePairedDevice
+import com.a0soft.gphone.camonitor.ui.theme.StatusWarning
+import android.text.format.DateFormat
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-
-enum class NetworkType {
-    WIFI,
-    CELLULAR,
-    DISCONNECTED
-}
 
 private fun getNetworkStatus(context: Context): NetworkType {
     val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return NetworkType.DISCONNECTED
     val activeNetwork = cm.activeNetwork ?: return NetworkType.DISCONNECTED
     val caps = cm.getNetworkCapabilities(activeNetwork) ?: return NetworkType.DISCONNECTED
-    return when {
-        caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> NetworkType.WIFI
-        caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> NetworkType.CELLULAR
-        else -> NetworkType.DISCONNECTED
-    }
+    return classifyNetwork(
+        hasInternet = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET),
+        isValidated = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
+        hasWifi = caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI),
+        hasEthernet = caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET),
+        hasCellular = caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+    )
 }
+
+private const val UI_PREFS_NAME = "cammonitor_ui_prefs"
+private const val KEY_STEALTH_INTRO_SEEN = "stealth_intro_seen"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -86,6 +92,8 @@ fun HomeScreen(
     val securityRepo = remember { CamMonitorApp.instance.securityRepository }
     var cameraName by remember { mutableStateOf(securityRepo.getDeviceName()) }
     var showRenameDialog by remember { mutableStateOf(false) }
+    var showStealthIntro by remember { mutableStateOf(false) }
+    val uiPrefs = remember { context.getSharedPreferences(UI_PREFS_NAME, Context.MODE_PRIVATE) }
     var cameraToUnpair by remember { mutableStateOf<PairedDevice?>(null) }
     var showLanguageDialog by remember { mutableStateOf(false) }
     var pairedViewers by remember { mutableStateOf(securityRepo.getPairedViewers()) }
@@ -128,7 +136,7 @@ fun HomeScreen(
                 batteryInfo = BatteryHelper.getBatteryInfo(context)
             }
         }
-        context.registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        ContextCompat.registerReceiver(context, batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED), ContextCompat.RECEIVER_NOT_EXPORTED)
 
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
         val networkCallback = object : ConnectivityManager.NetworkCallback() {
@@ -252,7 +260,45 @@ fun HomeScreen(
                     )
                 }
 
-                // 3. Operational Consoles (Adaptive Landscape vs Portrait)
+                // 3. Operational Consoles. Each section is declared once and placed by orientation/role.
+                val layout = homeLayoutFor(pairedCameras.size, pairedViewers.size)
+                // First-ever Stealth launch explains the black screen / swipe-to-unlock before going dark.
+                val startStealth: () -> Unit = {
+                    if (uiPrefs.getBoolean(KEY_STEALTH_INTRO_SEEN, false)) onStartCameraMode(true) else showStealthIntro = true
+                }
+                val broadcaster: @Composable (Modifier) -> Unit = { m ->
+                    if (layout == HomeLayout.CAMERAS_FIRST) {
+                        CompactBroadcasterRow(
+                            cameraName = cameraName,
+                            onRename = { showRenameDialog = true },
+                            onPairViewer = onPairNewViewer,
+                            modifier = m
+                        )
+                    } else {
+                        BroadcasterConsoleCard(
+                            cameraName = cameraName,
+                            pairedViewers = pairedViewers,
+                            batteryInfo = batteryInfo,
+                            onRename = { showRenameDialog = true },
+                            onStartNormal = { onStartCameraMode(false) },
+                            onStartStealth = startStealth,
+                            onPairViewer = onPairNewViewer,
+                            modifier = m
+                        )
+                    }
+                }
+                val cameras: @Composable (Modifier) -> Unit = { m ->
+                    MonitoredCamerasSection(
+                        pairedCameras = pairedCameras,
+                        onConnect = onStartViewerMode,
+                        onPairCamera = onPairNewCamera,
+                        onConfirmRemoveCamera = { cameraToUnpair = it },
+                        modifier = m
+                    )
+                }
+                val first = if (layout == HomeLayout.CAMERAS_FIRST) cameras else broadcaster
+                val second = if (layout == HomeLayout.CAMERAS_FIRST) broadcaster else cameras
+
                 if (isLandscape) {
                     Row(
                         modifier = Modifier
@@ -260,57 +306,40 @@ fun HomeScreen(
                             .height(IntrinsicSize.Max),
                         horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        BroadcasterConsoleCard(
-                            cameraName = cameraName,
-                            pairedViewers = pairedViewers,
-                            onRename = { showRenameDialog = true },
-                            onStartNormal = {
-                                if (pairedViewers.isEmpty()) onPairNewViewer() else onStartCameraMode(false)
-                            },
-                            onStartStealth = {
-                                if (pairedViewers.isEmpty()) onPairNewViewer() else onStartCameraMode(true)
-                            },
-                            onPairViewer = onPairNewViewer,
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                        )
-
-                        MonitoredCamerasSection(
-                            pairedCameras = pairedCameras,
-                            onConnect = onStartViewerMode,
-                            onPairCamera = onPairNewCamera,
-                            onConfirmRemoveCamera = { cameraToUnpair = it },
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                        )
+                        first(Modifier.weight(1f).fillMaxHeight())
+                        second(Modifier.weight(1f).fillMaxHeight())
                     }
                 } else {
-                    BroadcasterConsoleCard(
-                        cameraName = cameraName,
-                        pairedViewers = pairedViewers,
-                        onRename = { showRenameDialog = true },
-                        onStartNormal = {
-                            if (pairedViewers.isEmpty()) onPairNewViewer() else onStartCameraMode(false)
-                        },
-                        onStartStealth = {
-                            if (pairedViewers.isEmpty()) onPairNewViewer() else onStartCameraMode(true)
-                        },
-                        onPairViewer = onPairNewViewer,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    MonitoredCamerasSection(
-                        pairedCameras = pairedCameras,
-                        onConnect = onStartViewerMode,
-                        onPairCamera = onPairNewCamera,
-                        onConfirmRemoveCamera = { cameraToUnpair = it },
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    first(Modifier.fillMaxWidth())
+                    Spacer(modifier = Modifier.height(12.dp)) // 16 + 12 = 28dp between the two consoles
+                    second(Modifier.fillMaxWidth())
                 }
             }
         }
+    }
+
+    // First-run Stealth explanation (shown once)
+    if (showStealthIntro) {
+        AlertDialog(
+            onDismissRequest = { showStealthIntro = false },
+            icon = { Icon(Icons.Default.DarkMode, contentDescription = null) },
+            title = { Text(stringResource(R.string.home_stealth_intro_title)) },
+            text = { Text(stringResource(R.string.home_stealth_intro_message)) },
+            confirmButton = {
+                Button(onClick = {
+                    uiPrefs.edit().putBoolean(KEY_STEALTH_INTRO_SEEN, true).apply()
+                    showStealthIntro = false
+                    onStartCameraMode(true)
+                }) {
+                    Text(stringResource(R.string.home_stealth_intro_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showStealthIntro = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            }
+        )
     }
 
     // Rename Camera Dialog
@@ -488,7 +517,7 @@ private fun HardwarePreflightBar(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                val isLow = batteryInfo.percentage in 0..20 && !batteryInfo.isCharging
+                val isLow = isBatteryLow(batteryInfo.percentage, batteryInfo.isCharging)
                 Icon(
                     imageVector = if (batteryInfo.isCharging) Icons.Default.BatteryChargingFull else Icons.Default.BatteryStd,
                     contentDescription = null,
@@ -511,24 +540,33 @@ private fun HardwarePreflightBar(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
+                val netTint = when (networkType) {
+                    NetworkType.DISCONNECTED -> MaterialTheme.colorScheme.error
+                    NetworkType.NO_INTERNET -> StatusWarning
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                }
                 Icon(
                     imageVector = when (networkType) {
                         NetworkType.WIFI -> Icons.Default.Wifi
+                        NetworkType.ETHERNET -> Icons.Default.SettingsEthernet
                         NetworkType.CELLULAR -> Icons.Default.SignalCellularAlt
+                        NetworkType.NO_INTERNET -> Icons.Default.WifiOff
                         NetworkType.DISCONNECTED -> Icons.Default.WifiOff
                     },
                     contentDescription = null,
-                    tint = if (networkType == NetworkType.DISCONNECTED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    tint = netTint,
                     modifier = Modifier.size(16.dp)
                 )
                 Text(
                     text = when (networkType) {
                         NetworkType.WIFI -> stringResource(R.string.home_hw_wifi_ready)
+                        NetworkType.ETHERNET -> stringResource(R.string.home_hw_ethernet)
                         NetworkType.CELLULAR -> stringResource(R.string.home_hw_cellular)
+                        NetworkType.NO_INTERNET -> stringResource(R.string.home_hw_no_internet)
                         NetworkType.DISCONNECTED -> stringResource(R.string.home_hw_no_network)
                     },
                     style = MaterialTheme.typography.labelMedium,
-                    color = if (networkType == NetworkType.DISCONNECTED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                    color = netTint
                 )
             }
         }
@@ -539,6 +577,7 @@ private fun HardwarePreflightBar(
 private fun BroadcasterConsoleCard(
     cameraName: String,
     pairedViewers: List<PairedDevice>,
+    batteryInfo: BatteryInfo,
     onRename: () -> Unit,
     onStartNormal: () -> Unit,
     onStartStealth: () -> Unit,
@@ -548,10 +587,8 @@ private fun BroadcasterConsoleCard(
     OutlinedCard(
         modifier = modifier,
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.outlinedCardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-        ),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+        colors = CardDefaults.outlinedCardColors(containerColor = broadcasterContainerColor()),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = BROADCASTER_BORDER_ALPHA))
     ) {
         Column(
             modifier = Modifier
@@ -653,6 +690,26 @@ private fun BroadcasterConsoleCard(
                 }
             }
 
+            // Pre-flight nag: a camera left on battery dies overnight, so warn right next to the launch buttons.
+            if (shouldWarnLowBatteryBeforeBroadcast(batteryInfo.percentage, batteryInfo.isCharging)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.BatteryAlert,
+                        contentDescription = null,
+                        tint = StatusWarning,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = stringResource(R.string.home_low_battery_hint, batteryInfo.percentage),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = StatusWarning
+                    )
+                }
+            }
+
             // Dual Launch Buttons: Stealth (Black) vs Standard Camera
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -706,6 +763,101 @@ private fun BroadcasterConsoleCard(
     }
 }
 
+private const val BROADCASTER_BORDER_ALPHA = 0.45f
+
+/** The 'this phone is the camera' card gets a faint cyan wash so it never reads like a camera tile. */
+@Composable
+private fun broadcasterContainerColor(): Color =
+    MaterialTheme.colorScheme.primary.copy(alpha = 0.08f).compositeOver(MaterialTheme.colorScheme.surfaceContainerHigh)
+
+/**
+ * Shown only on viewer-only devices (no paired viewers), where launching the camera is impossible
+ * until a viewer is paired. So the row offers exactly one action: pair a viewer. Rename stays available.
+ */
+@Composable
+private fun CompactBroadcasterRow(
+    cameraName: String,
+    onRename: () -> Unit,
+    onPairViewer: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    OutlinedCard(
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.outlinedCardColors(containerColor = broadcasterContainerColor()),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = BROADCASTER_BORDER_ALPHA))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // Name area is tappable so the camera can be renamed before it is ever started.
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(
+                        onClickLabel = stringResource(R.string.action_rename),
+                        onClick = onRename
+                    ),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.home_section_broadcaster),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.home_camera_name_prefix, cameraName),
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    Icon(
+                        imageVector = Icons.Default.Edit,
+                        contentDescription = stringResource(R.string.action_rename),
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.home_compact_pair_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            FilledTonalButton(
+                onClick = onPairViewer,
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PersonAdd,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = stringResource(R.string.home_pair_viewer_button),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1
+                )
+            }
+        }
+    }
+}
 @Composable
 private fun MonitoredCamerasSection(
     pairedCameras: List<PairedDevice>,
@@ -798,12 +950,21 @@ private fun DirectCameraTile(
     onRemove: () -> Unit
 ) {
     val dateStr = remember(camera.pairedTimestamp) {
-        val sdf = SimpleDateFormat("MMM d", Locale.getDefault())
-        sdf.format(Date(camera.pairedTimestamp))
+        val locale = Locale.getDefault()
+        val pattern = DateFormat.getBestDateTimePattern(locale, "MMMd")
+        SimpleDateFormat(pattern, locale).format(Date(camera.pairedTimestamp))
     }
 
+    // Whole tile connects (large touch target); long-press is the shortcut to unpair (confirm dialog follows).
     OutlinedCard(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .combinedClickable(
+                onClick = onConnect,
+                onLongClick = onRemove,
+                onLongClickLabel = stringResource(R.string.action_remove_camera)
+            ),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.outlinedCardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
@@ -832,7 +993,7 @@ private fun DirectCameraTile(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Videocam,
+                        imageVector = Icons.Default.Visibility,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.secondary,
                         modifier = Modifier.size(24.dp)
@@ -850,13 +1011,6 @@ private fun DirectCameraTile(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = stringResource(R.string.device_id_format, camera.deviceId.take(8)),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
                         text = stringResource(R.string.home_tile_paired_date, dateStr),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -866,39 +1020,22 @@ private fun DirectCameraTile(
                 }
             }
 
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(2.dp)
+            FilledTonalButton(
+                onClick = onConnect,
+                shape = RoundedCornerShape(10.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
             ) {
-                FilledTonalButton(
-                    onClick = onConnect,
-                    shape = RoundedCornerShape(10.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-                ) {
-                    Text(
-                        text = stringResource(R.string.home_tile_connect_btn),
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                        contentDescription = null,
-                        modifier = Modifier.size(14.dp)
-                    )
-                }
-
-                IconButton(
-                    onClick = onRemove,
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.DeleteOutline,
-                        contentDescription = stringResource(R.string.action_remove_camera),
-                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
+                Text(
+                    text = stringResource(R.string.home_tile_connect_btn),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp)
+                )
             }
         }
     }

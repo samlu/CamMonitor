@@ -52,6 +52,13 @@
     <string name="home_hw_wifi_ready">Wi-Fi 已連線</string>
     <string name="home_hw_cellular">行動網路</string>
     <string name="home_hw_no_network">無網路連線</string>
+    <string name="home_hw_ethernet">乙太網路已連線</string>
+    <string name="home_hw_no_internet">無法連上網際網路</string>
+    <string name="home_low_battery_hint">電量僅剩 %1$d%% 且未充電，建議先接上充電器再放著不管。</string>
+    <string name="home_stealth_intro_title">即將進入黑畫面</string>
+    <string name="home_stealth_intro_message">畫面會全黑並鎖定觸控，以節省電力並避免照亮房間。稍待片刻後朝任一方向滑動即可解鎖。螢幕關閉時鏡頭仍持續串流。</string>
+    <string name="home_stealth_intro_confirm">進入黑畫面</string>
+    <string name="home_compact_pair_hint">請先配對觀看端，才能將此手機當作鏡頭使用</string>
     <string name="home_section_broadcaster">鏡頭端 (本裝置)</string>
     <string name="home_section_monitored_cameras">監看鏡頭 (%1$d)</string>
     <string name="home_broadcaster_stealth_btn">黑畫面啟動</string>
