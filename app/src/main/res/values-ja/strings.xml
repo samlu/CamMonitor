@@ -66,7 +66,12 @@
     <string name="home_broadcaster_viewers_authorized">%1$d/%2$d台 認証済み</string>
     <string name="home_broadcaster_no_viewers">未ペアリング</string>
     <string name="home_tile_connect_btn">接続</string>
-    <string name="home_tile_paired_date">ペアリング: %1$s</string>
+    <string name="home_tile_never_connected">未接続</string>
+    <string name="home_tile_last_connected_just_now">たった今接続</string>
+    <string name="home_tile_last_connected_minutes">前回の接続: %1$d分前</string>
+    <string name="home_tile_last_connected_hours">前回の接続: %1$d時間前</string>
+    <string name="home_tile_last_connected_days">前回の接続: %1$d日前</string>
+    <string name="home_tile_last_connected_date">前回の接続: %1$s</string>
     <string name="home_pair_camera_card">新しいカメラをペアリング</string>
     <string name="home_pair_camera_card_desc">タップして別のCamMonitor端末のQRコードをスキャン</string>
     <string name="home_confirm_unpair_title">カメラのペアリング解除</string>

@@ -66,7 +66,12 @@
     <string name="home_broadcaster_viewers_authorized">已授權觀看端 (%1$d/%2$d)</string>
     <string name="home_broadcaster_no_viewers">尚未配對任何觀看端</string>
     <string name="home_tile_connect_btn">連線</string>
-    <string name="home_tile_paired_date">配對日期：%1$s</string>
+    <string name="home_tile_never_connected">尚未連線</string>
+    <string name="home_tile_last_connected_just_now">剛剛連線</string>
+    <string name="home_tile_last_connected_minutes">上次連線：%1$d 分鐘前</string>
+    <string name="home_tile_last_connected_hours">上次連線：%1$d 小時前</string>
+    <string name="home_tile_last_connected_days">上次連線：%1$d 天前</string>
+    <string name="home_tile_last_connected_date">上次連線：%1$s</string>
     <string name="home_pair_camera_card">配對新鏡頭</string>
     <string name="home_pair_camera_card_desc">輕觸以掃描另一台 CamMonitor 裝置的 QR 碼</string>
     <string name="home_confirm_unpair_title">解除鏡頭配對</string>

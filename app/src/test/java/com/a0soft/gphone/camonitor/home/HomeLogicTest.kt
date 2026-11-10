@@ -2,9 +2,11 @@ package com.a0soft.gphone.camonitor.home
 
 import com.a0soft.gphone.camonitor.ui.home.BroadcasterLaunchRoute
 import com.a0soft.gphone.camonitor.ui.home.HomeLayout
+import com.a0soft.gphone.camonitor.ui.home.LastConnectedTime
 import com.a0soft.gphone.camonitor.ui.home.NetworkType
 import com.a0soft.gphone.camonitor.ui.home.StealthLaunchIntent
 import com.a0soft.gphone.camonitor.ui.home.broadcasterLaunchRoute
+import com.a0soft.gphone.camonitor.ui.home.calculateLastConnectedTime
 import com.a0soft.gphone.camonitor.ui.home.classifyNetwork
 import com.a0soft.gphone.camonitor.ui.home.homeLayoutFor
 import com.a0soft.gphone.camonitor.ui.home.shouldWarnLowBatteryBeforeBroadcast
@@ -110,5 +112,63 @@ class HomeLogicTest {
         intent.request(true)
         intent.request(false)
         assertFalse(intent.pending)
+    }
+
+    @Test
+    fun calculateLastConnectedTime_nullOrNonPositive_returnsNever() {
+        assertEquals(LastConnectedTime.Never, calculateLastConnectedTime(null, now = 100_000L))
+        assertEquals(LastConnectedTime.Never, calculateLastConnectedTime(0L, now = 100_000L))
+        assertEquals(LastConnectedTime.Never, calculateLastConnectedTime(-500L, now = 100_000L))
+    }
+
+    @Test
+    fun calculateLastConnectedTime_underOneMinute_returnsJustNow() {
+        val now = 1_000_000L
+        assertEquals(LastConnectedTime.JustNow, calculateLastConnectedTime(now, now = now))
+        assertEquals(LastConnectedTime.JustNow, calculateLastConnectedTime(now - 30_000L, now = now))
+        assertEquals(LastConnectedTime.JustNow, calculateLastConnectedTime(now - 59_999L, now = now))
+    }
+
+    @Test
+    fun calculateLastConnectedTime_futureTimestamp_coercedToJustNow() {
+        val now = 1_000_000L
+        // Local clock drift where last connected is slightly in the future
+        assertEquals(LastConnectedTime.JustNow, calculateLastConnectedTime(now + 10_000L, now = now))
+    }
+
+    @Test
+    fun calculateLastConnectedTime_minutesAgo() {
+        val now = 10_000_000L
+        assertEquals(LastConnectedTime.MinutesAgo(1), calculateLastConnectedTime(now - 60_000L, now = now))
+        assertEquals(LastConnectedTime.MinutesAgo(25), calculateLastConnectedTime(now - 25 * 60_000L, now = now))
+        assertEquals(LastConnectedTime.MinutesAgo(59), calculateLastConnectedTime(now - 59 * 60_000L, now = now))
+    }
+
+    @Test
+    fun calculateLastConnectedTime_hoursAgo() {
+        val now = 100_000_000L
+        val hourMs = 60 * 60_000L
+        assertEquals(LastConnectedTime.HoursAgo(1), calculateLastConnectedTime(now - hourMs, now = now))
+        assertEquals(LastConnectedTime.HoursAgo(5), calculateLastConnectedTime(now - 5 * hourMs, now = now))
+        assertEquals(LastConnectedTime.HoursAgo(23), calculateLastConnectedTime(now - 23 * hourMs, now = now))
+    }
+
+    @Test
+    fun calculateLastConnectedTime_daysAgo() {
+        val now = 1_000_000_000L
+        val dayMs = 24 * 60 * 60_000L
+        assertEquals(LastConnectedTime.DaysAgo(1), calculateLastConnectedTime(now - dayMs, now = now))
+        assertEquals(LastConnectedTime.DaysAgo(3), calculateLastConnectedTime(now - 3 * dayMs, now = now))
+        assertEquals(LastConnectedTime.DaysAgo(6), calculateLastConnectedTime(now - 6 * dayMs, now = now))
+    }
+
+    @Test
+    fun calculateLastConnectedTime_sevenDaysOrMore_returnsExactDate() {
+        val now = 1_700_000_000_000L // realistic epoch timestamp
+        val dayMs = 24 * 60 * 60_000L
+        val ts7d = now - 7 * dayMs
+        val ts30d = now - 30 * dayMs
+        assertEquals(LastConnectedTime.ExactDate(ts7d), calculateLastConnectedTime(ts7d, now = now))
+        assertEquals(LastConnectedTime.ExactDate(ts30d), calculateLastConnectedTime(ts30d, now = now))
     }
 }

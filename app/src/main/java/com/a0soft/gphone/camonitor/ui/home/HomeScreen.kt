@@ -98,6 +98,7 @@ fun HomeScreen(
     var showLanguageDialog by remember { mutableStateOf(false) }
     var pairedViewers by remember { mutableStateOf(securityRepo.getPairedViewers()) }
     var pairedCameras by remember { mutableStateOf(securityRepo.getPairedCameras()) }
+    var lastConnectedMap by remember { mutableStateOf(CameraConnectionHistory.getAll(context)) }
     var batteryInfo by remember { mutableStateOf(BatteryHelper.getBatteryInfo(context)) }
     var networkType by remember { mutableStateOf(getNetworkStatus(context)) }
 
@@ -172,6 +173,7 @@ fun HomeScreen(
             if (event == Lifecycle.Event.ON_RESUME) {
                 pairedViewers = securityRepo.getPairedViewers()
                 pairedCameras = securityRepo.getPairedCameras()
+                lastConnectedMap = CameraConnectionHistory.getAll(context)
                 cameraName = securityRepo.getDeviceName()
                 batteryInfo = BatteryHelper.getBatteryInfo(context)
                 networkType = getNetworkStatus(context)
@@ -290,6 +292,7 @@ fun HomeScreen(
                 val cameras: @Composable (Modifier) -> Unit = { m ->
                     MonitoredCamerasSection(
                         pairedCameras = pairedCameras,
+                        lastConnectedMap = lastConnectedMap,
                         onConnect = onStartViewerMode,
                         onPairCamera = onPairNewCamera,
                         onConfirmRemoveCamera = { cameraToUnpair = it },
@@ -402,7 +405,9 @@ fun HomeScreen(
                             removeRecord = securityRepo::removePairedDevice,
                             closePeer = { CamMonitorApp.instance.webRtcManager.closePeer(it) }
                         )
+                        CameraConnectionHistory.clear(context, targetCamera.deviceId)
                         pairedCameras = securityRepo.getPairedCameras()
+                        lastConnectedMap = CameraConnectionHistory.getAll(context)
                         cameraToUnpair = null
                     },
                     colors = ButtonDefaults.buttonColors(
@@ -861,6 +866,7 @@ private fun CompactBroadcasterRow(
 @Composable
 private fun MonitoredCamerasSection(
     pairedCameras: List<PairedDevice>,
+    lastConnectedMap: Map<String, Long>,
     onConnect: (deviceId: String) -> Unit,
     onPairCamera: () -> Unit,
     onConfirmRemoveCamera: (PairedDevice) -> Unit,
@@ -935,6 +941,7 @@ private fun MonitoredCamerasSection(
             pairedCameras.forEach { camera ->
                 DirectCameraTile(
                     camera = camera,
+                    lastConnectedTimestamp = lastConnectedMap[camera.deviceId],
                     onConnect = { onConnect(camera.deviceId) },
                     onRemove = { onConfirmRemoveCamera(camera) }
                 )
@@ -946,13 +953,25 @@ private fun MonitoredCamerasSection(
 @Composable
 private fun DirectCameraTile(
     camera: PairedDevice,
+    lastConnectedTimestamp: Long?,
     onConnect: () -> Unit,
     onRemove: () -> Unit
 ) {
-    val dateStr = remember(camera.pairedTimestamp) {
-        val locale = Locale.getDefault()
-        val pattern = DateFormat.getBestDateTimePattern(locale, "MMMd")
-        SimpleDateFormat(pattern, locale).format(Date(camera.pairedTimestamp))
+    val lastConnected = remember(lastConnectedTimestamp) {
+        calculateLastConnectedTime(lastConnectedTimestamp)
+    }
+    val subtitleText = when (lastConnected) {
+        is LastConnectedTime.Never -> stringResource(R.string.home_tile_never_connected)
+        is LastConnectedTime.JustNow -> stringResource(R.string.home_tile_last_connected_just_now)
+        is LastConnectedTime.MinutesAgo -> stringResource(R.string.home_tile_last_connected_minutes, lastConnected.minutes)
+        is LastConnectedTime.HoursAgo -> stringResource(R.string.home_tile_last_connected_hours, lastConnected.hours)
+        is LastConnectedTime.DaysAgo -> stringResource(R.string.home_tile_last_connected_days, lastConnected.days)
+        is LastConnectedTime.ExactDate -> {
+            val locale = Locale.getDefault()
+            val pattern = DateFormat.getBestDateTimePattern(locale, "MMMd")
+            val dateStr = SimpleDateFormat(pattern, locale).format(Date(lastConnected.timestamp))
+            stringResource(R.string.home_tile_last_connected_date, dateStr)
+        }
     }
 
     // Whole tile connects (large touch target); long-press is the shortcut to unpair (confirm dialog follows).
@@ -1011,7 +1030,7 @@ private fun DirectCameraTile(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = stringResource(R.string.home_tile_paired_date, dateStr),
+                        text = subtitleText,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,

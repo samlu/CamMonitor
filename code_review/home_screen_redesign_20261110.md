@@ -92,11 +92,11 @@ Authoritative current behavior: `Specification.md` §5.1 (Operational Command Ce
 │  MONITORED CAMERAS (3)                    [ + Pair ]   │
 │ ┌────────────────────────────────────────────────────┐ │ neutral tiles
 │ │ 👁 Living Room Cam                    [ Connect ▶ ] │ │ tap tile = connect
-│ │    Paired: Nov 8                                   │ │ long-press = unpair (confirm)
+│ │    Connected 2 hr ago                              │ │ long-press = unpair (confirm)
 │ └────────────────────────────────────────────────────┘ │
 │ ┌────────────────────────────────────────────────────┐ │
 │ │ 👁 Front Door Cam                     [ Connect ▶ ] │ │
-│ │    Paired: Oct 22                                  │ │
+│ │    Connected just now                              │ │
 │ └────────────────────────────────────────────────────┘ │
 └────────────────────────────────────────────────────────┘
 
@@ -168,5 +168,7 @@ Tests: `home/HomeLogicTest.kt` (9 cases); full suite 164 tests, 0 failures (`.\g
 **Compact row rename (Pixel 10 report):** in `CAMERAS_FIRST` layout the Broadcaster collapses to `CompactBroadcasterRow`, which had no way to rename the camera before starting. The name area is now tappable (pencil icon, "Rename" click label) and opens the same Rename dialog.
 
 **Compact row simplified (Pixel 10 report):** `CompactBroadcasterRow` only exists when 0 viewers are paired, where Start/Stealth could only route to the pairing QR anyway (three buttons, one destination, and the first-run "Going dark" dialog fired before pairing). It now has one action, `Pair Viewer`, plus a hint line; rename stays. New string `home_compact_pair_hint` (4 locales).
+
+**Tile Last Connected status:** Replaced static, low-value "Paired date" with dynamic "Last Connected" relative timestamp (e.g. "Connected just now", "Connected 2 hr ago", "Connected 3 d ago", or "Not connected yet"). Recorded via `CameraConnectionHistory` upon successful WebRTC live stream and categorized via pure `calculateLastConnectedTime()` (+7 tests, 174 total unit tests passing).
 
 **Still open:** `HomeViewModel` extraction (optional; suggested minimal scope: `callbackFlow` + `collectAsStateWithLifecycle()` for battery/network, and moving the update check out of the composable). Documentation cleanup is done: §§1–6 reduced to the §1 summary, §7.3 wireframe refreshed, §7.4/§7.5 replaced with pointers to source.

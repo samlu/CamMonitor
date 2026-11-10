@@ -1,5 +1,7 @@
 package com.a0soft.gphone.camonitor.ui.home
 
+import android.content.Context
+
 /** Network state shown in the Home pre-flight bar. */
 enum class NetworkType {
     WIFI,
@@ -76,3 +78,78 @@ enum class HomeLayout {
  */
 fun homeLayoutFor(pairedCameraCount: Int, pairedViewerCount: Int): HomeLayout =
     if (pairedCameraCount > 0 && pairedViewerCount == 0) HomeLayout.CAMERAS_FIRST else HomeLayout.BROADCASTER_FIRST
+
+sealed class LastConnectedTime {
+    object Never : LastConnectedTime()
+    object JustNow : LastConnectedTime()
+    data class MinutesAgo(val minutes: Long) : LastConnectedTime()
+    data class HoursAgo(val hours: Long) : LastConnectedTime()
+    data class DaysAgo(val days: Long) : LastConnectedTime()
+    data class ExactDate(val timestamp: Long) : LastConnectedTime()
+}
+
+/**
+ * Categorizes the elapsed duration since the last active streaming session into
+ * UI-friendly relative buckets (e.g. Just now, 5 min ago, 2 hr ago, 3 d ago, or absolute date).
+ * Pure function with zero Android dependencies, fully testable on the JVM.
+ */
+fun calculateLastConnectedTime(
+    lastConnectedTimestamp: Long?,
+    now: Long = System.currentTimeMillis()
+): LastConnectedTime {
+    if (lastConnectedTimestamp == null || lastConnectedTimestamp <= 0L) {
+        return LastConnectedTime.Never
+    }
+    val diff = (now - lastConnectedTimestamp).coerceAtLeast(0L)
+    val minutes = diff / (60 * 1000L)
+    val hours = diff / (60 * 60 * 1000L)
+    val days = diff / (24 * 60 * 60 * 1000L)
+
+    return when {
+        minutes < 1 -> LastConnectedTime.JustNow
+        minutes < 60 -> LastConnectedTime.MinutesAgo(minutes)
+        hours < 24 -> LastConnectedTime.HoursAgo(hours)
+        days < 7 -> LastConnectedTime.DaysAgo(days)
+        else -> LastConnectedTime.ExactDate(lastConnectedTimestamp)
+    }
+}
+
+/**
+ * Persists and retrieves the last successful WebRTC streaming timestamp per camera device ID.
+ * Backed by the lightweight non-security UI preferences ("cammonitor_ui_prefs").
+ */
+object CameraConnectionHistory {
+    private const val PREFS_NAME = "cammonitor_ui_prefs"
+    private const val KEY_PREFIX = "last_connected_"
+
+    fun recordConnection(context: Context, deviceId: String, timestamp: Long = System.currentTimeMillis()) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putLong(KEY_PREFIX + deviceId, timestamp)
+            .apply()
+    }
+
+    fun getLastConnected(context: Context, deviceId: String): Long? {
+        val ts = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getLong(KEY_PREFIX + deviceId, 0L)
+        return if (ts > 0L) ts else null
+    }
+
+    fun getAll(context: Context): Map<String, Long> {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val result = mutableMapOf<String, Long>()
+        prefs.all.forEach { (key, value) ->
+            if (key.startsWith(KEY_PREFIX) && value is Long && value > 0L) {
+                result[key.removePrefix(KEY_PREFIX)] = value
+            }
+        }
+        return result
+    }
+
+    fun clear(context: Context, deviceId: String) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .remove(KEY_PREFIX + deviceId)
+            .apply()
+    }
+}

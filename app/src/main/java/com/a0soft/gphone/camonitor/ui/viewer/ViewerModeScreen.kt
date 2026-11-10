@@ -54,6 +54,7 @@ import com.a0soft.gphone.camonitor.data.model.ViewerConnectionStep
 import com.a0soft.gphone.camonitor.data.security.CryptoUtils
 import com.a0soft.gphone.camonitor.log.AppLogger
 import com.a0soft.gphone.camonitor.ui.common.AudioRoutingManager
+import com.a0soft.gphone.camonitor.ui.home.CameraConnectionHistory
 import com.a0soft.gphone.camonitor.ui.common.BatteryHelper
 import com.a0soft.gphone.camonitor.ui.common.BatteryInfo
 import com.a0soft.gphone.camonitor.ui.theme.StatusLive
@@ -86,6 +87,7 @@ fun ViewerModeScreen(
     val securityRepo = app.securityRepository
     val signalingClient = app.signalingClient
     val webRtcManager = app.webRtcManager
+    val context = LocalContext.current
 
     val pairedCameras = remember { securityRepo.getPairedCameras() }
     val targetCamera = remember(selectedDeviceId) {
@@ -147,6 +149,7 @@ fun ViewerModeScreen(
         )
         targetCamera?.let { cam ->
             securityRepo.recordConnectDurationMs(cam.deviceId, totalDur)
+            CameraConnectionHistory.recordConnection(context, cam.deviceId, now)
         }
         connectionState = ViewerConnectionState.Live
         AppLogger.i("ViewerMode", "Stream transitioned to LIVE (totalConnectDuration=${totalDur}ms)")
@@ -158,7 +161,6 @@ fun ViewerModeScreen(
     var nightModeSetting by remember { mutableStateOf(securityRepo.getNightModeSetting()) }
     var isCameraNightActive by remember { mutableStateOf(false) }
 
-    val context = LocalContext.current
     val activity = context as? Activity
     val prefs = remember { context.getSharedPreferences("cammonitor_ui_prefs", Context.MODE_PRIVATE) }
     var showMicPermissionDialog by remember { mutableStateOf(false) }

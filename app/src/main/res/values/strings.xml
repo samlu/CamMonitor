@@ -66,7 +66,12 @@
     <string name="home_broadcaster_viewers_authorized">%1$d/%2$d Viewers Authorized</string>
     <string name="home_broadcaster_no_viewers">No viewers paired yet</string>
     <string name="home_tile_connect_btn">Connect</string>
-    <string name="home_tile_paired_date">Paired: %1$s</string>
+    <string name="home_tile_never_connected">Not connected yet</string>
+    <string name="home_tile_last_connected_just_now">Connected just now</string>
+    <string name="home_tile_last_connected_minutes">Connected %1$d min ago</string>
+    <string name="home_tile_last_connected_hours">Connected %1$d hr ago</string>
+    <string name="home_tile_last_connected_days">Connected %1$d d ago</string>
+    <string name="home_tile_last_connected_date">Connected: %1$s</string>
     <string name="home_pair_camera_card">Pair a New Camera</string>
     <string name="home_pair_camera_card_desc">Tap to scan QR code from another CamMonitor device</string>
     <string name="home_confirm_unpair_title">Unpair Camera</string>
