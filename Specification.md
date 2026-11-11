@@ -8,7 +8,7 @@ CamMonitor is a peer-to-peer camera monitoring Android application running acros
 * **Testability & Quality Assurance:** Architected for 100% deterministic testability with interface-driven abstraction layers, fake implementations, Coroutine `TestDispatcher` time control, and comprehensive Unit, Integration, and Compose UI test suites.
 * **Platform & SDK Targets:**
   * **Application ID / Package Name:** `com.a0soft.gphone.camonitor`
-  * **Current App Version:** `1.1.1` (`versionCode = 100100199`)
+  * **Current App Version:** `1.2.0` (`versionCode = 100200099`)
   * **Minimum SDK (`minSdk`):** `28` (Android 9 Pie)
   * **Target SDK (`targetSdk`):** `37` (Android 17)
   * **Compile SDK (`compileSdk`):** `37`
@@ -294,6 +294,8 @@ Every signaling envelope sent over the public MQTT broker is structured as:
   * Every screen is structured as:
     * `XxxRoute` (Stateful): Injects `ViewModel`, handles navigation events.
     * `XxxScreen` (Stateless): Takes `uiState` and callback lambdas (`onEvent: () -> Unit`). Enables Compose Previews and isolated unit testing.
+* **Lifecycle Awareness & Foreground Return:**
+  * Screen-level data refreshing on returning to foreground (e.g., returning from child Activities, pairing flows, or system settings) MUST use `LifecycleResumeEffect` rather than `LaunchedEffect(Unit)`, ensuring data reloads on both initial composition and subsequent Activity `ON_RESUME` events.
 * **Hybrid View Interop (`AndroidView`):**
   * WebRTC's `SurfaceViewRenderer` and Camera preview are wrapped via `AndroidView` with explicit `DisposableEffect` cleanups:
     * `SurfaceViewRenderer.release()` called on disposal.
@@ -325,7 +327,15 @@ Every signaling envelope sent over the public MQTT broker is structured as:
     * Network attached but not validated (captive portal / dead uplink): `"No Internet"` (`Icons.Default.WifiOff`, `StatusWarning` amber tint). Never shown as "Wi-Fi Ready".
     * Disconnected: `"No Network"` (`Icons.Default.WifiOff`, Error tint).
   * Battery uses `isBatteryLow(percentage, isCharging)` (≤ 20% and not charging).
-  * Battery is observed through a `BroadcastReceiver` (`ContextCompat.RECEIVER_NOT_EXPORTED`) and network through `registerDefaultNetworkCallback`, both registered/unregistered in a `DisposableEffect`.
+  * Battery is observed through `BroadcastReceiver` (`ContextCompat.RECEIVER_NOT_EXPORTED`) and network through `registerDefaultNetworkCallback` via `AndroidTelemetryDataSource`, with `WhileSubscribed(5_000)` automatically unregistering hardware callbacks when `HomeRoute` leaves composition.
+  * **Architecture & State Management:**
+    * Implemented via the `HomeRoute` (stateful) and `HomeScreen` (stateless) pattern (§4.2).
+    * `HomeViewModel` exposes `uiState: StateFlow<HomeUiState>` (with `isLoaded` preventing initial layout pop and premature dialog triggers).
+    * Screen refresh and notification dismissals are bound via `LifecycleResumeEffect(Unit)` in `HomeRoute`, ensuring state re-synchronizes when returning to foreground from pairing flows, system settings, or backgrounding.
+    * Storage and telemetry abstracted via `HomePreferencesDataSource`, `TelemetryDataSource`, and `UpdateRepository`, making `HomeViewModel` 100% testable on the JVM without Robolectric.
+    * Storage read failures preserve last-known good state (`getOrDefault`) to prevent transient Keystore errors from wiping paired devices into empty lists, while surfacing a localized error card banner (`home_storage_load_error`) with an explicit retry action (`onRetry`).
+    * Background update check in `HomeViewModel` is serialized by `activationMutex` and rate-limited via `UpdateRepository.shouldCheck()`.
+    * `HomeScreen` has zero Android Context or Singleton dependencies and is fully `@Preview`-compatible.
 * **Release Update Banner (`UpdateBannerCard`):**
   * Rendered conditionally above operational cards when a newer GitHub release is detected and not skipped.
   * Styling: Material 3 `OutlinedCard` using `SurfaceContainerHigh` color and `Icons.Default.SystemUpdate`.
@@ -592,7 +602,7 @@ Every signaling envelope sent over the public MQTT broker is structured as:
 * **Header Branding:**
   * App Icon: Layered vector squircle (96dp, dark background `#121212` with cyan/emerald foreground).
   * App Title: `"CamMonitor"` (HeadlineMedium, bold).
-  * Version String: `"Version 1.1.1"` (`BuildConfig.VERSION_NAME`, BodyLarge, muted outline color).
+  * Version String: `"Version 1.2.0"` (`BuildConfig.VERSION_NAME`, BodyLarge, muted outline color).
   * **Check for Updates Action (`FilledTonalButton`):**
     * Allows users to manually query GitHub Releases on demand.
     * Icon: `Icons.Default.Refresh` or a 16dp `CircularProgressIndicator` while checking.

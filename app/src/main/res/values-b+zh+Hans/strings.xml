@@ -77,6 +77,7 @@
     <string name="home_confirm_unpair_title">解除镜头配对</string>
     <string name="home_confirm_unpair_message">确定要解除与“%1$s”的配对吗？解除后需重新扫描二维码才能连接。</string>
     <string name="home_confirm_unpair_action">解除配对</string>
+    <string name="home_storage_load_error">无法读取本机设备记录</string>
 
     <!-- Camera Mode Screen -->
     <string name="camera_live_badge">720p %1$dfps</string>

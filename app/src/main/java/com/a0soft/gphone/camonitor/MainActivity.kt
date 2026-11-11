@@ -27,12 +27,17 @@ import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.a0soft.gphone.camonitor.log.AppLogger
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.a0soft.gphone.camonitor.service.CameraMonitorService
 import com.a0soft.gphone.camonitor.ui.about.AboutScreen
 import com.a0soft.gphone.camonitor.ui.camera.CameraModeScreen
 import com.a0soft.gphone.camonitor.ui.devices.ManageDevicesScreen
+import com.a0soft.gphone.camonitor.ui.home.AndroidHomePreferences
+import com.a0soft.gphone.camonitor.ui.home.AndroidTelemetryDataSource
+import com.a0soft.gphone.camonitor.ui.home.AndroidUpdateRepository
 import com.a0soft.gphone.camonitor.ui.home.BroadcasterLaunchRoute
-import com.a0soft.gphone.camonitor.ui.home.HomeScreen
+import com.a0soft.gphone.camonitor.ui.home.HomeRoute
+import com.a0soft.gphone.camonitor.ui.home.HomeViewModel
 import com.a0soft.gphone.camonitor.ui.home.StealthLaunchIntent
 import com.a0soft.gphone.camonitor.ui.home.broadcasterLaunchRoute
 import com.a0soft.gphone.camonitor.ui.log.LogViewerScreen
@@ -243,6 +248,15 @@ class MainActivity : ComponentActivity() {
         val securityRepo = remember { CamMonitorApp.instance.securityRepository }
         var selectedCameraDeviceId by remember { mutableStateOf<String?>(null) }
         val stealthIntent = remember { StealthLaunchIntent() }
+        val homeViewModel: HomeViewModel = viewModel(
+            factory = HomeViewModel.provideFactory(
+                securityRepo = securityRepo,
+                preferencesDataSource = remember { AndroidHomePreferences(applicationContext) },
+                telemetryDataSource = remember { AndroidTelemetryDataSource(applicationContext) },
+                updateRepository = remember { AndroidUpdateRepository(applicationContext) },
+                peerCloser = { deviceId -> CamMonitorApp.instance.webRtcManager.closePeer(deviceId) }
+            )
+        )
 
         fun navigateTo(screen: AppScreen) {
             backStack.add(screen)
@@ -272,7 +286,8 @@ class MainActivity : ComponentActivity() {
 
         when (currentScreen) {
             AppScreen.HOME -> {
-                HomeScreen(
+                HomeRoute(
+                    viewModel = homeViewModel,
                     onStartCameraMode = { stealth ->
                         checkAndRequestPermissions(getCameraPermissions()) {
                             // Stealth intent survives the pairing detour so the camera still starts dark afterwards.

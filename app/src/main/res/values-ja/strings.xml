@@ -77,6 +77,7 @@
     <string name="home_confirm_unpair_title">カメラのペアリング解除</string>
     <string name="home_confirm_unpair_message">「%1$s」のペアリングを解除してもよろしいですか？再接続するにはQRコードを再度スキャンする必要があります。</string>
     <string name="home_confirm_unpair_action">ペアリング解除</string>
+    <string name="home_storage_load_error">ローカルデバイス記録の読み込みに失敗しました</string>
 
     <!-- Camera Mode Screen -->
     <string name="camera_live_badge">720p %1$dfps</string>

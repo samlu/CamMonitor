@@ -1,15 +1,11 @@
 package com.a0soft.gphone.camonitor.ui.home
 
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.res.Configuration
-import android.net.ConnectivityManager
-import android.net.Network
-import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Build
+import android.text.format.DateFormat
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -36,50 +32,24 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.a0soft.gphone.camonitor.BuildConfig
-import com.a0soft.gphone.camonitor.CamMonitorApp
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.a0soft.gphone.camonitor.R
 import com.a0soft.gphone.camonitor.data.model.PairedDevice
 import com.a0soft.gphone.camonitor.data.security.SecurityRepository
-import com.a0soft.gphone.camonitor.data.update.ReleaseCheckResult
-import com.a0soft.gphone.camonitor.data.update.ReleaseChecker
 import com.a0soft.gphone.camonitor.data.update.ReleaseInfo
-import com.a0soft.gphone.camonitor.data.update.UpdatePreferenceManager
 import com.a0soft.gphone.camonitor.log.AppLogger
-import com.a0soft.gphone.camonitor.ui.common.BatteryHelper
 import com.a0soft.gphone.camonitor.ui.common.BatteryInfo
 import com.a0soft.gphone.camonitor.ui.common.LocaleHelper
 import com.a0soft.gphone.camonitor.ui.common.UpdateNotificationHelper
-import com.a0soft.gphone.camonitor.ui.devices.revokePairedDevice
 import com.a0soft.gphone.camonitor.ui.theme.StatusWarning
-import android.text.format.DateFormat
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private fun getNetworkStatus(context: Context): NetworkType {
-    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return NetworkType.DISCONNECTED
-    val activeNetwork = cm.activeNetwork ?: return NetworkType.DISCONNECTED
-    val caps = cm.getNetworkCapabilities(activeNetwork) ?: return NetworkType.DISCONNECTED
-    return classifyNetwork(
-        hasInternet = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET),
-        isValidated = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
-        hasWifi = caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI),
-        hasEthernet = caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET),
-        hasCellular = caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
-    )
-}
-
-private const val UI_PREFS_NAME = "cammonitor_ui_prefs"
-private const val KEY_STEALTH_INTRO_SEEN = "stealth_intro_seen"
-
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(
+fun HomeRoute(
+    viewModel: HomeViewModel,
     onStartCameraMode: (startInStealth: Boolean) -> Unit,
     onPairNewViewer: () -> Unit,
     onStartViewerMode: (deviceId: String) -> Unit,
@@ -89,102 +59,82 @@ fun HomeScreen(
     onOpenAbout: () -> Unit
 ) {
     val context = LocalContext.current
-    val securityRepo = remember { CamMonitorApp.instance.securityRepository }
-    var cameraName by remember { mutableStateOf(securityRepo.getDeviceName()) }
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    LifecycleResumeEffect(Unit) {
+        UpdateNotificationHelper.dismissUpdateNotification(context)
+        viewModel.onActivated()
+        onPauseOrDispose { }
+    }
+
+    HomeScreen(
+        uiState = uiState,
+        currentLanguageTag = LocaleHelper.getCurrentLanguageTag(context),
+        onRenameCamera = viewModel::renameCamera,
+        onUnpairCamera = viewModel::unpairDevice,
+        onMarkStealthIntroSeen = viewModel::markStealthIntroSeen,
+        onSkipVersion = viewModel::skipVersion,
+        onDismissUpdate = viewModel::dismissUpdateBanner,
+        onOpenReleaseUrl = { url ->
+            try {
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+            } catch (e: Exception) {
+                AppLogger.w("HomeRoute", "Failed to open release URL: ${e.message}")
+            }
+        },
+        onChangeLanguage = { tag ->
+            LocaleHelper.setLanguage(context, tag)
+        },
+        onOpenSystemLanguageSettings = {
+            LocaleHelper.openSystemLanguageSettings(context)
+        },
+        onStartCameraMode = onStartCameraMode,
+        onPairNewViewer = onPairNewViewer,
+        onStartViewerMode = onStartViewerMode,
+        onPairNewCamera = onPairNewCamera,
+        onOpenPairedDevices = onOpenPairedDevices,
+        onOpenLogs = onOpenLogs,
+        onOpenAbout = onOpenAbout,
+        onRetry = { viewModel.onActivated() }
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HomeScreen(
+    uiState: HomeUiState,
+    currentLanguageTag: String,
+    onRenameCamera: (String) -> Unit,
+    onUnpairCamera: (String) -> Unit,
+    onMarkStealthIntroSeen: () -> Unit,
+    onSkipVersion: (String) -> Unit,
+    onDismissUpdate: () -> Unit,
+    onOpenReleaseUrl: (String) -> Unit,
+    onChangeLanguage: (String) -> Unit,
+    onOpenSystemLanguageSettings: () -> Unit,
+    onStartCameraMode: (startInStealth: Boolean) -> Unit,
+    onPairNewViewer: () -> Unit,
+    onStartViewerMode: (deviceId: String) -> Unit,
+    onPairNewCamera: () -> Unit,
+    onOpenPairedDevices: () -> Unit,
+    onOpenLogs: () -> Unit,
+    onOpenAbout: () -> Unit,
+    onRetry: () -> Unit = {}
+) {
+    if (!uiState.isLoaded) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
+        }
+        return
+    }
+
     var showRenameDialog by remember { mutableStateOf(false) }
     var showStealthIntro by remember { mutableStateOf(false) }
-    val uiPrefs = remember { context.getSharedPreferences(UI_PREFS_NAME, Context.MODE_PRIVATE) }
     var cameraToUnpair by remember { mutableStateOf<PairedDevice?>(null) }
     var showLanguageDialog by remember { mutableStateOf(false) }
-    var pairedViewers by remember { mutableStateOf(securityRepo.getPairedViewers()) }
-    var pairedCameras by remember { mutableStateOf(securityRepo.getPairedCameras()) }
-    var lastConnectedMap by remember { mutableStateOf(CameraConnectionHistory.getAll(context)) }
-    var batteryInfo by remember { mutableStateOf(BatteryHelper.getBatteryInfo(context)) }
-    var networkType by remember { mutableStateOf(getNetworkStatus(context)) }
-
-    val updatePrefs = remember { UpdatePreferenceManager(context) }
-    var availableRelease by remember { mutableStateOf<ReleaseInfo?>(null) }
-
-    LaunchedEffect(Unit) {
-        UpdateNotificationHelper.dismissUpdateNotification(context)
-
-        val cached = updatePrefs.getCachedRelease()
-        if (cached != null && !updatePrefs.isVersionSkipped(cached.versionName)) {
-            val eval = ReleaseChecker.evaluateRelease(cached, BuildConfig.VERSION_NAME)
-            if (eval is ReleaseCheckResult.UpdateAvailable) {
-                availableRelease = cached
-            } else {
-                updatePrefs.clearCachedRelease()
-            }
-        }
-
-        if (updatePrefs.shouldCheck()) {
-            val result = ReleaseChecker.checkLatestRelease()
-            updatePrefs.recordCheck()
-            if (result is ReleaseCheckResult.UpdateAvailable) {
-                if (!updatePrefs.isVersionSkipped(result.release.versionName)) {
-                    updatePrefs.saveCachedRelease(result.release)
-                    availableRelease = result.release
-                }
-            }
-        }
-    }
-
-    // Reactive hardware telemetry listeners (instant updates on plug/unplug or Wi-Fi change)
-    DisposableEffect(context) {
-        val batteryReceiver = object : BroadcastReceiver() {
-            override fun onReceive(ctx: Context?, intent: Intent?) {
-                batteryInfo = BatteryHelper.getBatteryInfo(context)
-            }
-        }
-        ContextCompat.registerReceiver(context, batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED), ContextCompat.RECEIVER_NOT_EXPORTED)
-
-        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-        val networkCallback = object : ConnectivityManager.NetworkCallback() {
-            override fun onAvailable(network: Network) {
-                networkType = getNetworkStatus(context)
-            }
-            override fun onLost(network: Network) {
-                networkType = getNetworkStatus(context)
-            }
-            override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
-                networkType = getNetworkStatus(context)
-            }
-        }
-        try {
-            cm?.registerDefaultNetworkCallback(networkCallback)
-        } catch (e: Exception) {
-            AppLogger.w("HomeScreen", "Failed to register network callback: ${e.message}")
-        }
-
-        onDispose {
-            try {
-                context.unregisterReceiver(batteryReceiver)
-            } catch (_: Exception) {}
-            try {
-                cm?.unregisterNetworkCallback(networkCallback)
-            } catch (_: Exception) {}
-        }
-    }
-
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                pairedViewers = securityRepo.getPairedViewers()
-                pairedCameras = securityRepo.getPairedCameras()
-                lastConnectedMap = CameraConnectionHistory.getAll(context)
-                cameraName = securityRepo.getDeviceName()
-                batteryInfo = BatteryHelper.getBatteryInfo(context)
-                networkType = getNetworkStatus(context)
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-        }
-    }
-
     val scrollState = rememberScrollState()
 
     Scaffold(
@@ -236,51 +186,74 @@ fun HomeScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 // 1. Hardware Pre-Flight Telemetry Bar
-                HardwarePreflightBar(batteryInfo = batteryInfo, networkType = networkType)
+                HardwarePreflightBar(batteryInfo = uiState.batteryInfo, networkType = uiState.networkType)
+
+                // Storage Load Error Banner (if partial read failed)
+                if (uiState.loadError != null) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    Icons.Default.Warning,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                                Text(
+                                    text = stringResource(R.string.home_storage_load_error),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                            }
+                            TextButton(onClick = onRetry) {
+                                Text(
+                                    stringResource(R.string.action_retry),
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
+                    }
+                }
 
                 // 2. Update Banner Card (if available)
-                availableRelease?.let { release ->
+                uiState.availableRelease?.let { release ->
                     UpdateBannerCard(
                         release = release,
-                        onViewUpdate = { url ->
-                            try {
-                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                }
-                                context.startActivity(intent)
-                            } catch (e: Exception) {
-                                AppLogger.w("HomeScreen", "Failed to open release URL: ${e.message}")
-                            }
-                        },
-                        onSkipVersion = { version ->
-                            updatePrefs.skipVersion(version)
-                            availableRelease = null
-                        },
-                        onDismiss = {
-                            availableRelease = null
-                        }
+                        onViewUpdate = onOpenReleaseUrl,
+                        onSkipVersion = onSkipVersion,
+                        onDismiss = onDismissUpdate
                     )
                 }
 
                 // 3. Operational Consoles. Each section is declared once and placed by orientation/role.
-                val layout = homeLayoutFor(pairedCameras.size, pairedViewers.size)
+                val layout = uiState.layout
                 // First-ever Stealth launch explains the black screen / swipe-to-unlock before going dark.
                 val startStealth: () -> Unit = {
-                    if (uiPrefs.getBoolean(KEY_STEALTH_INTRO_SEEN, false)) onStartCameraMode(true) else showStealthIntro = true
+                    if (uiState.isStealthIntroSeen) onStartCameraMode(true) else showStealthIntro = true
                 }
                 val broadcaster: @Composable (Modifier) -> Unit = { m ->
                     if (layout == HomeLayout.CAMERAS_FIRST) {
                         CompactBroadcasterRow(
-                            cameraName = cameraName,
+                            cameraName = uiState.cameraName,
                             onRename = { showRenameDialog = true },
                             onPairViewer = onPairNewViewer,
                             modifier = m
                         )
                     } else {
                         BroadcasterConsoleCard(
-                            cameraName = cameraName,
-                            pairedViewers = pairedViewers,
-                            batteryInfo = batteryInfo,
+                            cameraName = uiState.cameraName,
+                            pairedViewers = uiState.pairedViewers,
+                            batteryInfo = uiState.batteryInfo,
                             onRename = { showRenameDialog = true },
                             onStartNormal = { onStartCameraMode(false) },
                             onStartStealth = startStealth,
@@ -291,8 +264,8 @@ fun HomeScreen(
                 }
                 val cameras: @Composable (Modifier) -> Unit = { m ->
                     MonitoredCamerasSection(
-                        pairedCameras = pairedCameras,
-                        lastConnectedMap = lastConnectedMap,
+                        pairedCameras = uiState.pairedCameras,
+                        lastConnectedMap = uiState.lastConnectedMap,
                         onConnect = onStartViewerMode,
                         onPairCamera = onPairNewCamera,
                         onConfirmRemoveCamera = { cameraToUnpair = it },
@@ -330,7 +303,7 @@ fun HomeScreen(
             text = { Text(stringResource(R.string.home_stealth_intro_message)) },
             confirmButton = {
                 Button(onClick = {
-                    uiPrefs.edit().putBoolean(KEY_STEALTH_INTRO_SEEN, true).apply()
+                    onMarkStealthIntroSeen()
                     showStealthIntro = false
                     onStartCameraMode(true)
                 }) {
@@ -347,26 +320,25 @@ fun HomeScreen(
 
     // Rename Camera Dialog
     if (showRenameDialog) {
-        var tempName by remember { mutableStateOf(cameraName) }
+        var tempName by remember { mutableStateOf(uiState.cameraName) }
         AlertDialog(
             onDismissRequest = { showRenameDialog = false },
             title = { Text(stringResource(R.string.dialog_rename_camera_title)) },
             text = {
                 OutlinedTextField(
                     value = tempName,
-                    onValueChange = { if (it.length <= 32) tempName = it },
+                    onValueChange = { if (it.codePoints().count() <= 32) tempName = it },
                     label = { Text(stringResource(R.string.dialog_camera_name_label)) },
                     singleLine = true,
-                    supportingText = { Text("${tempName.length}/32") }
+                    supportingText = { Text("${tempName.codePoints().count()}/32") }
                 )
             },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        val trimmed = tempName.trim()
-                        if (trimmed.isNotEmpty()) {
-                            securityRepo.setDeviceName(trimmed)
-                            cameraName = trimmed
+                        val sanitized = sanitizeDeviceName(tempName)
+                        if (sanitized.isNotEmpty()) {
+                            onRenameCamera(sanitized)
                         }
                         showRenameDialog = false
                     }
@@ -400,14 +372,7 @@ fun HomeScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        revokePairedDevice(
-                            deviceId = targetCamera.deviceId,
-                            removeRecord = securityRepo::removePairedDevice,
-                            closePeer = { CamMonitorApp.instance.webRtcManager.closePeer(it) }
-                        )
-                        CameraConnectionHistory.clear(context, targetCamera.deviceId)
-                        pairedCameras = securityRepo.getPairedCameras()
-                        lastConnectedMap = CameraConnectionHistory.getAll(context)
+                        onUnpairCamera(targetCamera.deviceId)
                         cameraToUnpair = null
                     },
                     colors = ButtonDefaults.buttonColors(
@@ -427,8 +392,7 @@ fun HomeScreen(
 
     // Language Selection Dialog
     if (showLanguageDialog) {
-        val currentTag = remember { LocaleHelper.getCurrentLanguageTag(context) }
-        var selectedTag by remember { mutableStateOf(currentTag) }
+        var selectedTag by remember { mutableStateOf(currentLanguageTag) }
 
         AlertDialog(
             onDismissRequest = { showLanguageDialog = false },
@@ -457,7 +421,7 @@ fun HomeScreen(
                                     onClick = {
                                         selectedTag = tag
                                         showLanguageDialog = false
-                                        LocaleHelper.setLanguage(context, tag)
+                                        onChangeLanguage(tag)
                                     }
                                 )
                                 .padding(vertical = 4.dp),
@@ -468,7 +432,7 @@ fun HomeScreen(
                                 onClick = {
                                     selectedTag = tag
                                     showLanguageDialog = false
-                                    LocaleHelper.setLanguage(context, tag)
+                                    onChangeLanguage(tag)
                                 }
                             )
                             Spacer(modifier = Modifier.width(8.dp))
@@ -480,8 +444,8 @@ fun HomeScreen(
                         HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                         TextButton(
                             onClick = {
-                                LocaleHelper.openSystemLanguageSettings(context)
                                 showLanguageDialog = false
+                                onOpenSystemLanguageSettings()
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) {

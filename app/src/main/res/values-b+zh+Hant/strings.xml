@@ -77,6 +77,7 @@
     <string name="home_confirm_unpair_title">解除鏡頭配對</string>
     <string name="home_confirm_unpair_message">確定要解除與「%1$s」的配對嗎？解除後需重新掃描 QR 碼才能連線。</string>
     <string name="home_confirm_unpair_action">解除配對</string>
+    <string name="home_storage_load_error">無法讀取本機裝置紀錄</string>
 
     <!-- Camera Mode Screen -->
     <string name="camera_live_badge">720p %1$dfps</string>
