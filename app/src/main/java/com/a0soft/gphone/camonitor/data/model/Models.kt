@@ -330,6 +330,8 @@ sealed class ControlCommand {
     data class SetNightMode(val mode: String) : ControlCommand()
     data class NightModeReport(val mode: String, val isNightActive: Boolean) : ControlCommand()
     data class FpsReport(val fps: Int) : ControlCommand()
+    object SwitchLens : ControlCommand()
+    data class LensReport(val isFrontCamera: Boolean) : ControlCommand()
 
     fun toJson(): String {
         val json = JSONObject()
@@ -367,6 +369,11 @@ sealed class ControlCommand {
                 json.put("cmd", "FPS_REPORT")
                 json.put("fps", fps)
             }
+            is SwitchLens -> json.put("cmd", "SWITCH_LENS")
+            is LensReport -> {
+                json.put("cmd", "LENS_REPORT")
+                json.put("front", isFrontCamera)
+            }
         }
         return json.toString()
     }
@@ -392,6 +399,8 @@ sealed class ControlCommand {
                         isNightActive = json.optBoolean("active", false)
                     )
                     "FPS_REPORT" -> FpsReport(fps = json.getInt("fps"))
+                    "SWITCH_LENS" -> SwitchLens
+                    "LENS_REPORT" -> LensReport(isFrontCamera = json.optBoolean("front", false))
                     else -> null
                 }
             } catch (e: Exception) {

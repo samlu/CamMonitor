@@ -106,6 +106,7 @@
     <string name="cd_camera_battery">Camera Battery</string>
     <string name="cd_viewer_battery">Viewer Battery</string>
     <string name="cd_torch">Torch</string>
+    <string name="cd_switch_lens">Switch Camera Lens</string>
     <string name="cd_fill_screen">Fill Screen</string>
     <string name="cd_fit_screen">Fit to Screen</string>
     <string name="viewer_ptt_transmitting">Transmitting...</string>

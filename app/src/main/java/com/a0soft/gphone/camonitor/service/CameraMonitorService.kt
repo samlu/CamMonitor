@@ -584,7 +584,23 @@ class CameraMonitorService : Service() {
                 AppLogger.i(tag, "Viewer $peerId stopped Push-to-Talk")
                 app.webRtcManager.onPttCommand(peerId, false)
             }
+            is ControlCommand.SwitchLens -> {
+                val nowFront = app.webRtcManager.switchCameraLens()
+                app.webRtcManager.broadcastDataChannelCommand(
+                    ControlCommand.LensReport(isFrontCamera = nowFront)
+                )
+            }
+            is ControlCommand.LensReport -> {
+                // Not handled by sender
+            }
             is ControlCommand.SetNightMode -> {
+                if (cmd.mode == "SWITCH_LENS") {
+                    val nowFront = app.webRtcManager.switchCameraLens()
+                    app.webRtcManager.broadcastDataChannelCommand(
+                        ControlCommand.LensReport(isFrontCamera = nowFront)
+                    )
+                    return
+                }
                 val setting = try {
                     com.a0soft.gphone.camonitor.data.model.NightModeSetting.valueOf(cmd.mode)
                 } catch (e: Exception) {

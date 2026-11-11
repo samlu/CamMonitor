@@ -127,8 +127,26 @@ class CameraXVideoCapturer(
     private var lastHeight: Int = 720
     private var lastFramerate: Int = 20
     private var isTorchActive: Boolean = false
+    var isFrontCamera: Boolean = false
+        private set
     var nightModeSetting: NightModeSetting = NightModeSetting.AUTO
         private set
+
+    fun switchLens(): Boolean {
+        isFrontCamera = !isFrontCamera
+        val nowFront = isFrontCamera
+        AppLogger.i(tag, "Switching camera lens: isFrontCamera=$nowFront")
+        mainHandler.post {
+            if (!isCapturing.get()) return@post
+            val enableNight = !nowFront && when (nightModeSetting) {
+                NightModeSetting.AUTO -> currentLux < LUX_THRESHOLD_NIGHT_ENTER
+                NightModeSetting.NIGHT -> true
+                NightModeSetting.NORMAL -> false
+            }
+            bindCameraSession(enableNight = enableNight)
+        }
+        return nowFront
+    }
 
     fun setNightModeSetting(setting: NightModeSetting) {
         if (nightModeSetting == setting) return
@@ -350,7 +368,7 @@ class CameraXVideoCapturer(
         val extManager = extensionsManager ?: return
         val helper = surfaceTextureHelper ?: return
 
-        val baseSelector = CameraSelector.DEFAULT_BACK_CAMERA
+        val baseSelector = if (isFrontCamera) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
         val targetSelector: CameraSelector
         val actuallyNight: Boolean
 
@@ -398,7 +416,7 @@ class CameraXVideoCapturer(
         val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as? CameraManager
         val backCameraId = cameraManager?.cameraIdList?.firstOrNull { id ->
             val chars = cameraManager.getCameraCharacteristics(id)
-            chars.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK
+            chars.get(CameraCharacteristics.LENS_FACING) == (if (isFrontCamera) CameraCharacteristics.LENS_FACING_FRONT else CameraCharacteristics.LENS_FACING_BACK)
         } ?: "0"
         val chars = cameraManager?.getCameraCharacteristics(backCameraId)
         val availableFpsRanges = chars?.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)

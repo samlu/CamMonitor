@@ -106,6 +106,7 @@
     <string name="cd_camera_battery">鏡頭電量</string>
     <string name="cd_viewer_battery">觀看端電量</string>
     <string name="cd_torch">手電筒</string>
+    <string name="cd_switch_lens">切換前後鏡頭</string>
     <string name="cd_fill_screen">填滿螢幕</string>
     <string name="cd_fit_screen">配合螢幕</string>
     <string name="viewer_ptt_transmitting">傳送中...</string>
