@@ -1,7 +1,7 @@
 package com.a0soft.gphone.camonitor.ui.about
 
 import android.content.Intent
-import android.net.Uri
+import androidx.core.net.toUri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -192,10 +192,10 @@ fun AboutScreen(
                                 updateStatusMessage = null
                             }
                             is ReleaseCheckResult.UpToDate -> {
-                                updateStatusMessage = context.getString(R.string.update_status_latest, BuildConfig.VERSION_NAME)
+                                updateStatusMessage = context.applicationContext.getString(R.string.update_status_latest, BuildConfig.VERSION_NAME)
                             }
                             is ReleaseCheckResult.Error -> {
-                                updateStatusMessage = context.getString(R.string.update_status_failed)
+                                updateStatusMessage = context.applicationContext.getString(R.string.update_status_failed)
                             }
                         }
                     }
@@ -227,7 +227,7 @@ fun AboutScreen(
                 UpdateBannerCard(
                     release = release,
                     onViewUpdate = { url ->
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                        val intent = Intent(Intent.ACTION_VIEW, url.toUri()).apply {
                             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                         }
                         context.startActivity(intent)
@@ -282,7 +282,7 @@ fun AboutScreen(
                     // GitHub Link Button
                     Button(
                         onClick = {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(githubUrl)).apply {
+                            val intent = Intent(Intent.ACTION_VIEW, githubUrl.toUri()).apply {
                                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                             }
                             context.startActivity(intent)
@@ -357,7 +357,7 @@ fun AboutScreen(
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(8.dp))
                                 .clickable {
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(contributor.githubUrl)).apply {
+                                    val intent = Intent(Intent.ACTION_VIEW, contributor.githubUrl.toUri()).apply {
                                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                     }
                                     context.startActivity(intent)
@@ -414,7 +414,7 @@ fun AboutScreen(
                     val contributorsGraphUrl = stringResource(R.string.about_contributors_github_url)
                     OutlinedButton(
                         onClick = {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(contributorsGraphUrl)).apply {
+                            val intent = Intent(Intent.ACTION_VIEW, contributorsGraphUrl.toUri()).apply {
                                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                             }
                             context.startActivity(intent)

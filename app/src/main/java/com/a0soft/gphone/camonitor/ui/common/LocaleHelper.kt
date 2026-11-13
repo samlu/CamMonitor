@@ -54,11 +54,7 @@ object LocaleHelper {
     fun getTargetLocale(context: Context): Locale {
         val tag = getCurrentLanguageTag(context)
         return if (tag.isEmpty()) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                Resources.getSystem().configuration.locales[0] ?: Locale.getDefault()
-            } else {
-                Locale.getDefault()
-            }
+            Resources.getSystem().configuration.locales[0] ?: Locale.getDefault()
         } else {
             Locale.forLanguageTag(tag)
         }
@@ -104,11 +100,7 @@ object LocaleHelper {
         }
 
         val targetLocale = if (languageTag.isEmpty()) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                Resources.getSystem().configuration.locales[0] ?: Locale.getDefault()
-            } else {
-                Locale.getDefault()
-            }
+            Resources.getSystem().configuration.locales[0] ?: Locale.getDefault()
         } else {
             Locale.forLanguageTag(languageTag)
         }
@@ -140,9 +132,7 @@ object LocaleHelper {
         Locale.setDefault(locale)
         val config = Configuration(context.resources.configuration)
         config.setLocale(locale)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            config.setLocales(LocaleList(locale))
-        }
+        config.setLocales(LocaleList(locale))
         return context.createConfigurationContext(config)
     }
 
@@ -151,9 +141,7 @@ object LocaleHelper {
         val res = context.resources
         val config = Configuration(res.configuration)
         config.setLocale(locale)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            config.setLocales(LocaleList(locale))
-        }
+        config.setLocales(LocaleList(locale))
         @Suppress("DEPRECATION")
         res.updateConfiguration(config, res.displayMetrics)
     }

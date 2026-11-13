@@ -12,6 +12,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -37,7 +38,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -62,6 +62,8 @@ import androidx.compose.ui.text.font.FontWeight
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 import org.webrtc.*
 
 sealed interface ViewerConnectionState {
@@ -107,15 +109,15 @@ fun ViewerModeScreen(
             )
         )
     }
-    var connectStartTimeMs by remember { mutableStateOf(System.currentTimeMillis()) }
-    var stepStartTimeMs by remember { mutableStateOf(System.currentTimeMillis()) }
+    var connectStartTimeMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var stepStartTimeMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var hasRenderedFirstFrame by remember { mutableStateOf(false) }
-    var rotationDegrees by remember { mutableStateOf(0f) }
+    var rotationDegrees by remember { mutableFloatStateOf(0f) }
     var isAspectFit by remember { mutableStateOf(true) }
     var videoAspectRatio by remember { mutableStateOf<Float?>(null) }
     var isControlsVisible by remember { mutableStateOf(true) }
     val remoteFps by webRtcManager.remoteStreamFps.collectAsState()
-    var streamFps by remember { mutableStateOf(20) }
+    var streamFps by remember { mutableIntStateOf(20) }
 
     LaunchedEffect(remoteFps) {
         streamFps = remoteFps
@@ -165,7 +167,7 @@ fun ViewerModeScreen(
     val prefs = remember { context.getSharedPreferences("cammonitor_ui_prefs", Context.MODE_PRIVATE) }
     var showMicPermissionDialog by remember { mutableStateOf(false) }
     var isMicPermanentlyDenied by remember { mutableStateOf(false) }
-    var reconnectTrigger by remember { mutableStateOf(0) }
+    var reconnectTrigger by remember { mutableIntStateOf(0) }
 
     fun checkIsMicPermanentlyDenied(): Boolean {
         val hasRequested = prefs.getBoolean("has_requested_${Manifest.permission.RECORD_AUDIO}", false)
@@ -239,7 +241,7 @@ fun ViewerModeScreen(
     // Auto-hide controls timer
     LaunchedEffect(isControlsVisible) {
         if (isControlsVisible) {
-            delay(5000L)
+            delay(5.seconds)
             isControlsVisible = false
         }
     }
@@ -369,7 +371,7 @@ fun ViewerModeScreen(
         val countdownJob = effectScope.launch {
             var remaining = ViewerConnectionProgress.DEFAULT_TIMEOUT_SEC
             while (isActive && !isRemoteDescriptionSet.get() && remaining > 0) {
-                delay(1000L)
+                delay(1.seconds)
                 if (!isRemoteDescriptionSet.get()) {
                     remaining--
                     connectionProgress = connectionProgress.copy(remainingTimeoutSec = remaining)
@@ -378,7 +380,7 @@ fun ViewerModeScreen(
             if (isActive && !isRemoteDescriptionSet.get() && remaining <= 0) {
                 AppLogger.w("ViewerMode", "Camera did not respond within ${ViewerConnectionProgress.DEFAULT_TIMEOUT_SEC}s; transitioning to CameraTimeout")
                 connectionState = ViewerConnectionState.CameraTimeout(ViewerConnectionProgress.DEFAULT_TIMEOUT_SEC)
-                delay(10_000L)
+                delay(10.seconds)
                 if (isActive && !isUserExited && connectionState is ViewerConnectionState.CameraTimeout) {
                     AppLogger.i("ViewerMode", "Auto-retrying after CameraTimeout...")
                     reconnectTrigger++
@@ -390,7 +392,7 @@ fun ViewerModeScreen(
         val retryJob = effectScope.launch {
             var attempt = 1
             while (isActive && !isRemoteDescriptionSet.get() && attempt < ViewerConnectionProgress.DEFAULT_MAX_ATTEMPTS) {
-                delay(ViewerConnectionProgress.OFFER_RETRY_INTERVAL_MS)
+                delay(ViewerConnectionProgress.OFFER_RETRY_INTERVAL_MS.milliseconds)
                 val offer = localOfferDesc.get()
                 if (!isRemoteDescriptionSet.get() && offer != null && connectionState !is ViewerConnectionState.CameraTimeout) {
                     attempt++
@@ -550,7 +552,7 @@ fun ViewerModeScreen(
             if (targetCamera != null) {
                 webRtcManager.sendDataChannelCommand(targetCamera.deviceId, ControlCommand.QueryBattery)
             }
-            delay(15_000L)
+            delay(15.seconds)
         }
     }
 
@@ -574,7 +576,7 @@ fun ViewerModeScreen(
                         completeConnectionToLive()
                     } else {
                         coroutineScope.launch {
-                            delay(ViewerConnectionProgress.FIRST_FRAME_FALLBACK_TIMEOUT_MS)
+                            delay(ViewerConnectionProgress.FIRST_FRAME_FALLBACK_TIMEOUT_MS.milliseconds)
                             if (!isUserExited &&
                                 targetCamera != null &&
                                 webRtcManager.getPeerConnectionState(targetCamera.deviceId) == PeerConnection.PeerConnectionState.CONNECTED
@@ -585,9 +587,9 @@ fun ViewerModeScreen(
                     }
                     targetCamera?.let { cam ->
                         coroutineScope.launch {
-                            delay(500L)
+                            delay(500.milliseconds)
                             webRtcManager.sendDataChannelCommand(cam.deviceId, ControlCommand.QueryBattery)
-                            delay(1500L)
+                            delay(1500.milliseconds)
                             webRtcManager.sendDataChannelCommand(cam.deviceId, ControlCommand.QueryBattery)
                         }
                     }
@@ -607,7 +609,7 @@ fun ViewerModeScreen(
                     AppLogger.w("ViewerMode", "WebRTC connection disconnected, scheduling auto-reconnect in 3s")
                     if (!isUserExited) {
                         coroutineScope.launch {
-                            delay(3000L)
+                            delay(3.seconds)
                             if (!isUserExited && connectionState is ViewerConnectionState.Disconnected) {
                                 AppLogger.i("ViewerMode", "Auto-reconnecting after disconnect...")
                                 reconnectTrigger++
@@ -968,7 +970,7 @@ fun ViewerModeScreen(
                                         if (!hasMic) {
                                             val hasRequested = prefs.getBoolean("has_requested_${Manifest.permission.RECORD_AUDIO}", false)
                                             if (!hasRequested) {
-                                                prefs.edit().putBoolean("has_requested_${Manifest.permission.RECORD_AUDIO}", true).apply()
+                                                prefs.edit { putBoolean("has_requested_${Manifest.permission.RECORD_AUDIO}", true) }
                                                 micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                                             } else {
                                                 isMicPermanentlyDenied = checkIsMicPermanentlyDenied()
@@ -1196,7 +1198,7 @@ fun ViewerModeScreen(
                                 }
                                 context.startActivity(intent)
                             } else {
-                                prefs.edit().putBoolean("has_requested_${Manifest.permission.RECORD_AUDIO}", true).apply()
+                                prefs.edit { putBoolean("has_requested_${Manifest.permission.RECORD_AUDIO}", true) }
                                 micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                             }
                         }

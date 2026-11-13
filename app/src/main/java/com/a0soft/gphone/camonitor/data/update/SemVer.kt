@@ -17,8 +17,8 @@ data class SemVer(
         if (this.patch != other.patch) return this.patch.compareTo(other.patch)
         
         // Stable release (null prerelease) is considered newer than a prerelease version
-        if (this.prerelease == null && other.prerelease != null) return 1
-        if (this.prerelease != null && other.prerelease == null) return -1
+        if ((this.prerelease == null) && (other.prerelease != null)) return 1
+        if ((this.prerelease != null) && (other.prerelease == null)) return -1
         
         return (this.prerelease ?: "").compareTo(other.prerelease ?: "")
     }

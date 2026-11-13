@@ -1,9 +1,7 @@
 package com.a0soft.gphone.camonitor.ui.home
 
-import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
-import android.net.Uri
 import android.os.Build
 import android.text.format.DateFormat
 import androidx.compose.foundation.BorderStroke
@@ -32,12 +30,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.a0soft.gphone.camonitor.R
 import com.a0soft.gphone.camonitor.data.model.PairedDevice
 import com.a0soft.gphone.camonitor.data.security.SecurityRepository
-import com.a0soft.gphone.camonitor.data.update.ReleaseInfo
 import com.a0soft.gphone.camonitor.log.AppLogger
 import com.a0soft.gphone.camonitor.ui.common.BatteryInfo
 import com.a0soft.gphone.camonitor.ui.common.LocaleHelper
@@ -45,7 +43,6 @@ import com.a0soft.gphone.camonitor.ui.common.UpdateNotificationHelper
 import com.a0soft.gphone.camonitor.ui.theme.StatusWarning
 import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
 
 @Composable
 fun HomeRoute(
@@ -77,7 +74,7 @@ fun HomeRoute(
         onDismissUpdate = viewModel::dismissUpdateBanner,
         onOpenReleaseUrl = { url ->
             try {
-                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                val intent = Intent(Intent.ACTION_VIEW, url.toUri()).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
                 context.startActivity(intent)
@@ -175,8 +172,7 @@ fun HomeScreen(
         ) {
             val configuration = LocalConfiguration.current
             val isLandscape = (maxWidth > maxHeight) ||
-                (configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) ||
-                (configuration.screenWidthDp > configuration.screenHeightDp)
+                (configuration.orientation == Configuration.ORIENTATION_LANDSCAPE)
 
             Column(
                 modifier = Modifier
@@ -931,7 +927,7 @@ private fun DirectCameraTile(
         is LastConnectedTime.HoursAgo -> stringResource(R.string.home_tile_last_connected_hours, lastConnected.hours)
         is LastConnectedTime.DaysAgo -> stringResource(R.string.home_tile_last_connected_days, lastConnected.days)
         is LastConnectedTime.ExactDate -> {
-            val locale = Locale.getDefault()
+            val locale = LocalConfiguration.current.locales[0]
             val pattern = DateFormat.getBestDateTimePattern(locale, "MMMd")
             val dateStr = SimpleDateFormat(pattern, locale).format(Date(lastConnected.timestamp))
             stringResource(R.string.home_tile_last_connected_date, dateStr)

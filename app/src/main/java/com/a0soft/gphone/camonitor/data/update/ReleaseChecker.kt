@@ -46,7 +46,7 @@ object ReleaseChecker {
         val remoteSemVer = SemVer.parse(release.versionName)
         val currentSemVer = SemVer.parse(currentVersionName)
 
-        return if (remoteSemVer != null && currentSemVer != null) {
+        return if ((remoteSemVer != null) && (currentSemVer != null)) {
             if (remoteSemVer > currentSemVer) {
                 ReleaseCheckResult.UpdateAvailable(release)
             } else {

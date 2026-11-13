@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.time.Duration.Companion.milliseconds
 import java.io.BufferedWriter
 import java.io.File
 import java.io.FileOutputStream
@@ -213,6 +214,7 @@ object AppLogger {
         }
     }
 
+    @Suppress("unused")
     fun droppedCount(): Long = droppedEntries.get()
 
     /**
@@ -294,7 +296,7 @@ object AppLogger {
         while (logScope.isActive) {
             // Wait for at least one line, but never longer than the idle flush
             // window so a quiet process still gets its tail persisted.
-            val first = withTimeoutOrNull(FLUSH_IDLE_MS) { logChannel.receive() }
+            val first = withTimeoutOrNull(FLUSH_IDLE_MS.milliseconds) { logChannel.receive() }
 
             writerMutex.withLock {
                 try {
@@ -417,8 +419,8 @@ object AppLogger {
 
     // --------------------------------------------------------- crash & session
 
-    private val LOG_LINE_REGEX = Regex(
-        """^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})(?: \+([0-9.]+)s)?\] \[([A-Z]+)\] \[([^\]]+)\](?: \{([^}]+)\})?(?: (.*))?${'$'}"""
+    internal val LOG_LINE_REGEX = Regex(
+        """^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})(?: \+([0-9.]+)s)?] \[([A-Z]+)] \[([^]]+)](?: \{([^}]+)\})?(?: (.*))?$"""
     )
 
     /**

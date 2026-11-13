@@ -1,4 +1,4 @@
-﻿package com.a0soft.gphone.camonitor.ui.theme
+package com.a0soft.gphone.camonitor.ui.theme
 
 import androidx.compose.ui.graphics.Color
 

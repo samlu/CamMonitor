@@ -76,7 +76,7 @@ fun CameraModeScreen(
     // the display off, and every entry point goes through enterLocked() so the
     // manual button and the 60s idle timer can never diverge.
     var isLocked by rememberSaveable { mutableStateOf(initialLocked) }
-    var idleSeconds by remember { mutableStateOf(0) }
+    var idleSeconds by remember { mutableIntStateOf(0) }
     var cameraName by remember { mutableStateOf(securityRepo.getDeviceName()) }
     var showRenameDialog by remember { mutableStateOf(false) }
     var localSurfaceRenderer by remember { mutableStateOf<SurfaceViewRenderer?>(null) }
@@ -134,11 +134,7 @@ fun CameraModeScreen(
     // Bind CameraMonitorService
     DisposableEffect(Unit) {
         val serviceIntent = Intent(context, CameraMonitorService::class.java)
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            context.startForegroundService(serviceIntent)
-        } else {
-            context.startService(serviceIntent)
-        }
+        context.startForegroundService(serviceIntent)
 
         val connection = object : ServiceConnection {
             override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
@@ -339,8 +335,7 @@ fun CameraModeScreen(
             }
     ) {
         val isLandscape = (maxWidth > maxHeight) ||
-            (configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) ||
-            (configuration.screenWidthDp > configuration.screenHeightDp)
+            (configuration.orientation == Configuration.ORIENTATION_LANDSCAPE)
 
         // Local Camera Live Viewfinder
         if (!isLocked && streamingState != CameraStreamingState.PAUSED_INACTIVITY) {

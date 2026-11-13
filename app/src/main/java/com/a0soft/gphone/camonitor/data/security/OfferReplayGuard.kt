@@ -23,7 +23,7 @@ class OfferReplayGuard(private val store: OfferTimestampStore) {
 
     fun accept(senderId: String, timestamp: Long): Boolean = synchronized(lock) {
         val last = store.get(senderId)
-        if (last != null && timestamp <= last) {
+        if (last != null && (timestamp <= last)) {
             false
         } else {
             store.put(senderId, timestamp)

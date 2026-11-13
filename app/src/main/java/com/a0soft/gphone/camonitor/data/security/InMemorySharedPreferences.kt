@@ -12,7 +12,7 @@ class InMemorySharedPreferences : SharedPreferences {
 
     override fun getAll(): MutableMap<String, *> = synchronized(lock) { HashMap(data) }
     override fun getString(key: String, defValue: String?): String? =
-        synchronized(lock) { data[key] as? String ?: defValue }
+        synchronized(lock) { (data[key] as? String) ?: defValue }
     @Suppress("UNCHECKED_CAST")
     override fun getStringSet(key: String, defValues: MutableSet<String>?): MutableSet<String>? =
         synchronized(lock) { (data[key] as? Set<String>)?.toMutableSet() ?: defValues }

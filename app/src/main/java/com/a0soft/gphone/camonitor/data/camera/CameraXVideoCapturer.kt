@@ -9,13 +9,11 @@ import android.hardware.SensorManager
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CaptureRequest
-import android.hardware.display.DisplayManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Range
 import android.util.Size
-import android.view.Display
 import android.view.OrientationEventListener
 import android.view.Surface
 import android.view.WindowManager
@@ -101,6 +99,7 @@ class CameraXVideoCapturer(
         private set
 
     private val _streamFpsFlow = MutableStateFlow(20)
+    @Suppress("unused")
     val streamFpsFlow: StateFlow<Int> = _streamFpsFlow.asStateFlow()
 
     private var surfaceTextureHelper: SurfaceTextureHelper? = null
@@ -155,6 +154,7 @@ class CameraXVideoCapturer(
     }
 
     private val _isNightModeActiveFlow = MutableStateFlow(false)
+    @Suppress("unused")
     val isNightModeActiveFlow: StateFlow<Boolean> = _isNightModeActiveFlow.asStateFlow()
     val isNightModeActive: Boolean get() = _isNightModeActiveFlow.value
 
@@ -597,8 +597,8 @@ class CameraXVideoCapturer(
         val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
         val rotation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             try {
-                context.display?.rotation
-            } catch (e: Exception) {
+                context.display.rotation
+            } catch (_: Exception) {
                 null
             } ?: windowManager?.defaultDisplay?.rotation
         } else {
@@ -708,7 +708,7 @@ class CameraXVideoCapturer(
             }
             try {
                 latch.await(2, TimeUnit.SECONDS)
-            } catch (e: InterruptedException) {
+            } catch (_: InterruptedException) {
                 Thread.currentThread().interrupt()
             }
         }

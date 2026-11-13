@@ -2,6 +2,7 @@ package com.a0soft.gphone.camonitor.data.update
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.core.content.edit
 
 class UpdatePreferenceManager(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -22,7 +23,7 @@ class UpdatePreferenceManager(context: Context) {
             lastCheckTimeMs: Long,
             currentTimeMs: Long,
             cooldownMs: Long = COOLDOWN_24_HOURS_MS
-        ): Boolean = lastCheckTimeMs == 0L || (currentTimeMs - lastCheckTimeMs) >= cooldownMs
+        ): Boolean = (lastCheckTimeMs == 0L) || ((currentTimeMs - lastCheckTimeMs) >= cooldownMs)
 
         fun isVersionSkipped(skippedVersion: String?, targetVersion: String): Boolean {
             if (skippedVersion == null) return false
@@ -45,11 +46,11 @@ class UpdatePreferenceManager(context: Context) {
     }
 
     fun recordCheck(currentTimeMs: Long = System.currentTimeMillis()) {
-        prefs.edit().putLong(KEY_LAST_CHECK_TIME, currentTimeMs).apply()
+        prefs.edit { putLong(KEY_LAST_CHECK_TIME, currentTimeMs) }
     }
 
     fun skipVersion(versionName: String) {
-        prefs.edit().putString(KEY_SKIPPED_VERSION, versionName).apply()
+        prefs.edit { putString(KEY_SKIPPED_VERSION, versionName) }
     }
 
     fun getSkippedVersion(): String? {
@@ -61,13 +62,13 @@ class UpdatePreferenceManager(context: Context) {
     }
 
     fun saveCachedRelease(release: ReleaseInfo) {
-        prefs.edit()
-            .putString(KEY_CACHED_VERSION, release.versionName)
-            .putString(KEY_CACHED_TAG, release.tag)
-            .putString(KEY_CACHED_TITLE, release.title)
-            .putString(KEY_CACHED_URL, release.releaseUrl)
-            .putString(KEY_CACHED_NOTES, release.releaseNotes)
-            .apply()
+        prefs.edit {
+            putString(KEY_CACHED_VERSION, release.versionName)
+            putString(KEY_CACHED_TAG, release.tag)
+            putString(KEY_CACHED_TITLE, release.title)
+            putString(KEY_CACHED_URL, release.releaseUrl)
+            putString(KEY_CACHED_NOTES, release.releaseNotes)
+        }
     }
 
     fun getCachedRelease(): ReleaseInfo? {
@@ -86,12 +87,12 @@ class UpdatePreferenceManager(context: Context) {
     }
 
     fun clearCachedRelease() {
-        prefs.edit()
-            .remove(KEY_CACHED_VERSION)
-            .remove(KEY_CACHED_TAG)
-            .remove(KEY_CACHED_TITLE)
-            .remove(KEY_CACHED_URL)
-            .remove(KEY_CACHED_NOTES)
-            .apply()
+        prefs.edit {
+            remove(KEY_CACHED_VERSION)
+            remove(KEY_CACHED_TAG)
+            remove(KEY_CACHED_TITLE)
+            remove(KEY_CACHED_URL)
+            remove(KEY_CACHED_NOTES)
+        }
     }
 }

@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -26,11 +27,14 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import com.a0soft.gphone.camonitor.log.AppLogger
+import androidx.core.content.edit
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.a0soft.gphone.camonitor.log.AppLogger
 import com.a0soft.gphone.camonitor.service.CameraMonitorService
 import com.a0soft.gphone.camonitor.ui.about.AboutScreen
 import com.a0soft.gphone.camonitor.ui.camera.CameraModeScreen
+import com.a0soft.gphone.camonitor.ui.common.LocaleHelper
+import com.a0soft.gphone.camonitor.ui.common.UpdateNotificationHelper
 import com.a0soft.gphone.camonitor.ui.devices.ManageDevicesScreen
 import com.a0soft.gphone.camonitor.ui.home.AndroidHomePreferences
 import com.a0soft.gphone.camonitor.ui.home.AndroidTelemetryDataSource
@@ -82,14 +86,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun attachBaseContext(newBase: android.content.Context) {
-        super.attachBaseContext(com.a0soft.gphone.camonitor.ui.common.LocaleHelper.getLocalizedContext(newBase))
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(LocaleHelper.getLocalizedContext(newBase))
     }
 
-    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+    override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            com.a0soft.gphone.camonitor.ui.common.LocaleHelper.applyCurrentLocale(this)
+            LocaleHelper.applyCurrentLocale(this)
         }
     }
 
@@ -97,7 +101,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        currentLanguageTag = com.a0soft.gphone.camonitor.ui.common.LocaleHelper.getCurrentLanguageTag(this)
+        currentLanguageTag = LocaleHelper.getCurrentLanguageTag(this)
         enableEdgeToEdge()
 
         checkStartupPermissions()
@@ -129,14 +133,14 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (intent.action == com.a0soft.gphone.camonitor.ui.common.UpdateNotificationHelper.ACTION_SHOW_UPDATE) {
-            com.a0soft.gphone.camonitor.ui.common.UpdateNotificationHelper.dismissUpdateNotification(this)
+        if (intent.action == UpdateNotificationHelper.ACTION_SHOW_UPDATE) {
+            UpdateNotificationHelper.dismissUpdateNotification(this)
         }
     }
 
     override fun onResume() {
         super.onResume()
-        val latestTag = com.a0soft.gphone.camonitor.ui.common.LocaleHelper.getCurrentLanguageTag(this)
+        val latestTag = LocaleHelper.getCurrentLanguageTag(this)
         if (latestTag != currentLanguageTag) {
             currentLanguageTag = latestTag
             recreate()
@@ -186,16 +190,16 @@ class MainActivity : ComponentActivity() {
     }
 
     fun isPermanentlyDenied(permission: String): Boolean {
-        val prefs = getSharedPreferences("cammonitor_ui_prefs", Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences("cammonitor_ui_prefs", MODE_PRIVATE)
         val hasRequested = prefs.getBoolean("has_requested_$permission", false)
         return hasRequested && !ActivityCompat.shouldShowRequestPermissionRationale(this, permission)
     }
 
     fun markPermissionsRequested(permissions: List<String>) {
-        val prefs = getSharedPreferences("cammonitor_ui_prefs", Context.MODE_PRIVATE)
-        prefs.edit().apply {
+        val prefs = getSharedPreferences("cammonitor_ui_prefs", MODE_PRIVATE)
+        prefs.edit {
             permissions.forEach { putBoolean("has_requested_$it", true) }
-        }.apply()
+        }
     }
 
     fun checkStartupPermissions() {
@@ -270,7 +274,7 @@ class MainActivity : ComponentActivity() {
                     stealthIntent.clear()
                 }
                 if (popped == AppScreen.CAMERA_MODE) {
-                    val stopIntent = android.content.Intent(this@MainActivity, com.a0soft.gphone.camonitor.service.CameraMonitorService::class.java)
+                    val stopIntent = Intent(this@MainActivity, CameraMonitorService::class.java)
                     stopService(stopIntent)
                 } else if (popped == AppScreen.VIEWER_MODE) {
                     CamMonitorApp.instance.webRtcManager.closeAll()

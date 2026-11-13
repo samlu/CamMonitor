@@ -3,7 +3,6 @@ package com.a0soft.gphone.camonitor
 import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.os.Build
 import com.a0soft.gphone.camonitor.data.camera.TorchManager
 import com.a0soft.gphone.camonitor.data.security.DefaultSecurityRepository
 import com.a0soft.gphone.camonitor.data.security.SecurityRepository
@@ -58,25 +57,23 @@ class CamMonitorApp : Application() {
     }
 
     private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val serviceChannel = NotificationChannel(
-                NOTIFICATION_CHANNEL_ID,
-                getString(R.string.notification_channel_name),
-                NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = getString(R.string.notification_channel_description)
-            }
-            val updateChannel = NotificationChannel(
-                UPDATE_NOTIFICATION_CHANNEL_ID,
-                getString(R.string.notification_channel_updates),
-                NotificationManager.IMPORTANCE_DEFAULT
-            ).apply {
-                description = getString(R.string.notification_channel_updates_desc)
-            }
-            val manager = getSystemService(NotificationManager::class.java)
-            manager?.createNotificationChannel(serviceChannel)
-            manager?.createNotificationChannel(updateChannel)
+        val serviceChannel = NotificationChannel(
+            NOTIFICATION_CHANNEL_ID,
+            getString(R.string.notification_channel_name),
+            NotificationManager.IMPORTANCE_LOW
+        ).apply {
+            description = getString(R.string.notification_channel_description)
         }
+        val updateChannel = NotificationChannel(
+            UPDATE_NOTIFICATION_CHANNEL_ID,
+            getString(R.string.notification_channel_updates),
+            NotificationManager.IMPORTANCE_DEFAULT
+        ).apply {
+            description = getString(R.string.notification_channel_updates_desc)
+        }
+        val manager = getSystemService(NotificationManager::class.java)
+        manager?.createNotificationChannel(serviceChannel)
+        manager?.createNotificationChannel(updateChannel)
     }
 
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {

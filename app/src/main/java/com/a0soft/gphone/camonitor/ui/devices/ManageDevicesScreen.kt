@@ -12,6 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -20,7 +21,6 @@ import com.a0soft.gphone.camonitor.R
 import com.a0soft.gphone.camonitor.data.model.PairedDevice
 import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
 
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.QrCodeScanner
@@ -114,7 +114,8 @@ fun ManageDevicesScreen(
                                     style = MaterialTheme.typography.titleMedium
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
-                                val dateStr = SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault())
+                                val locale = LocalConfiguration.current.locales[0]
+                                val dateStr = SimpleDateFormat("MMM dd, yyyy HH:mm", locale)
                                     .format(Date(device.pairedTimestamp))
                                 Text(
                                     text = stringResource(R.string.manage_devices_paired_info, dateStr, device.deviceId.take(8)),

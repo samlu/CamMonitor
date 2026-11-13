@@ -1,4 +1,4 @@
-﻿package com.a0soft.gphone.camonitor.data.security
+package com.a0soft.gphone.camonitor.data.security
 
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
@@ -12,6 +12,7 @@ import java.security.PublicKey
 import java.security.SecureRandom
 import java.security.Signature
 import java.security.spec.ECGenParameterSpec
+import java.security.spec.PKCS8EncodedKeySpec
 import java.security.spec.X509EncodedKeySpec
 import java.util.Base64
 import javax.crypto.Cipher
@@ -57,7 +58,7 @@ object CryptoUtils {
                         // retrying. This sleep only happens on the failure path.
                         try {
                             Thread.sleep(40L)
-                        } catch (e: InterruptedException) {
+                        } catch (_: InterruptedException) {
                             Thread.currentThread().interrupt()
                         }
                     }
@@ -83,7 +84,7 @@ object CryptoUtils {
                     agreement.init(kp.private)
                     return kp
                 }
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 try { keyStore.deleteEntry(alias) } catch (_: Exception) {}
             }
         }
@@ -123,8 +124,8 @@ object CryptoUtils {
 
     fun softwareKeyPairFromBase64(privBase64: String, pubBase64: String): KeyPair {
         val kf = KeyFactory.getInstance("EC")
-        val privSpec = java.security.spec.PKCS8EncodedKeySpec(Base64.getDecoder().decode(privBase64))
-        val pubSpec = java.security.spec.X509EncodedKeySpec(Base64.getDecoder().decode(pubBase64))
+        val privSpec = PKCS8EncodedKeySpec(Base64.getDecoder().decode(privBase64))
+        val pubSpec = X509EncodedKeySpec(Base64.getDecoder().decode(pubBase64))
         return KeyPair(kf.generatePublic(pubSpec), kf.generatePrivate(privSpec))
     }
 
@@ -143,7 +144,7 @@ object CryptoUtils {
             verifier.initVerify(publicKey)
             verifier.update(data)
             verifier.verify(sigBytes)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             false
         }
     }

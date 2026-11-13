@@ -1,4 +1,4 @@
-﻿# CamMonitor Security and Code Review
+# CamMonitor Security and Code Review
 
 **Review date:** 2026-11-10  
 **Scope:** Static review of the application source, focused on security, access control, and related reliability issues.  

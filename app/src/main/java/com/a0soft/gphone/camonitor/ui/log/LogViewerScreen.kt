@@ -93,7 +93,7 @@ fun LogViewerScreen(
                                     putExtra(Intent.EXTRA_STREAM, uri)
                                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                 }
-                                context.startActivity(Intent.createChooser(shareIntent, context.getString(R.string.log_share_title)))
+                                context.startActivity(Intent.createChooser(shareIntent, context.applicationContext.getString(R.string.log_share_title)))
                             } catch (e: Exception) {
                                 AppLogger.e("LogViewer", "Failed to share log bundle", e)
                             }

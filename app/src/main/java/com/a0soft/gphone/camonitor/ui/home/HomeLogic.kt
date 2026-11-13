@@ -1,6 +1,7 @@
 package com.a0soft.gphone.camonitor.ui.home
 
 import android.content.Context
+import androidx.core.content.edit
 
 /** Network state shown in the Home pre-flight bar. */
 enum class NetworkType {
@@ -123,12 +124,12 @@ object CameraConnectionHistory {
     private const val KEY_PREFIX = "last_connected_"
 
     fun recordConnection(context: Context, deviceId: String, timestamp: Long = System.currentTimeMillis()) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putLong(KEY_PREFIX + deviceId, timestamp)
-            .apply()
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit {
+            putLong(KEY_PREFIX + deviceId, timestamp)
+        }
     }
 
+    @Suppress("unused")
     fun getLastConnected(context: Context, deviceId: String): Long? {
         val ts = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getLong(KEY_PREFIX + deviceId, 0L)
@@ -147,9 +148,8 @@ object CameraConnectionHistory {
     }
 
     fun clear(context: Context, deviceId: String) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .remove(KEY_PREFIX + deviceId)
-            .apply()
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit {
+            remove(KEY_PREFIX + deviceId)
+        }
     }
 }

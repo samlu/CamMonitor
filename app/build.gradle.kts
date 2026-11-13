@@ -45,7 +45,7 @@ fun computeAndValidateVersionCode(version: String): Int {
         99L
     } else {
         val num = if (preReleaseNum.isEmpty()) 1L else preReleaseNum.toLong()
-        if (num < 1L || num >= 99L) {
+        if (num !in 1L..<99L) {
             throw GradleException("[VersionCode Error] Pre-release number ($num) in '$version' must be between 1 and 98.")
         }
         num
@@ -137,7 +137,7 @@ androidComponents {
 }
 
 dependencies {
-    testImplementation("org.json:json:20240303")
+    testImplementation(libs.json)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)

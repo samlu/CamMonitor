@@ -9,9 +9,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-class TorchManager(private val context: Context) {
+class TorchManager(context: Context) {
     private val tag = "TorchManager"
-    private val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+    private val cameraManager = context.getSystemService(CameraManager::class.java)
 
     private val _isTorchOn = MutableStateFlow(false)
     val isTorchOn: StateFlow<Boolean> = _isTorchOn.asStateFlow()
@@ -25,10 +25,11 @@ class TorchManager(private val context: Context) {
 
     private fun findBackCamera() {
         try {
-            for (id in cameraManager.cameraIdList) {
-                val chars = cameraManager.getCameraCharacteristics(id)
-                val facing = chars.get(CameraCharacteristics.LENS_FACING)
-                val hasFlash = chars.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) ?: false
+            val list = cameraManager?.cameraIdList ?: emptyArray()
+            for (id in list) {
+                val chars = cameraManager?.getCameraCharacteristics(id) ?: continue
+                val facing = chars[CameraCharacteristics.LENS_FACING]
+                val hasFlash = chars[CameraCharacteristics.FLASH_INFO_AVAILABLE] ?: false
                 if (facing == CameraCharacteristics.LENS_FACING_BACK && hasFlash) {
                     backCameraId = id
                     break
@@ -55,7 +56,7 @@ class TorchManager(private val context: Context) {
         // 2. Otherwise (camera not open by WebRTC), use standard CameraManager.setTorchMode
         val id = backCameraId ?: return
         try {
-            cameraManager.setTorchMode(id, enabled)
+            cameraManager?.setTorchMode(id, enabled)
             AppLogger.i(tag, "Torch mode set via CameraManager: $enabled")
         } catch (e: Exception) {
             AppLogger.e(tag, "Failed to toggle torch mode via CameraManager", e)

@@ -2,6 +2,7 @@ package com.a0soft.gphone.camonitor.data.security
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.core.content.edit
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.a0soft.gphone.camonitor.data.model.PairedDevice
@@ -32,8 +33,8 @@ interface SecurityRepository {
     }
 
     fun getPairedDevices(): List<PairedDevice>
-    fun getPairedCameras(): List<PairedDevice> = getPairedDevices().filter { it.role != "VIEWER" }
-    fun getPairedViewers(): List<PairedDevice> = getPairedDevices().filter { it.role != "CAMERA" }
+    fun getPairedCameras(): List<PairedDevice> = getPairedDevices().filter { device -> device.role != "VIEWER" }
+    fun getPairedViewers(): List<PairedDevice> = getPairedDevices().filter { device -> device.role != "CAMERA" }
     fun addPairedDevice(device: PairedDevice, maxLimit: Int = MAX_PAIRED_CAMERAS): Boolean
     fun removePairedDevice(deviceId: String)
     fun isDeviceWhitelisted(deviceId: String): Boolean
@@ -137,24 +138,25 @@ class DefaultSecurityRepository(
     }
 
     /** Moves (or at least scrubs) the plaintext file left behind by earlier builds' fallback. */
+    @Suppress("ApplySharedPref")
     private fun migrateLegacyPlaintextPrefs(context: Context, secure: SharedPreferences) {
         val legacy = context.getSharedPreferences(LegacyPrefsMigration.LEGACY_PREFS_NAME, Context.MODE_PRIVATE)
         val legacyAll = legacy.all
         if (legacyAll.isEmpty() || !LegacyPrefsMigration.hasLegacyIdentity(legacyAll)) return
         val entries = LegacyPrefsMigration.entriesToMigrate(legacyAll, secure.contains("device_id"))
         if (entries.isNotEmpty()) {
-            val editor = secure.edit()
-            entries.forEach { (k, v) ->
-                when (v) {
-                    is String -> editor.putString(k, v)
-                    is Boolean -> editor.putBoolean(k, v)
-                    is Int -> editor.putInt(k, v)
-                    is Long -> editor.putLong(k, v)
-                    is Float -> editor.putFloat(k, v)
-                    is Set<*> -> editor.putStringSet(k, v.filterIsInstance<String>().toSet())
+            secure.edit(commit = true) {
+                entries.forEach { (k, v) ->
+                    when (v) {
+                        is String -> putString(k, v)
+                        is Boolean -> putBoolean(k, v)
+                        is Int -> putInt(k, v)
+                        is Long -> putLong(k, v)
+                        is Float -> putFloat(k, v)
+                        is Set<*> -> putStringSet(k, v.filterIsInstance<String>().toSet())
+                    }
                 }
             }
-            editor.commit()
         }
         context.deleteSharedPreferences(LegacyPrefsMigration.LEGACY_PREFS_NAME)
         AppLogger.i("SecurityRepository", "Legacy plaintext preferences scrubbed (migrated=${entries.size} entries)")
@@ -164,10 +166,10 @@ class DefaultSecurityRepository(
         override fun get(senderId: String): Long? =
             prefs.getLong("offer_hwm_$senderId", Long.MIN_VALUE).takeIf { it != Long.MIN_VALUE }
         override fun put(senderId: String, timestamp: Long) {
-            prefs.edit().putLong("offer_hwm_$senderId", timestamp).apply()
+            prefs.edit { putLong("offer_hwm_$senderId", timestamp) }
         }
         override fun remove(senderId: String) {
-            prefs.edit().remove("offer_hwm_$senderId").apply()
+            prefs.edit { remove("offer_hwm_$senderId") }
         }
     })
 
@@ -186,7 +188,7 @@ class DefaultSecurityRepository(
         var id = prefs.getString("device_id", null)
         if (id == null) {
             id = UUID.randomUUID().toString()
-            prefs.edit().putString("device_id", id).apply()
+            prefs.edit { putString("device_id", id) }
         }
         deviceId = id
 
@@ -199,13 +201,13 @@ class DefaultSecurityRepository(
                 val ks = java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
                 ks.deleteEntry(alias)
             } catch (_: Exception) {}
-            prefs.edit()
-                .remove("paired_devices")
-                .remove("device_priv_key")
-                .remove("device_pub_key")
-                .remove("key_using_software_fallback")
-                .putBoolean("key_ecdh_capable_v2", true)
-                .apply()
+            prefs.edit {
+                remove("paired_devices")
+                remove("device_priv_key")
+                remove("device_pub_key")
+                remove("key_using_software_fallback")
+                putBoolean("key_ecdh_capable_v2", true)
+            }
         }
 
         val usingSoftwareFallback = prefs.getBoolean("key_using_software_fallback", false)
@@ -217,7 +219,7 @@ class DefaultSecurityRepository(
             }
         } catch (e: Exception) {
             AppLogger.w("SecurityRepository", "KeyStore ECDH unavailable, using persistent software key: ${e.message}")
-            prefs.edit().putBoolean("key_using_software_fallback", true).apply()
+            prefs.edit { putBoolean("key_using_software_fallback", true) }
             getOrCreateSoftwareKeyPair()
         }
     }
@@ -239,10 +241,10 @@ class DefaultSecurityRepository(
     private fun generateAndSaveSoftwareKeyPair(): KeyPair {
         val swKp = CryptoUtils.generateSoftwareEcKeyPair()
         val (priv, pub) = CryptoUtils.softwareKeyPairToBase64(swKp)
-        prefs.edit()
-            .putString("device_priv_key", priv)
-            .putString("device_pub_key", pub)
-            .apply()
+        prefs.edit {
+            putString("device_priv_key", priv)
+            putString("device_pub_key", pub)
+        }
         return swKp
     }
 
@@ -254,7 +256,7 @@ class DefaultSecurityRepository(
     }
 
     override fun setDeviceName(name: String) {
-        prefs.edit().putString("device_name", name.trim()).apply()
+        prefs.edit { putString("device_name", name.trim()) }
         AppLogger.i("SecurityRepository", "Device name updated: $name")
     }
 
@@ -339,7 +341,7 @@ class DefaultSecurityRepository(
         val cache = ensureCacheLoaded()
         cache.remove(deviceId)
         savePairedDevices(cache.values.toList())
-        prefs.edit().remove("connect_durations_$deviceId").apply()
+        prefs.edit { remove("connect_durations_$deviceId") }
         offerReplayGuard.forget(deviceId)
         AppLogger.i("SecurityRepository", "Removed paired device: $deviceId")
     }
@@ -355,7 +357,7 @@ class DefaultSecurityRepository(
     private fun savePairedDevices(list: List<PairedDevice>) {
         val arr = JSONArray()
         list.forEach { arr.put(it.toJson()) }
-        prefs.edit().putString("paired_devices", arr.toString()).apply()
+        prefs.edit { putString("paired_devices", arr.toString()) }
     }
 
     override fun createEnvelope(
@@ -461,7 +463,7 @@ class DefaultSecurityRepository(
     }
 
     override fun setViewerAudioPlaybackEnabled(enabled: Boolean) {
-        prefs.edit().putBoolean("viewer_audio_playback_enabled", enabled).apply()
+        prefs.edit { putBoolean("viewer_audio_playback_enabled", enabled) }
         AppLogger.i("SecurityRepository", "Viewer audio playback enabled: $enabled")
     }
 
@@ -476,7 +478,7 @@ class DefaultSecurityRepository(
     }
 
     override fun setNightModeSetting(setting: com.a0soft.gphone.camonitor.data.model.NightModeSetting) {
-        prefs.edit().putString("night_mode_setting", setting.name).apply()
+        prefs.edit { putString("night_mode_setting", setting.name) }
         AppLogger.i("SecurityRepository", "Night mode setting persisted: $setting")
     }
 
@@ -491,7 +493,7 @@ class DefaultSecurityRepository(
         val raw = prefs.getString("connect_durations_$cameraDeviceId", null)
         val existing = raw?.split(",")?.mapNotNull { it.trim().toLongOrNull() } ?: emptyList()
         val updated = updateConnectDurationSamples(existing, durationMs)
-        prefs.edit().putString("connect_durations_$cameraDeviceId", updated.joinToString(",")).apply()
+        prefs.edit { putString("connect_durations_$cameraDeviceId", updated.joinToString(",")) }
         AppLogger.i("SecurityRepository", "Recorded connect duration for $cameraDeviceId: ${durationMs}ms (rolling avg=${updated.sum() / updated.size}ms)")
     }
 

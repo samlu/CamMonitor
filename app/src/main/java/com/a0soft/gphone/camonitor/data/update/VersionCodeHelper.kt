@@ -41,17 +41,17 @@ object VersionCodeHelper {
         val preReleaseName = match.groupValues[4]
         val preReleaseNum = match.groupValues[5]
 
-        if (major < 0L || major > MAX_MAJOR) {
+        if (major !in 0L..MAX_MAJOR) {
             throw IllegalArgumentException(
                 "Major version ($major) in '$version' is out of range (0..$MAX_MAJOR)."
             )
         }
-        if (minor < 0L || minor > MAX_MINOR) {
+        if (minor !in 0L..MAX_MINOR) {
             throw IllegalArgumentException(
                 "Minor version ($minor) in '$version' exceeds 3 digits (0..$MAX_MINOR)."
             )
         }
-        if (patch < 0L || patch > MAX_PATCH) {
+        if (patch !in 0L..MAX_PATCH) {
             throw IllegalArgumentException(
                 "Patch version ($patch) in '$version' exceeds 3 digits (0..$MAX_PATCH)."
             )
@@ -61,7 +61,7 @@ object VersionCodeHelper {
             FINAL_STAGE
         } else {
             val num = if (preReleaseNum.isEmpty()) 1L else preReleaseNum.toLong()
-            if (num < 1L || num >= FINAL_STAGE) {
+            if (num !in 1L..<FINAL_STAGE) {
                 throw IllegalArgumentException(
                     "Pre-release number ($num) in '$version' must be between 1 and 98."
                 )
@@ -70,7 +70,7 @@ object VersionCodeHelper {
         }
 
         val computed = major * 100_000_000L + minor * 100_000L + patch * 100L + stage
-        if (computed <= 0L || computed > Int.MAX_VALUE) {
+        if (computed !in 1L..Int.MAX_VALUE.toLong()) {
             throw IllegalArgumentException(
                 "Computed versionCode ($computed) for '$version' exceeds Android 32-bit positive integer range (1..${Int.MAX_VALUE})."
             )

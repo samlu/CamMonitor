@@ -67,6 +67,6 @@ object LegacyPrefsMigration {
      */
     fun entriesToMigrate(legacy: Map<String, *>, secureHasIdentity: Boolean): Map<String, Any> {
         if (secureHasIdentity || !legacy.containsKey(IDENTITY_KEY)) return emptyMap()
-        return legacy.filterValues { it != null }.mapValues { it.value!! }
+        return legacy.filterValues { it != null }.mapValues { (_, value) -> value!! }
     }
 }

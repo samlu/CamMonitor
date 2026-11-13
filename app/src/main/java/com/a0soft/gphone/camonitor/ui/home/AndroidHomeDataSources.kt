@@ -12,6 +12,7 @@ import com.a0soft.gphone.camonitor.data.update.ReleaseCheckResult
 import com.a0soft.gphone.camonitor.data.update.ReleaseChecker
 import com.a0soft.gphone.camonitor.data.update.ReleaseInfo
 import com.a0soft.gphone.camonitor.data.update.UpdatePreferenceManager
+import androidx.core.content.edit
 import com.a0soft.gphone.camonitor.log.AppLogger
 import com.a0soft.gphone.camonitor.ui.common.BatteryHelper
 import com.a0soft.gphone.camonitor.ui.common.BatteryInfo
@@ -27,7 +28,7 @@ class AndroidHomePreferences(context: Context) : HomePreferencesDataSource {
     override fun isStealthIntroSeen(): Boolean = prefs.getBoolean("stealth_intro_seen", false)
 
     override fun setStealthIntroSeen(seen: Boolean) {
-        prefs.edit().putBoolean("stealth_intro_seen", seen).apply()
+        prefs.edit { putBoolean("stealth_intro_seen", seen) }
     }
 
     override fun getLastConnectedMap(): Map<String, Long> = CameraConnectionHistory.getAll(appContext)

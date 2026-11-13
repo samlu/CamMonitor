@@ -42,12 +42,13 @@ class WebRtcManager(private val context: Context) {
 
     // Flows
     private val _incomingIceCandidates = MutableSharedFlow<Pair<String, IceCandidate>>(extraBufferCapacity = 32)
+    @Suppress("unused")
     val incomingIceCandidates: SharedFlow<Pair<String, IceCandidate>> = _incomingIceCandidates.asSharedFlow()
 
     private val _dataChannelCommands = MutableSharedFlow<Pair<String, ControlCommand>>(extraBufferCapacity = 32)
     val dataChannelCommands: SharedFlow<Pair<String, ControlCommand>> = _dataChannelCommands.asSharedFlow()
 
-    private val _connectionState = MutableStateFlow<PeerConnection.PeerConnectionState>(PeerConnection.PeerConnectionState.NEW)
+    private val _connectionState = MutableStateFlow(PeerConnection.PeerConnectionState.NEW)
     val connectionState: StateFlow<PeerConnection.PeerConnectionState> = _connectionState.asStateFlow()
 
     private val _activeViewersCount = MutableStateFlow(0)
@@ -141,6 +142,7 @@ class WebRtcManager(private val context: Context) {
     )
     val nightModeSetting: StateFlow<com.a0soft.gphone.camonitor.data.model.NightModeSetting> = _nightModeSetting.asStateFlow()
 
+    @Suppress("unused")
     val isNightExtensionSupported: Boolean
         get() = cameraXCapturer?.isNightExtensionSupported ?: false
 
@@ -259,7 +261,7 @@ class WebRtcManager(private val context: Context) {
                     val videoSender = pc.senders?.firstOrNull {
                         try {
                             it.track()?.kind() == "video"
-                        } catch (e: Throwable) {
+                        } catch (_: Throwable) {
                             false
                         }
                     }
@@ -270,8 +272,8 @@ class WebRtcManager(private val context: Context) {
                         val sender = pc.addTrack(vTrack, listOf("CAM_STREAM"))
                         configureVideoSender(sender)
                     }
-                } catch (e: Throwable) {
-                    AppLogger.w(tag, "Failed to re-attach video track to peer connection: ${e.message}")
+                } catch (_: Throwable) {
+                    AppLogger.w(tag, "Failed to re-attach video track to peer connection")
                 }
             }
         }
@@ -469,9 +471,7 @@ class WebRtcManager(private val context: Context) {
                 if (track is VideoTrack) {
                     AppLogger.i(tag, "Remote VideoTrack received: id=${track.id()}, state=${track.state()}, enabled=${track.enabled()}")
                     track.setEnabled(true)
-                    remoteVideoTrack?.let { oldTrack ->
-                        oldTrack.removeSink(remoteVideoSink)
-                    }
+                    remoteVideoTrack?.removeSink(remoteVideoSink)
                     remoteVideoTrack = track
                     track.removeSink(remoteVideoSink)
                     track.addSink(remoteVideoSink)
@@ -754,7 +754,9 @@ class WebRtcManager(private val context: Context) {
     private val pendingRemoteIceCandidates = java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.CopyOnWriteArrayList<IceCandidate>>()
     private val addedRemoteIceCandidates = java.util.concurrent.ConcurrentHashMap<String, MutableSet<String>>()
 
+    @Suppress("unused")
     internal fun getAddedRemoteIceCandidates(peerId: String): Set<String>? = addedRemoteIceCandidates[peerId]?.toSet()
+    @Suppress("unused")
     internal fun getPendingRemoteIceCandidates(peerId: String): List<IceCandidate>? = pendingRemoteIceCandidates[peerId]?.toList()
 
     fun addRemoteIceCandidate(peerId: String, candidate: IceCandidate) {

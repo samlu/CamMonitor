@@ -11,7 +11,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -27,6 +26,7 @@ import com.a0soft.gphone.camonitor.ui.common.QrUtils
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.seconds
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -40,7 +40,7 @@ fun CameraPairingScreen(
     val coroutineScope = rememberCoroutineScope()
 
     var otp by remember { mutableStateOf(securityRepo.generatePairingOtp()) }
-    var secondsLeft by remember { mutableStateOf(300) } // 5 minutes
+    var secondsLeft by remember { mutableIntStateOf(300) } // 5 minutes
     var isPairingSuccessful by remember { mutableStateOf(false) }
     var confirmedDeviceId by remember { mutableStateOf<String?>(null) }
     var isNavigatingSuccess by remember { mutableStateOf(false) }
@@ -78,7 +78,7 @@ fun CameraPairingScreen(
     LaunchedEffect(Unit) {
         while (isActive) {
             while (secondsLeft > 0) {
-                delay(1000L)
+                delay(1.seconds)
                 secondsLeft--
             }
             // Regenerate OTP if expired and restart 5-minute countdown
@@ -137,8 +137,8 @@ fun CameraPairingScreen(
                     if (!isNavigatingSuccess) {
                         isNavigatingSuccess = true
                         isPairingSuccessful = true
-                        launch {
-                            delay(4000L) // Ample retry window for viewer while servicing retries concurrently
+                        coroutineScope.launch {
+                            delay(4.seconds) // Ample retry window for viewer while servicing retries concurrently
                             onPairingSuccess()
                         }
                     }

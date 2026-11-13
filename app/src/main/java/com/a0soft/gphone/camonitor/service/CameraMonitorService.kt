@@ -2,10 +2,12 @@ package com.a0soft.gphone.camonitor.service
 
 import android.annotation.SuppressLint
 import android.app.Notification
+import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.wifi.WifiManager
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
@@ -21,6 +23,8 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 import org.webrtc.IceCandidate
 import org.webrtc.MediaConstraints
 import org.webrtc.SdpObserver
@@ -59,11 +63,13 @@ class CameraMonitorService : Service() {
 
     private val binder = LocalBinder()
     private var wakeLock: PowerManager.WakeLock? = null
-    private var wifiLock: android.net.wifi.WifiManager.WifiLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
 
     private val _streamingState = MutableStateFlow(CameraStreamingState.IDLE)
+    @Suppress("unused")
     val streamingState: StateFlow<CameraStreamingState> = _streamingState.asStateFlow()
 
+    @Suppress("unused")
     val isPttReceiving: StateFlow<Boolean>
         get() = CamMonitorApp.instance.webRtcManager.isPttReceiving
 
@@ -139,8 +145,8 @@ class CameraMonitorService : Service() {
      */
     @SuppressLint("WakelockTimeout")
     private fun acquireWakeLock() {
-        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "CamMonitor:StreamingWakeLock").apply {
+        val powerManager = getSystemService(PowerManager::class.java)
+        wakeLock = powerManager?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "CamMonitor:StreamingWakeLock")?.apply {
             setReferenceCounted(false)
             acquire()
         }
@@ -175,12 +181,12 @@ class CameraMonitorService : Service() {
     private fun acquireWifiLock() {
         if (wifiLock?.isHeld == true) return
         try {
-            val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+            val wifiManager = applicationContext.getSystemService(WifiManager::class.java)
             val lockMode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                android.net.wifi.WifiManager.WIFI_MODE_FULL_LOW_LATENCY
+                WifiManager.WIFI_MODE_FULL_LOW_LATENCY
             } else {
                 @Suppress("DEPRECATION")
-                android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF
+                WifiManager.WIFI_MODE_FULL_HIGH_PERF
             }
             wifiLock = wifiManager.createWifiLock(lockMode, "CamMonitor:StreamingWifiLock").apply {
                 setReferenceCounted(false)
@@ -203,6 +209,7 @@ class CameraMonitorService : Service() {
         }
     }
 
+    @Suppress("InlinedApi")
     private fun startForegroundServiceNotification() {
         val notification: Notification = NotificationCompat.Builder(this, CamMonitorApp.NOTIFICATION_CHANNEL_ID)
             .setContentTitle(getString(R.string.notification_title))
@@ -229,8 +236,8 @@ class CameraMonitorService : Service() {
             .setSmallIcon(android.R.drawable.ic_menu_camera)
             .setOngoing(true)
             .build()
-        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-        manager.notify(1001, notification)
+        val manager = getSystemService(NotificationManager::class.java)
+        manager?.notify(1001, notification)
     }
 
     fun startStreaming() {
@@ -340,7 +347,7 @@ class CameraMonitorService : Service() {
         cameraRecoveryAttempts = attempt + 1
         cameraRecoveryJob = serviceScope.launch {
             AppLogger.w(tag, "Camera lost — recovery attempt ${attempt + 1}/$MAX_CAMERA_RECOVERY_ATTEMPTS in ${delayMs}ms")
-            delay(delayMs)
+            delay(delayMs.milliseconds)
             if (_streamingState.value == CameraStreamingState.STREAMING ||
                 _streamingState.value == CameraStreamingState.WAITING_FOR_VIEWERS
             ) {
@@ -353,7 +360,7 @@ class CameraMonitorService : Service() {
 
     private fun resetCameraRecovery() {
         if (cameraRecoveryAttempts != 0) {
-            AppLogger.i(tag, "Camera recovery counter reset (was ${cameraRecoveryAttempts})")
+            AppLogger.i(tag, "Camera recovery counter reset (was $cameraRecoveryAttempts)")
         }
         cameraRecoveryAttempts = 0
         cameraRecoveryJob?.cancel()
@@ -370,7 +377,7 @@ class CameraMonitorService : Service() {
                         ControlCommand.Battery(bInfo.percentage, bInfo.isCharging)
                     )
                 }
-                delay(15_000L)
+                delay(15.seconds)
             }
         }
     }
@@ -384,7 +391,7 @@ class CameraMonitorService : Service() {
         inactivityJob?.cancel()
         inactivityJob = serviceScope.launch {
             AppLogger.i(tag, "Inactivity timer started: ${NO_VIEWER_PAUSE_MS / 1000}s countdown until camera pause")
-            delay(NO_VIEWER_PAUSE_MS)
+            delay(NO_VIEWER_PAUSE_MS.milliseconds)
             if (CamMonitorApp.instance.webRtcManager.activeViewersCount.value > 0) {
                 AppLogger.i(tag, "Inactivity timer elapsed, but activeViewersCount > 0; keeping camera active")
                 return@launch
@@ -587,7 +594,7 @@ class CameraMonitorService : Service() {
             is ControlCommand.SetNightMode -> {
                 val setting = try {
                     com.a0soft.gphone.camonitor.data.model.NightModeSetting.valueOf(cmd.mode)
-                } catch (e: Exception) {
+                } catch (_: Exception) {
                     com.a0soft.gphone.camonitor.data.model.NightModeSetting.AUTO
                 }
                 app.webRtcManager.setNightModeSetting(setting)
@@ -637,6 +644,7 @@ class CameraMonitorService : Service() {
         }
     }
 
+    @Suppress("unused")
     fun broadcastRename(newName: String) {
         CamMonitorApp.instance.webRtcManager.broadcastDataChannelCommand(ControlCommand.Rename(newName))
     }

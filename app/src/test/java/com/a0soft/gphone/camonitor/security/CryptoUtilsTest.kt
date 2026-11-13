@@ -1,4 +1,4 @@
-﻿package com.a0soft.gphone.camonitor.security
+package com.a0soft.gphone.camonitor.security
 
 import com.a0soft.gphone.camonitor.data.security.CryptoUtils
 import org.junit.Assert.*

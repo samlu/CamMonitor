@@ -13,13 +13,29 @@ import com.hivemq.client.mqtt.MqttClient
 import com.hivemq.client.mqtt.MqttClientSslConfig
 import com.hivemq.client.mqtt.datatypes.MqttQos
 import com.hivemq.client.mqtt.mqtt3.Mqtt3AsyncClient
-import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
 import javax.net.ssl.HttpsURLConnection
 import kotlin.coroutines.resume
+import kotlin.time.Duration.Companion.milliseconds
 
 interface SignalingClient {
     val incomingMessages: SharedFlow<Pair<String, SignalingMessage>>
@@ -36,7 +52,7 @@ interface SignalingClient {
 
 class MqttSignalingClient(
     private val securityRepository: SecurityRepository,
-    private val context: Context? = null
+    context: Context? = null
 ) : SignalingClient {
 
     private val tag = "MqttSignalingClient"
@@ -148,7 +164,7 @@ class MqttSignalingClient(
 
         for (targetHost in candidates) {
             val success = try {
-                withTimeoutOrNull(8_000L) {
+                withTimeoutOrNull(8000.milliseconds) {
                     attemptConnect(
                         host = targetHost,
                         expectedHost = canonicalHost,
@@ -284,7 +300,7 @@ class MqttSignalingClient(
             var delayMs = 2000L
             while (isActive && isListeningWanted && !_isConnectedFlow.value) {
                 AppLogger.i(tag, "Scheduled reconnect in ${delayMs}ms (wanted=$isListeningWanted, connected=${_isConnectedFlow.value})...")
-                delay(delayMs)
+                delay(delayMs.milliseconds)
                 if (!isActive || !isListeningWanted || _isConnectedFlow.value) break
 
                 val success = connectWithRetry(topic)
@@ -367,7 +383,7 @@ class MqttSignalingClient(
                                 AppLogger.w(tag, "Handshake dropped: deviceId mismatch (envelope=${envelope.senderId}, claimed=$claimedDeviceId)")
                                 return@launch
                             }
-                            if (claimedPubKey.isNullOrEmpty() || !securityRepository.verifyEnvelopeSignature(envelope, claimedPubKey)) {
+                            if (claimedPubKey.isEmpty() || !securityRepository.verifyEnvelopeSignature(envelope, claimedPubKey)) {
                                 AppLogger.w(tag, "Handshake dropped: Proof-of-Possession signature verification failed for ${envelope.senderId}")
                                 return@launch
                             }
@@ -403,7 +419,7 @@ class MqttSignalingClient(
         _isConnectedFlow.value = false
         AppLogger.i(tag, "awaitConnection: client is not connected, initiating connection...")
         startListening()
-        return withTimeoutOrNull(timeoutMs) {
+        return withTimeoutOrNull(timeoutMs.milliseconds) {
             _isConnectedFlow.first { it }
         } ?: false
     }

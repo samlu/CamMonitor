@@ -33,7 +33,7 @@ data class PairingPayload(
                     secret = json.getString("secret"),
                     broker = json.optString("broker").takeIf { it.isNotEmpty() }
                 )
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 null
             }
         }
@@ -113,7 +113,7 @@ data class SignalingEnvelope(
                     tag = json.getString("tag"),
                     signature = json.getString("signature")
                 )
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 null
             }
         }
@@ -235,7 +235,7 @@ sealed class SignalingMessage {
                     )
                     else -> null
                 }
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 null
             }
         }
@@ -394,7 +394,7 @@ sealed class ControlCommand {
                     "FPS_REPORT" -> FpsReport(fps = json.getInt("fps"))
                     else -> null
                 }
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 null
             }
         }
