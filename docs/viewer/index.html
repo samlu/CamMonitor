@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#121212">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="CamMonitor">
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src wss://broker.hivemq.com:8884 wss://broker.emqx.io:8884; media-src 'self' mediastream: blob:;">
+  <title>CamMonitor Web Viewer</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="apple-touch-icon" sizes="180x180" href="./icons/icon-180.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <!-- Home View -->
+  <div id="home-view">
+    <header class="app-header">
+      <div class="brand">
+        <img src="./icons/icon-192.png" alt="CamMonitor">
+        <div>
+          <div class="brand-title" data-i18n="app_title">CamMonitor</div>
+          <div class="brand-sub" data-i18n="app_subtitle">Encrypted P2P Web Viewer</div>
+        </div>
+      </div>
+      <div class="header-actions">
+        <select id="lang-select" class="icon-pill" aria-label="Language">
+          <option value="auto">Auto</option>
+          <option value="en">English</option>
+          <option value="zh-Hant">繁體中文</option>
+          <option value="zh-Hans">简体中文</option>
+          <option value="ja">日本語</option>
+        </select>
+        <button id="open-logs-btn" class="icon-pill" type="button" data-i18n="home_logs_btn">Logs</button>
+      </div>
+    </header>
+
+    <main class="home-main">
+      <div id="ios-pwa-banner" class="banner hidden" role="status">
+        <span id="ios-pwa-banner-text"></span>
+        <button id="ios-pwa-dismiss-btn" class="banner-dismiss" type="button" data-i18n="ios_pwa_dismiss">Dismiss</button>
+      </div>
+
+      <div class="identity-bar">
+        <div class="identity-meta">
+          <span class="muted" data-i18n="home_viewer_name_label">Viewer Name:</span>
+          <strong id="viewer-name-display">—</strong>
+        </div>
+        <button id="rename-viewer-btn" class="btn-outline" type="button" data-i18n="home_edit_name">Rename</button>
+      </div>
+
+      <div class="section-header">
+        <div id="cameras-heading" class="section-title">Monitored Cameras (0/8)</div>
+        <button id="open-pair-btn" class="btn-primary" type="button" data-i18n="home_pair_camera">+ Pair Camera</button>
+      </div>
+
+      <div id="camera-list" class="camera-list"></div>
+      <div id="empty-state" class="empty-card hidden">
+        <strong data-i18n="home_empty_title">No Paired Cameras</strong>
+        <span class="muted" data-i18n="home_empty_desc">Tap + Pair Camera to scan a camera's QR code or paste a pairing link.</span>
+      </div>
+    </main>
+  </div>
+
+  <!-- Live Viewer View -->
+  <div id="viewer-view" class="viewer-screen hidden">
+    <div id="video-stage" class="video-stage">
+      <video id="remote-video" autoplay playsinline muted></video>
+    </div>
+
+    <div id="floating-battery" class="floating-battery hidden">📷 --%</div>
+
+    <div id="viewer-hud" class="viewer-hud">
+      <div class="hud-bar">
+        <button id="viewer-back-btn" class="ctrl-btn" type="button">←</button>
+        <div class="hud-title-group">
+          <div id="viewer-cam-name" class="hud-cam-name">Camera</div>
+          <div class="hud-status-row">
+            <span id="viewer-status-dot" class="status-dot"></span>
+            <span id="viewer-status-text">Connecting...</span>
+          </div>
+        </div>
+        <div class="hud-actions-right">
+          <span id="hud-battery-pill" class="icon-pill">📷 --%</span>
+        </div>
+      </div>
+
+      <div class="hud-bar hud-bottom">
+        <button id="ctrl-mute-btn" class="ctrl-btn" type="button">🔇 <span data-i18n="ctrl_mute">Audio</span></button>
+        <button id="ctrl-torch-btn" class="ctrl-btn" type="button">🔦 <span data-i18n="ctrl_torch">Torch</span></button>
+        <button id="ctrl-night-btn" class="ctrl-btn" type="button">🌙 <span id="ctrl-night-label">Auto</span></button>
+        <button id="ctrl-rotate-btn" class="ctrl-btn" type="button">⟳ <span data-i18n="ctrl_rotate">Rotate</span></button>
+        <button id="ctrl-fit-btn" class="ctrl-btn" type="button">⛶ <span id="ctrl-fit-label">Fit</span></button>
+        <button id="ctrl-ptt-btn" class="ptt-btn" type="button">🎙️ <span id="ctrl-ptt-label">Hold to Talk</span></button>
+        <button id="ctrl-fullscreen-btn" class="ctrl-btn" type="button">⛶ <span data-i18n="ctrl_fullscreen">Fullscreen</span></button>
+      </div>
+    </div>
+
+    <div id="viewer-center-overlay" class="center-overlay hidden">
+      <div id="viewer-status-card" class="status-card"></div>
+    </div>
+  </div>
+
+  <!-- Pair Modal -->
+  <div id="pair-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+    <div class="modal">
+      <h2 class="modal-title" data-i18n="pair_modal_title">Pair New Camera</h2>
+      <div class="tabs">
+        <button id="pair-tab-scan" class="tab-btn active" type="button" data-i18n="pair_tab_scan">Scan QR Code</button>
+        <button id="pair-tab-paste" class="tab-btn" type="button" data-i18n="pair_tab_paste">Paste Link / Code</button>
+      </div>
+      <div id="pair-panel-scan">
+        <div class="qr-video-wrap">
+          <video id="qr-video" autoplay playsinline muted></video>
+        </div>
+      </div>
+      <div id="pair-panel-paste" class="hidden">
+        <textarea id="pair-paste-input" class="text-area" placeholder="Paste https://samlu.github.io/CamMonitor/viewer/#pair=... or JSON"></textarea>
+        <div class="modal-actions" style="margin-top: 10px;">
+          <button id="pair-paste-submit" class="btn-primary" type="button" data-i18n="pair_paste_submit">Pair Now</button>
+        </div>
+      </div>
+      <div id="pair-status-msg" class="muted"></div>
+      <div id="pair-error-msg" class="error-text hidden"></div>
+      <div class="modal-actions">
+        <button id="pair-existing-connect-btn" class="btn-tonal hidden" type="button"></button>
+        <button id="pair-close-btn" class="btn-outline" type="button" data-i18n="action_cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Rename Viewer Modal -->
+  <div id="rename-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+    <div class="modal">
+      <h2 class="modal-title" data-i18n="rename_modal_title">Rename This Viewer</h2>
+      <input id="rename-input" class="text-input" type="text" maxlength="32">
+      <div class="modal-actions">
+        <button id="rename-cancel-btn" class="btn-outline" type="button" data-i18n="action_cancel">Cancel</button>
+        <button id="rename-save-btn" class="btn-primary" type="button" data-i18n="action_save">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Unpair Modal -->
+  <div id="unpair-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+    <div class="modal">
+      <h2 class="modal-title" data-i18n="unpair_modal_title">Unpair Camera</h2>
+      <p id="unpair-message" class="muted"></p>
+      <div class="modal-actions">
+        <button id="unpair-cancel-btn" class="btn-outline" type="button" data-i18n="action_cancel">Cancel</button>
+        <button id="unpair-confirm-btn" class="btn-danger" type="button" data-i18n="home_unpair">Unpair</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Diagnostics Logs Modal -->
+  <div id="logs-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+    <div class="modal modal-wide">
+      <h2 class="modal-title" data-i18n="logs_title">Diagnostic Logs</h2>
+      <div id="logs-container" class="log-list"></div>
+      <div class="modal-actions">
+        <button id="logs-clear-btn" class="btn-outline" type="button" data-i18n="logs_clear">Clear</button>
+        <button id="logs-copy-btn" class="btn-tonal" type="button" data-i18n="logs_copy">Copy Logs</button>
+        <button id="logs-close-btn" class="btn-primary" type="button" data-i18n="action_close">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="./vendor/mqtt.min.js"></script>
+  <script src="./vendor/jsQR.js"></script>
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>

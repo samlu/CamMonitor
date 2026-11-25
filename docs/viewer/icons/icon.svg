@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2E788F"/>
+      <stop offset="1" stop-color="#0E355C"/>
+    </linearGradient>
+    <linearGradient id="body" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#A8EAE0"/>
+      <stop offset="1" stop-color="#29A3A9"/>
+    </linearGradient>
+    <linearGradient id="core" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#9EE6DC"/>
+      <stop offset="1" stop-color="#38A9B0"/>
+    </linearGradient>
+  </defs>
+  <rect width="108" height="108" rx="22" fill="url(#bg)"/>
+  <g transform="scale(0.81818) translate(13, 13.5)">
+    <path d="M37,31h8a2,2 0 0,1 2,2v3h-12v-3a2,2 0 0,1 2,-2z" fill="#A8EAE0"/>
+    <path d="M36,35h12c3,0 5,3 8,4c10,1 16,8 16,17v2c4,-2 7,-2 10,-2v12c0,6.6 -5.4,12 -12,12h-34c-6.6,0 -12,-5.4 -12,-12v-21c0,-6.6 5.4,-12 12,-12z" fill="url(#body)"/>
+    <path d="M43.5,65.5 L58,80 H70 C76.6,80 82,74.6 82,68 V 58 L61.5,47.5 Z" fill="#0E355C" fill-opacity="0.2"/>
+    <circle cx="52" cy="57" r="13.5" fill="#B8F1E7"/>
+    <circle cx="52" cy="57" r="9" fill="#113F67"/>
+    <circle cx="52" cy="57" r="5.5" fill="url(#core)"/>
+    <path d="M55,34 A19,19 0 0,1 74,53" stroke="#8CE0D8" stroke-width="4.2" stroke-linecap="round" fill="none"/>
+    <path d="M55,27 A26,26 0 0,1 81,53" stroke="#A8EAE0" stroke-width="4.2" stroke-linecap="round" fill="none"/>
+  </g>
+</svg>

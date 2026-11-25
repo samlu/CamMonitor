@@ -1,0 +1,14 @@
+CamMonitor Web Viewer Vendored Dependencies
+=============================================
+
+1. mqtt.min.js
+   Package: mqtt@5.16.1 (https://www.npmjs.com/package/mqtt)
+   Source file: dist/mqtt.min.js
+   License: MIT
+   SHA-256: 75873D04A6400BBBAC093B3602CAF06F44ED92EE032925E1F4F21C03EBA05A4E
+
+2. jsQR.js
+   Package: jsqr@1.4.0 (https://www.npmjs.com/package/jsqr)
+   Source file: dist/jsQR.js
+   License: Apache-2.0
+   SHA-256: BC40C8A15196236B2314DB0856F72CA0B49980CD5413B8C852A7349F5FEE0859
