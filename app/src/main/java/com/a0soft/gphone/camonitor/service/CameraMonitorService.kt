@@ -488,6 +488,12 @@ class CameraMonitorService : Service() {
         }
 
         val pc = app.webRtcManager.createPeerConnection(senderId) { candidate ->
+            // Drop loopback ICE candidates (127.x.x.x / ::1): they can never reach a remote peer
+            // and trigger Chrome 145+ Local Network Access UDP socket closures (-36).
+            val candIp = candidate.sdp.trim().split(Regex("\\s+")).getOrNull(4).orEmpty()
+            if (candIp == "::1" || candIp.startsWith("127.")) {
+                return@createPeerConnection
+            }
             val typeMatch = Regex("typ\\s+(\\w+)").find(candidate.sdp)?.groupValues?.getOrNull(1) ?: "unknown"
             AppLogger.d(tag, "Generated local ICE candidate for $senderId: mid=${candidate.sdpMid}, type=$typeMatch. Transmitting...")
             val iceMsg = SignalingMessage.IceCandidate(candidate.sdpMid, candidate.sdpMLineIndex, candidate.sdp)

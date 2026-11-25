@@ -144,7 +144,13 @@
     <string name="cd_pairing_qr_code">Pairing QR Code</string>
     <string name="camera_pairing_otp_expires">OTP expires in %1$02d:%2$02d</string>
     <string name="camera_pairing_slot_available">Slot %1$d of %2$d Available</string>
-    <string name="camera_pairing_instructions">Open CamMonitor on Device B, tap \'Start Viewer Mode\' and scan this code.</string>
+    <string name="camera_pairing_instructions">Scan with CamMonitor on Android, or scan with your iPhone Camera to open the Web Viewer.</string>
+    <string name="camera_pairing_share_link">Share Link</string>
+    <string name="camera_pairing_copy_link">Copy Link</string>
+    <string name="camera_pairing_link_copied">Copied</string>
+    <string name="camera_pairing_link_security_note">Single-use link expires in 5 minutes</string>
+    <string name="camera_pairing_share_subject">Pair with %1$s on CamMonitor</string>
+    <string name="camera_pairing_share_chooser_title">Share Pairing Link</string>
 
     <!-- Viewer Pairing Screen -->
     <string name="viewer_pairing_title">Scan Camera QR Code</string>

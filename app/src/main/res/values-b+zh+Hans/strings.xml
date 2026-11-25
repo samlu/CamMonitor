@@ -144,7 +144,13 @@
     <string name="cd_pairing_qr_code">配对二维码</string>
     <string name="camera_pairing_otp_expires">OTP 有效期剩余 %1$02d:%2$02d</string>
     <string name="camera_pairing_slot_available">剩余可用名额 %1$d/%2$d</string>
-    <string name="camera_pairing_instructions">请在设备 B 上打开 CamMonitor，点击「启动观看模式」并扫描此二维码。</string>
+    <string name="camera_pairing_instructions">请使用 Android 版 CamMonitor 扫描，或用 iPhone 相机扫描以打开网页观看端。</string>
+    <string name="camera_pairing_share_link">分享链接</string>
+    <string name="camera_pairing_copy_link">复制链接</string>
+    <string name="camera_pairing_link_copied">已复制</string>
+    <string name="camera_pairing_link_security_note">单次使用链接将在 5 分钟后失效</string>
+    <string name="camera_pairing_share_subject">在 CamMonitor 上与「%1$s」配对</string>
+    <string name="camera_pairing_share_chooser_title">分享配对链接</string>
 
     <!-- Viewer Pairing Screen -->
     <string name="viewer_pairing_title">扫描镜头二维码</string>

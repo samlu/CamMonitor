@@ -291,7 +291,7 @@ private suspend fun handleScannedQr(
     onRetry: () -> Unit,
     updateStatus: (String) -> Unit
 ) {
-    val payload = PairingPayload.fromJson(qrText)
+    val payload = PairingPayload.fromQrContent(qrText)
     if (payload == null) {
         updateStatus(context.getString(R.string.viewer_pairing_invalid_qr))
         delay(2.seconds)

@@ -144,7 +144,13 @@
     <string name="cd_pairing_qr_code">ペアリング用 QR コード</string>
     <string name="camera_pairing_otp_expires">OTP の有効期限まで %1$02d:%2$02d</string>
     <string name="camera_pairing_slot_available">空き枠 %1$d / %2$d</string>
-    <string name="camera_pairing_instructions">デバイス B で CamMonitor を開き、「ビューアーモードを開始」をタップしてこのコードをスキャンしてください。</string>
+    <string name="camera_pairing_instructions">Android 版 CamMonitor でスキャンするか、iPhone のカメラで読み取って Web ビューアーを開いてください。</string>
+    <string name="camera_pairing_share_link">リンクを共有</string>
+    <string name="camera_pairing_copy_link">リンクをコピー</string>
+    <string name="camera_pairing_link_copied">コピー済み</string>
+    <string name="camera_pairing_link_security_note">使い捨てリンクは 5 分で有効期限が切れます</string>
+    <string name="camera_pairing_share_subject">CamMonitor で「%1$s」とペアリング</string>
+    <string name="camera_pairing_share_chooser_title">ペアリングリンクを共有</string>
 
     <!-- Viewer Pairing Screen -->
     <string name="viewer_pairing_title">カメラの QR コードをスキャン</string>

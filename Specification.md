@@ -4,6 +4,7 @@
 CamMonitor is a peer-to-peer camera monitoring Android application running across two device roles:
 * **Camera Mode (PA - Sender):** Captures 720p video (using hardware-supported AE FPS range closest to soft constraint 20fps, e.g. 15–24fps) and audio via CameraX with dynamic Night extension (`ExtensionMode.NIGHT`) and Camera2 low-light fallback, ambient light sensor monitoring with debounced hysteresis, customizable device naming/renaming, remote flashlight control, 2-way talkback, battery-saving OLED black screen, and real-time battery status reporting.
 * **Viewer Mode (PB - Receiver):** Streams real-time video/audio, displays PA's custom device name with real-time rename synchronization, monitors real-time battery percentages & charging statuses of both devices (PA camera & PB viewer), provides a 3-way Night mode toggle (`Auto` / `Night` / `Normal`), supports 90° rotation increments, remote flashlight toggle, and push-to-talk intercom.
+* **Browser-Based Web Viewer (Static PWA in `docs/viewer/`):** Enables iPhone/iPad (Safari / Home Screen PWA), Desktop (Windows/macOS/Linux), and Android browsers to pair via `#pair=<base64url>` Universal Pairing Links or QR scan and stream live 720p video/audio, Torch, Night Mode, 90° Rotate, Fit/Fill, and PTT over MQTT-over-WSS + P2P WebRTC with bit-for-bit WebCrypto E2EE parity (`https://samlu.github.io/CamMonitor/viewer/`).
 * **Diagnostics & Logging:** Integrated persistent file-based rolling logger. Logs connection states, WebRTC ICE steps, signaling envelopes, camera lifecycle, and security verifications to local files, complete with an in-app log viewer and export/share feature.
 * **Testability & Quality Assurance:** Architected for 100% deterministic testability with interface-driven abstraction layers, fake implementations, Coroutine `TestDispatcher` time control, and comprehensive Unit, Integration, and Compose UI test suites.
 * **Platform & SDK Targets:**
@@ -396,16 +397,22 @@ Every signaling envelope sent over the public MQTT broker is structured as:
 * **Top Bar:** Title `"Pair New Viewer"`, navigation back/cancel button.
 * **Center Box:**
   * White card container (`Surface(color = Color.White, shape = RoundedCornerShape(16.dp))`) with 16dp padding to render the QR Code bitmap with high contrast.
-  * QR Code size: 260dp $\times$ 260dp.
-* **Below QR Code:**
+  * QR Code size: 260dp $\times$ 260dp (280dp card).
+  * **Universal Pairing Link QR Payload (`PairingPayload.toPairingUrl()`):** Encodes `https://samlu.github.io/CamMonitor/viewer/#pair=<base64url-no-padding(JSON)>` using ZXing `ErrorCorrectionLevel.M`, `MARGIN = 1`, `CHARACTER_SET = "UTF-8"`, reactive to 5-minute OTP rotation. Because the secret lives solely in the URL `#fragment`, browsers never send it to GitHub Pages.
+* **Below QR Code (Vertically Scrollable):**
   * **Device Name Header:** Shows current name (e.g. `"Broadcasting as: Living Room Cam"`).
   * **Expiration Timer Pill:** Countdown timer showing remaining OTP validity (`Expires in 04:59`). Uses `StatusWarning` color if $< 60$s.
-  * **Helper Instructions:** `"Open CamMonitor on Device B, tap 'Start Viewer Mode' and scan this code."`
   * **Slot Indicator:** `"Slot 1 of 8 Available"`.
+  * **Helper Instructions:** `"Scan with CamMonitor on Android, or scan with your iPhone Camera to open the Web Viewer."`.
+  * **Share / Copy Pairing Link Actions:**
+    * `Share Link` (`FilledTonalButton`): Launches Android `Intent.ACTION_SEND` share chooser with the `#pair=` link.
+    * `Copy Link` (`OutlinedButton`): Copies the `#pair=` link to `ClipboardManager` (marking `ClipDescription.EXTRA_IS_SENSITIVE = true` on Android 13+ / API 33+ to mask the OTP in OS clipboard previews).
+    * Security note: `"Single-use link expires in 5 minutes"`.
 * **Bottom Action:**
   * `OutlinedButton`: `"Cancel Pairing"` $\to$ Invalidates OTP, returns to Home Screen.
 
 #### 5.2.2 PB — Viewer Pairing Scanner Screen
+* **Parsing Backward Compatibility:** Uses `PairingPayload.fromQrContent()` to accept both new `#pair=<base64url>` Universal Pairing Links and legacy raw JSON QR codes.
 * **Viewfinder:** Full-screen CameraX preview rendered via `AndroidView`.
 * **Overlay:**
   * Semi-transparent dark mask with a central transparent cutout (260dp $\times$ 260dp) and rounded corners.
@@ -958,6 +965,23 @@ To guarantee that every pre-release and final release provides a strictly monoto
 * **Build-Time Guardrails**:
   * Implemented directly in `app/build.gradle.kts` and shared in `VersionCodeHelper.kt`.
   * Throws immediate `GradleException` / `IllegalArgumentException` during project evaluation if `versionName` contains minor/patch $> 999$ (e.g. `1.1234.4567`), major $> 21$, illegal pre-release numbers, or malformed version patterns.
+
+---
+
+## 10. Browser-Based Web Viewer (Static PWA in `docs/viewer/`)
+
+* **Hosting & Routing:** Served statically from `main / docs` on GitHub Pages at `https://samlu.github.io/CamMonitor/viewer/` (with `docs/.nojekyll` and `docs/index.html` redirecting `/` to `./viewer/` while preserving `window.location.search` and `window.location.hash`). Developer self-hosting steps are documented in `WEB_VIEWER_DEPLOY.md`.
+* **Zero-Build ES Modules & Vendored Dependencies:** Uses zero-build-step ES modules (`app.js`, `crypto.js`, `storage.js`, `signaling.js`, `pairing.js`, `webrtc.js`, `ui.js`, `i18n.js`, `logger.js`) with pinned `mqtt@5.16.1` (`docs/viewer/vendor/mqtt.min.js`) and `jsqr@1.4.0` (`docs/viewer/vendor/jsQR.js`) under strict CSP (`default-src 'self'; script-src 'self'; ...`).
+* **WebCrypto E2EE Parity (`crypto.js`, `signaling.js`):**
+  * Generates EC P-256 identity keypairs once, persists non-extractable `ECDSA` + `ECDH` `CryptoKey` handles in `IndexedDB` (`cammonitor_web_db`), and scrubs `#pair=...` immediately via `history.replaceState`.
+  * Implements custom HKDF-Expand-only (`HMAC-SHA256` with raw secret as PRK when salt is empty) matching `CryptoUtils.hkdfSha256()`, AES-256-GCM split-tag envelopes, ASN.1 DER $\leftrightarrow$ IEEE P1363 ECDSA signature conversion, $\pm 120\text{s}$ replay window, nonce rollback on auth/decrypt failure, Offer monotonic timestamps, Proof-of-Possession verification, and public key immutability guard.
+* **Signaling & WebRTC Parity (`webrtc.js`):**
+  * Connects via MQTT over WSS (`wss://broker.hivemq.com:8884/mqtt`, MQTT v3.1.1, honoring allowlisted `PairingPayload.broker`).
+  * Configures Unified Plan transceivers (`video recvonly`, `audio sendrecv` without upfront mic capture, and `createDataChannel("control", { ordered: true })` before `createOffer()`), handles both local and PA-created DataChannels, buffers/deduplicates trickle ICE candidates, renders 4-step progress telemetry (`CAMERA_WAKING`, 15s `CameraTimeout` + 10s auto-retry, 3s disconnect auto-reconnect, `REJECT`), supports 90° rotation + Fit/Fill (double-tap), Screen Wake Lock, Touch/Spacebar PTT (`replaceTrack` with `pointercancel` safety and audio ducking), iOS PWA Home Screen banner, 4-locale i18n, and an in-app diagnostic log drawer.
+* **Automated Verification Suites:**
+  * `node --test docs/viewer/test/*.test.js` (`crypto.test.js`, `signaling.test.js`, `pairing.test.js`, `webrtc.test.js`, `ui-i18n.test.js`).
+  * `WebViewerCryptoInteropTest.kt` + `docs/viewer/test/interop-bridge.mjs` verifying bidirectional JVM `CryptoUtils` $\leftrightarrow$ Node.js WebCrypto compatibility, plus `PairingUrlTest.kt` and `QrUtilsTest.kt`.
+
 
 
 

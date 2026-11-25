@@ -13,9 +13,9 @@ CamMonitor turns your spare Android phone into a private, zero-account home secu
 
 - **Zero-Account Setup:** No signups, passwords, or cloud accounts. Pairing is completed instantly via an encrypted one-time QR code.
 - **Strict End-to-End Security:** P2P connection encrypted with ECDSA device keys and AES-256-GCM. Only paired devices can access your camera feed.
-- **Dual Device Roles:**
-  - **Camera Mode:** Runs on the phone used as the camera (captures 720p HD video and audio).
-  - **Viewer Mode:** Runs on your daily phone to monitor the live feed.
+- **Dual Device Roles & Web Viewer:**
+  - **Camera Mode:** Runs on an Android phone used as the camera (captures 720p HD video and audio).
+  - **Viewer Mode (Android & Web Browser / iPhone):** Monitor the live feed from your daily Android phone, or directly from **iPhone/iPad Safari (PWA)**, **Desktop (Windows / macOS / Linux)**, or **Android browsers** via the static [**CamMonitor Web Viewer**](https://samlu.github.io/CamMonitor/viewer/) with zero cloud accounts or App Store install.
 - **Multi-Device Support:**
   - 1 Camera can pair with up to **8 viewers** and stream to up to **2 viewers simultaneously**.
   - 1 Viewer can pair with up to **8 different cameras** (e.g., Living Room, Front Door, Baby Nursery).
@@ -74,11 +74,12 @@ Before first use, pair your two devices:
    - Open CamMonitor.
    - Tap **Start Camera Mode** (or tap **Pair Viewer** if prompted).
    - A pairing QR code will appear on screen.
-2. **On the Viewer Phone:**
-   - Open CamMonitor.
-   - Tap **Start Viewer Mode** (or tap **Pair Camera**).
-   - Point the camera scanner at the QR code displayed on the camera phone.
-3. Once scanned, both phones will confirm the pairing automatically.
+2. **On the Viewer Device:**
+   - **Android Viewer App:** Open CamMonitor, tap **Start Viewer Mode** (or **Pair Camera**), and scan the QR code on the camera phone.
+   - **iPhone / iPad (Zero-Install Web Viewer):** Open the native iPhone Camera app, point it at the QR code, and tap the Safari banner to open `https://samlu.github.io/CamMonitor/viewer/` and pair automatically. *(Tip: On iPhone, tap **Share → Add to Home Screen** and pair once inside the Home Screen app so your paired cameras persist permanently.)*
+   - **Laptop / Desktop Browser:** Tap **Share Link** or **Copy Link** below the QR code on the camera phone, send the link to your computer, and click it to pair automatically — or open the Web Viewer and use your webcam / paste the link.
+3. Once confirmed, both devices remember the pairing permanently until manually removed. *(Because the one-time pairing secret lives in the `#pair=` URL fragment, it stays strictly in your browser and is never sent to GitHub Pages.)*
+   - *Developers:* See [WEB_VIEWER_DEPLOY.md](WEB_VIEWER_DEPLOY.md) to host your own Web Viewer on GitHub Pages.
 
 *(You only need to pair once. Paired devices are remembered permanently until manually removed.)*
 

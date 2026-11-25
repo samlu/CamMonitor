@@ -22,17 +22,64 @@ data class PairingPayload(
         }.toString()
     }
 
+    fun toPairingUrl(baseUrl: String = DEFAULT_WEB_VIEWER_BASE_URL): String {
+        val cleanBase = baseUrl.substringBefore('#')
+        val encoded = java.util.Base64.getUrlEncoder()
+            .withoutPadding()
+            .encodeToString(toJson().toByteArray(Charsets.UTF_8))
+        return "$cleanBase$PAIR_FRAGMENT_PREFIX$encoded"
+    }
+
     companion object {
+        const val DEFAULT_WEB_VIEWER_BASE_URL = "https://samlu.github.io/CamMonitor/viewer/"
+        const val PAIR_FRAGMENT_PREFIX = "#pair="
+
         fun fromJson(jsonStr: String): PairingPayload? {
             return try {
                 val json = JSONObject(jsonStr)
+                val deviceId = json.getString("deviceId").trim()
+                val name = json.getString("name").trim()
+                val secret = json.getString("secret").trim()
+                if (deviceId.isEmpty() || name.isEmpty() || secret.isEmpty()) {
+                    return null
+                }
                 PairingPayload(
                     ver = json.optInt("ver", 1),
-                    deviceId = json.getString("deviceId"),
-                    name = json.getString("name"),
-                    secret = json.getString("secret"),
-                    broker = json.optString("broker").takeIf { it.isNotEmpty() }
+                    deviceId = deviceId,
+                    name = name,
+                    secret = secret,
+                    broker = json.optString("broker").trim().takeIf { it.isNotEmpty() }
                 )
+            } catch (_: Exception) {
+                null
+            }
+        }
+
+        /**
+         * Parses either a universal `#pair=<base64url>` web viewer URL (or bare `#pair=` / `pair=`
+         * token) or a legacy raw JSON [PairingPayload]. Returns null if malformed.
+         */
+        fun fromQrContent(raw: String): PairingPayload? {
+            val trimmed = raw.trim()
+            if (trimmed.isEmpty()) return null
+            if (trimmed.startsWith("{")) {
+                return fromJson(trimmed)
+            }
+            return try {
+                val tokenStart = when {
+                    trimmed.contains(PAIR_FRAGMENT_PREFIX) ->
+                        trimmed.substringAfter(PAIR_FRAGMENT_PREFIX)
+                    trimmed.startsWith("pair=") ->
+                        trimmed.removePrefix("pair=")
+                    else -> return null
+                }
+                val token = tokenStart
+                    .takeWhile { !it.isWhitespace() && it != '&' && it != '#' }
+                    .replace("%3D", "=")
+                    .replace("%3d", "=")
+                if (token.isEmpty()) return null
+                val decodedBytes = java.util.Base64.getUrlDecoder().decode(token)
+                fromJson(String(decodedBytes, Charsets.UTF_8))
             } catch (_: Exception) {
                 null
             }
