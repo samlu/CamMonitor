@@ -17,7 +17,7 @@ CamMonitor turns your spare Android phone into a private, zero-account home secu
   - **Camera Mode:** Runs on the phone used as the camera (captures 720p HD video and audio).
   - **Viewer Mode:** Runs on your daily phone to monitor the live feed.
 - **Multi-Device Support:**
-  - 1 Camera can stream to up to **2 viewers** simultaneously.
+  - 1 Camera can pair with up to **8 viewers** and stream to up to **2 viewers simultaneously**.
   - 1 Viewer can pair with up to **8 different cameras** (e.g., Living Room, Front Door, Baby Nursery).
 - **Smart Battery & Screen Protection:**
   - **OLED Black Screen & Touch Guard:** Screen turns completely black after 60 seconds of inactivity (or tap the **Black Screen** button) to prevent OLED burn-in and save power. Releases keep-screen-on while locked, allowing display hardware to sleep and SoC to enter deep suspend. Touch input is locked to prevent stray taps; swipe to unlock.
@@ -90,7 +90,7 @@ Before first use, pair your two devices:
 2. Mount or position your phone facing the area you want to monitor.
 3. Check the **Hardware Pre-Flight Bar** at the top of the Home Screen to confirm your charging status (`⚡ Charging`) and network before stepping away. It updates live when you plug/unplug or the network changes, and shows `No Internet` (amber) when the network is attached but has no working internet (e.g. captive portal), and `Ethernet Connected` for wired setups.
 4. **Screen Behavior:**
-   - **HUD Overlay:** The top bar shows streaming resolution/FPS (`720p 15fps`), active viewer count (`0/2` in portrait, `0/2 Viewers` in landscape), Night mode status, and flashlight status.
+   - **HUD Overlay:** The top bar shows streaming resolution/FPS (`720p 15fps`), active concurrent viewer count (`0/2` in portrait, `0/2 Active` in landscape), paired viewer count (`3/8` in portrait, `3/8 Paired` in landscape), Night mode status, and flashlight status.
    - **Screen Behavior & OLED Black Screen:** While previewing, the display is kept awake. After 60 seconds without touch (or by tapping the **Black Screen** button at the bottom left), the screen switches to black screen mode and releases keep-screen-on, allowing the panel to sleep and the SoC to enter deep suspend. **Swipe to unlock**; the system Back key is ignored while locked.
    - **Camera Standby & Dynamic Wi-Fi:** If no viewer connects within 15 seconds, the camera enters standby mode and releases high-performance Wi-Fi lock to save battery. It will wake up automatically as soon as a paired viewer connects.
 5. **To Exit:** Tap **Exit Camera** (or press the Back button and confirm).

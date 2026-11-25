@@ -132,7 +132,7 @@ sequenceDiagram
    * Each device generates an asymmetric **ECDSA (secp256r1 / NIST P-256)** keypair stored in the **Android Keystore** (`AndroidKeyStore` provider).
    * Private keys are hardware-backed (TEE/StrongBox) and never exportable in plaintext.
 2. **Key Storage & Whitelisting:**
-   * **Camera (PA):** Maintains an **Authorized Viewer Whitelist** (maximum 2 devices) containing:
+   * **Camera (PA):** Maintains an **Authorized Viewer Whitelist** (maximum 8 paired devices, `MAX_PAIRED_VIEWERS = 8`; maximum 2 simultaneous active streams, `MAX_CONCURRENT_VIEWERS = 2`) containing:
      * `viewerDeviceId`: String (UUID v4)
      * `viewerPublicKey`: String (Base64 X.509 encoded public key)
      * `deviceAlias`: String (e.g., "Dad's Pixel 8")
@@ -159,7 +159,7 @@ sequenceDiagram
   * PB encrypts its enrollment payload with a key derived from the OTP via HKDF-SHA256.
   * PA verifies the OTP. If valid, PA pins PB's public key into its hardware-backed whitelist.
   * **Public Key Immutability Guard:** If a `PairRequest` claims a `deviceId` that is already paired but provides a different public key, PA rejects the handshake with a security warning. An existing device cannot be overwritten or displaced without being explicitly revoked first in "Manage Devices".
-  * Once 2 viewers are paired, PA closes the pairing interface and rejects any further pairing requests.
+  * Once 8 viewers are paired, PA closes the pairing interface and rejects any further pairing requests. At runtime, up to 2 paired viewers may stream simultaneously (`MAX_CONCURRENT_VIEWERS = 2`); a 3rd simultaneous viewer receives `Reject("MAX_CAPACITY_REACHED")` until an active slot frees up.
 
 ### 2.3 Signaling Message Authentication & Anti-Replay
 Every signaling envelope sent over the public MQTT broker is structured as:
@@ -355,8 +355,8 @@ Every signaling envelope sent over the public MQTT broker is structured as:
      * Header:
        * Squircle Icon: `Icons.Default.Videocam` (40dp squircle with `primaryContainer` alpha 0.4, Primary cyan tint).
        * Title: `"BROADCASTER (THIS DEVICE)"` (labelSmall, bold, primary tint).
-       * Subtitle: Dynamic authorized viewer status (`"<count>/2 Viewers Authorized"` vs `"No viewers paired yet"`).
-       * Action: `IconButton(Icons.Default.PersonAdd)` (visible if viewer count $< 2$) $\to$ Launches QR code display.
+       * Subtitle: Dynamic authorized viewer status (`"<count>/8 Viewers Authorized"` vs `"No viewers paired yet"`).
+       * Action: `IconButton(Icons.Default.PersonAdd)` (visible if viewer count $< 8$) $\to$ Launches QR code display.
      * Camera Name Chip:
        * Encapsulated in a rounded tonal surface (`RoundedCornerShape(10.dp)`) displaying `"Camera Name: <Name>"` with `Icons.AutoMirrored.Filled.Label` and edit pencil.
        * Tapping opens **Camera Name Edit Dialog**.
@@ -401,7 +401,7 @@ Every signaling envelope sent over the public MQTT broker is structured as:
   * **Device Name Header:** Shows current name (e.g. `"Broadcasting as: Living Room Cam"`).
   * **Expiration Timer Pill:** Countdown timer showing remaining OTP validity (`Expires in 04:59`). Uses `StatusWarning` color if $< 60$s.
   * **Helper Instructions:** `"Open CamMonitor on Device B, tap 'Start Viewer Mode' and scan this code."`
-  * **Slot Indicator:** `"Slot 1 of 2 Available"`.
+  * **Slot Indicator:** `"Slot 1 of 8 Available"`.
 * **Bottom Action:**
   * `OutlinedButton`: `"Cancel Pairing"` $\to$ Invalidates OTP, returns to Home Screen.
 
@@ -425,9 +425,13 @@ Every signaling envelope sent over the public MQTT broker is structured as:
 * **Background:** Live camera preview via CameraX (`CameraXVideoCapturer` delivering to WebRTC `SurfaceTextureHelper`).
 * **Top Status HUD (Semi-transparent dark pill overlays):**
   * **Live Stream Badge:** Emerald green pulsating dot + text `"720p <fps>fps"` (reflecting actual negotiated hardware FPS, omitting redundant "Live" text to ensure clean display on compact screens).
-  * **Viewer Count Pill:** Eye icon + orientation-adaptive viewer count pill:
-    * **Landscape Mode:** Displays `"<count>/2 Viewers"` (e.g. `"0/2 Viewers"`, `"1/2 Viewers"`).
-    * **Portrait Mode:** Displays compact `"<count>/2"` (e.g. `"0/2"`, `"1/2"`), maximizing horizontal breathing room for badges and status text.
+  * **Active & Paired Viewer Count Pills:** Two orientation-adaptive pills in the Top HUD Bar (and also displayed on the Standby view):
+    * **Active Viewers (Concurrent Streams, Eye icon `Icons.Default.Visibility`, tinted `StatusLive` when $> 0$):**
+      * **Landscape Mode:** `"<active>/2 Active"` (e.g. `"0/2 Active"`, `"1/2 Active"`).
+      * **Portrait Mode:** Compact `"<active>/2"` (e.g. `"0/2"`, `"1/2"`).
+    * **Paired Viewers (Whitelist Slots, Group icon `Icons.Default.Group`):**
+      * **Landscape Mode:** `"<paired>/8 Paired"` (e.g. `"3/8 Paired"`).
+      * **Portrait Mode:** Compact `"<paired>/8"` (e.g. `"3/8"`).
   * **Flashlight Status:** Torch icon (lit primary color if active, gray if inactive).
   * **Night Mode Indicator:** Displays when CameraX `ExtensionMode.NIGHT` or low-light fallback is dynamically active.
   * **Intercom Live Banner:** Prominent primary color pill badge with `VolumeUp` icon and text `"Intercom Live (Viewer Speaking)"` displayed automatically with smooth fade-in/out whenever a connected viewer holds the PTT intercom button.
@@ -559,7 +563,7 @@ Every signaling envelope sent over the public MQTT broker is structured as:
 ### 5.5 Screen 5: Manage Paired Devices Screen
 * **Top Bar:** Title `"Paired Devices"`, Back button.
 * **Device List:**
-  * Displays paired cards (up to 8 cameras or 2 viewers, styled with `ElevatedCard` using `surfaceContainerHigh` `#2A2A2A`):
+  * Displays paired cards (up to 8 cameras and up to 8 viewers, styled with `ElevatedCard` using `surfaceContainerHigh` `#2A2A2A`):
     * Device alias and ID snippet (e.g., `Living Room Cam • Paired Oct 14 • ID: 7fc9ef3e...`).
     * Trailing `IconButton(Icons.Default.Delete)` with red tint.
 * **Delete Confirmation Dialog:**
@@ -567,10 +571,10 @@ Every signaling envelope sent over the public MQTT broker is structured as:
   * Text: `"Are you sure you want to revoke '<name>'? It will immediately lose connection access."`
   * Confirm button: `"Revoke"` (destructive red).
 * **Pair New Device Floating Action Button (FAB):**
-  * Visible when paired count is under limit ($< 8$ cameras or $< 2$ viewers).
+  * Visible when paired count is under limit ($< 8$ cameras or $< 8$ viewers).
   * If both pairing modes available, displays a selection dialog:
     * `"Pair Camera (as Viewer)"` $\to$ Launches QR Scanner (PB flow, up to 8 cameras).
-    * `"Pair Viewer (as Camera)"` $\to$ Launches QR Code Display (PA flow, up to 2 viewers).
+    * `"Pair Viewer (as Camera)"` $\to$ Launches QR Code Display (PA flow, up to 8 viewers).
   * If only one mode is under limit, directly launches that pairing flow.
 
 ---

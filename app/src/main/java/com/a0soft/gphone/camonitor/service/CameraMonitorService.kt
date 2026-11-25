@@ -17,6 +17,7 @@ import com.a0soft.gphone.camonitor.CamMonitorApp
 import com.a0soft.gphone.camonitor.R
 import com.a0soft.gphone.camonitor.data.model.ControlCommand
 import com.a0soft.gphone.camonitor.data.model.SignalingMessage
+import com.a0soft.gphone.camonitor.data.security.SecurityRepository
 import com.a0soft.gphone.camonitor.log.AppLogger
 import com.a0soft.gphone.camonitor.ui.common.BatteryHelper
 import kotlinx.coroutines.*
@@ -451,10 +452,10 @@ class CameraMonitorService : Service() {
         val startTime = System.currentTimeMillis()
         AppLogger.i(tag, "Processing WebRTC Offer from $senderId (activeViewers=${app.webRtcManager.activeViewersCount.value}, state=${_streamingState.value})")
 
-        // Cap max 2 viewers (allow reconnecting existing peer)
+        // Cap max concurrent viewers (allow reconnecting existing peer)
         val isExistingPeer = app.webRtcManager.hasPeer(senderId)
-        if (app.webRtcManager.activeViewersCount.value >= 2 && !isExistingPeer) {
-            AppLogger.w(tag, "Rejecting connection from $senderId: Max 2 viewers reached")
+        if (app.webRtcManager.activeViewersCount.value >= SecurityRepository.MAX_CONCURRENT_VIEWERS && !isExistingPeer) {
+            AppLogger.w(tag, "Rejecting connection from $senderId: Max ${SecurityRepository.MAX_CONCURRENT_VIEWERS} concurrent viewers reached")
             sendSignalingMessageToViewer(senderId, SignalingMessage.Reject("MAX_CAPACITY_REACHED"))
             return
         }

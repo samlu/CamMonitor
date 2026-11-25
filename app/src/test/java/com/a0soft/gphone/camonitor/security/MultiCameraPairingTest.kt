@@ -72,7 +72,8 @@ class MultiCameraPairingTest {
     @Test
     fun constants_verifyLimits() {
         assertEquals(8, SecurityRepository.MAX_PAIRED_CAMERAS)
-        assertEquals(2, SecurityRepository.MAX_PAIRED_VIEWERS)
+        assertEquals(8, SecurityRepository.MAX_PAIRED_VIEWERS)
+        assertEquals(2, SecurityRepository.MAX_CONCURRENT_VIEWERS)
     }
 
     @Test
@@ -103,8 +104,8 @@ class MultiCameraPairingTest {
     }
 
     @Test
-    fun camera_canPairUpTo2Viewers() {
-        for (i in 1..2) {
+    fun camera_canPairUpTo8Viewers() {
+        for (i in 1..8) {
             val viewer = PairedDevice(
                 deviceId = "viewer-id-$i",
                 name = "Viewer $i",
@@ -115,18 +116,18 @@ class MultiCameraPairingTest {
             assertTrue("Viewer $i should be paired successfully", added)
         }
 
-        assertEquals(2, repository.getPairedDevices().size)
+        assertEquals(8, repository.getPairedDevices().size)
 
-        // 3rd viewer should be rejected
-        val viewer3 = PairedDevice(
-            deviceId = "viewer-id-3",
-            name = "Viewer 3",
-            publicKeyBase64 = "pubKey3",
+        // 9th viewer should be rejected
+        val viewer9 = PairedDevice(
+            deviceId = "viewer-id-9",
+            name = "Viewer 9",
+            publicKeyBase64 = "pubKey9",
             pairedTimestamp = System.currentTimeMillis()
         )
-        val added3 = repository.addPairedDevice(viewer3, maxLimit = SecurityRepository.MAX_PAIRED_VIEWERS)
-        assertFalse("3rd viewer should be rejected when limit is 2", added3)
-        assertEquals(2, repository.getPairedDevices().size)
+        val added9 = repository.addPairedDevice(viewer9, maxLimit = SecurityRepository.MAX_PAIRED_VIEWERS)
+        assertFalse("9th viewer should be rejected when limit is 8", added9)
+        assertEquals(8, repository.getPairedDevices().size)
     }
 
     @Test
@@ -216,8 +217,8 @@ class MultiCameraPairingTest {
             assertTrue("Camera $i should pair successfully", added)
         }
 
-        // Pair 2 viewers on same repository without being blocked by camera count
-        for (i in 1..2) {
+        // Pair 8 viewers on same repository without being blocked by camera count
+        for (i in 1..8) {
             val viewer = PairedDevice(
                 deviceId = "viewer-id-$i",
                 name = "Viewer $i",
@@ -230,9 +231,9 @@ class MultiCameraPairingTest {
         }
 
         // Both roles coexist up to their individual limits
-        assertEquals(10, repository.getPairedDevices().size)
+        assertEquals(16, repository.getPairedDevices().size)
         assertEquals(8, repository.getPairedCameras().size)
-        assertEquals(2, repository.getPairedViewers().size)
+        assertEquals(8, repository.getPairedViewers().size)
 
         // 9th camera rejected
         val camera9 = PairedDevice(
@@ -244,15 +245,15 @@ class MultiCameraPairingTest {
         )
         assertFalse(repository.addPairedDevice(camera9, maxLimit = SecurityRepository.MAX_PAIRED_CAMERAS))
 
-        // 3rd viewer rejected
-        val viewer3 = PairedDevice(
-            deviceId = "viewer-id-3",
-            name = "Viewer 3",
-            publicKeyBase64 = "pubKeyView3",
+        // 9th viewer rejected
+        val viewer9 = PairedDevice(
+            deviceId = "viewer-id-9",
+            name = "Viewer 9",
+            publicKeyBase64 = "pubKeyView9",
             pairedTimestamp = System.currentTimeMillis(),
             role = "VIEWER"
         )
-        assertFalse(repository.addPairedDevice(viewer3, maxLimit = SecurityRepository.MAX_PAIRED_VIEWERS))
+        assertFalse(repository.addPairedDevice(viewer9, maxLimit = SecurityRepository.MAX_PAIRED_VIEWERS))
 
         // Updating existing camera or viewer succeeds
         val updatedCam = PairedDevice(

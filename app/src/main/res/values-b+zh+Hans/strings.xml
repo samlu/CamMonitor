@@ -81,8 +81,11 @@
 
     <!-- Camera Mode Screen -->
     <string name="camera_live_badge">720p %1$dfps</string>
-    <string name="camera_viewers_count">%1$d/%2$d 观看端</string>
+    <string name="camera_viewers_count">%1$d/%2$d 观看中</string>
+    <string name="camera_paired_viewers_count">%1$d/%2$d 已配对</string>
     <string name="camera_viewers_count_short">%1$d/%2$d</string>
+    <string name="cd_active_viewers">当前观看人数</string>
+    <string name="cd_paired_viewers">已配对观看端</string>
     <string name="camera_intercom_live">对讲通话中（观看端发话）</string>
     <string name="camera_black_screen">熄屏模式</string>
     <string name="camera_unlock_hint">滑动解锁</string>
@@ -156,7 +159,7 @@
 
     <!-- Manage Devices Screen -->
     <string name="manage_devices_pair_device">配对设备</string>
-    <string name="manage_devices_empty_prompt">尚未配对任何设备。\n配对镜头以观看实时串流（最多 8 台），或配对观看端以分享此镜头（最多 2 台）。</string>
+    <string name="manage_devices_empty_prompt">尚未配对任何设备。\n配对镜头以观看实时串流（最多 8 台），或配对观看端以分享此镜头（最多 8 台）。</string>
     <string name="manage_devices_paired_info">配对时间：%1$s\nID: %2$s...</string>
     <string name="dialog_revoke_title">解除设备访问授权？</string>
     <string name="dialog_revoke_message">确定要解除「%1$s」的配对吗？该设备将立即失去连接权限。</string>
@@ -164,7 +167,7 @@
     <string name="manage_devices_pair_camera_option">配对镜头（作为观看端）</string>
     <string name="manage_devices_pair_camera_desc">扫描镜头二维码以观看串流（最多 8 台）</string>
     <string name="manage_devices_pair_viewer_option">配对观看端（作为镜头端）</string>
-    <string name="manage_devices_pair_viewer_desc">显示二维码供观看端扫描（最多 2 台）</string>
+    <string name="manage_devices_pair_viewer_desc">显示二维码供观看端扫描（最多 8 台）</string>
 
     <!-- Log Viewer Screen -->
     <string name="log_share_title">分享 CamMonitor 日志</string>

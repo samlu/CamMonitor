@@ -213,22 +213,22 @@ class CameraStandbyStateTest {
     @Test
     fun testReconnectingViewerBypassesCapacityRejection() {
         val existingPeers = mutableSetOf("viewer-1", "viewer-2")
-        val activeViewersCount = 2
+        val activeViewersCount = com.a0soft.gphone.camonitor.data.security.SecurityRepository.MAX_CONCURRENT_VIEWERS
 
         fun canAcceptOffer(senderId: String): Boolean {
             val isExistingPeer = existingPeers.contains(senderId)
-            if (activeViewersCount >= 2 && !isExistingPeer) {
+            if (activeViewersCount >= com.a0soft.gphone.camonitor.data.security.SecurityRepository.MAX_CONCURRENT_VIEWERS && !isExistingPeer) {
                 return false // MAX_CAPACITY_REACHED
             }
             return true
         }
 
         // Reconnecting existing peer (viewer-1) should NOT be rejected
-        assertTrue("Reconnecting viewer-1 must be accepted even if activeViewersCount == 2", canAcceptOffer("viewer-1"))
-        assertTrue("Reconnecting viewer-2 must be accepted even if activeViewersCount == 2", canAcceptOffer("viewer-2"))
+        assertTrue("Reconnecting viewer-1 must be accepted even at concurrent cap", canAcceptOffer("viewer-1"))
+        assertTrue("Reconnecting viewer-2 must be accepted even at concurrent cap", canAcceptOffer("viewer-2"))
 
-        // New third viewer (viewer-3) must be rejected
-        assertFalse("New 3rd viewer must be rejected when activeViewersCount == 2", canAcceptOffer("viewer-3"))
+        // New third paired viewer (viewer-3) must be rejected while 2 are actively streaming
+        assertFalse("New 3rd viewer must be rejected when activeViewersCount == MAX_CONCURRENT_VIEWERS", canAcceptOffer("viewer-3"))
     }
 
     @Test

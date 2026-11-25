@@ -41,7 +41,9 @@ import com.a0soft.gphone.camonitor.log.AppLogger
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.a0soft.gphone.camonitor.CamMonitorApp
+import com.a0soft.gphone.camonitor.data.security.SecurityRepository
 import com.a0soft.gphone.camonitor.service.CameraMonitorService
 import com.a0soft.gphone.camonitor.service.CameraStreamingState
 import com.a0soft.gphone.camonitor.ui.theme.StatusLive
@@ -68,9 +70,15 @@ fun CameraModeScreen(
     var streamingState by remember { mutableStateOf(CameraStreamingState.IDLE) }
     var isPttReceiving by remember { mutableStateOf(false) }
     val activeViewers by app.webRtcManager.activeViewersCount.collectAsState()
+    var pairedViewersCount by remember { mutableIntStateOf(securityRepo.getPairedViewers().size) }
     val isTorchOn by app.torchManager.isTorchOn.collectAsState()
     val isNightModeActive by app.webRtcManager.isNightModeActive.collectAsState()
     val streamFps by app.webRtcManager.streamFps.collectAsState()
+
+    LifecycleResumeEffect(Unit) {
+        pairedViewersCount = securityRepo.getPairedViewers().size
+        onPauseOrDispose {}
+    }
 
     // Locked = "black screen" + touch guard. Entering it is the ONLY way to turn
     // the display off, and every entry point goes through enterLocked() so the
@@ -373,6 +381,8 @@ fun CameraModeScreen(
         if (!isLocked && streamingState == CameraStreamingState.PAUSED_INACTIVITY) {
             // Standby View after 15s of 0 viewers
             CameraPausedStandbyView(
+                activeViewers = activeViewers,
+                pairedViewers = pairedViewersCount,
                 onResume = {
                     idleSeconds = 0
                     service?.resumeStreamingFromPause()
@@ -418,24 +428,69 @@ fun CameraModeScreen(
                             )
                         }
 
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            // Viewer Count
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // Active Viewers (Concurrent Streams)
                             Surface(
                                 shape = CircleShape,
                                 color = MaterialTheme.colorScheme.surfaceContainer
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
-                                    Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    val viewersText = if (isLandscape) {
-                                        stringResource(R.string.camera_viewers_count, activeViewers, 2)
+                                    Icon(
+                                        Icons.Default.Visibility,
+                                        contentDescription = stringResource(R.string.cd_active_viewers),
+                                        tint = if (activeViewers > 0) StatusLive else LocalContentColor.current,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    val activeText = if (isLandscape) {
+                                        stringResource(
+                                            R.string.camera_viewers_count,
+                                            activeViewers,
+                                            SecurityRepository.MAX_CONCURRENT_VIEWERS
+                                        )
                                     } else {
-                                        stringResource(R.string.camera_viewers_count_short, activeViewers, 2)
+                                        stringResource(
+                                            R.string.camera_viewers_count_short,
+                                            activeViewers,
+                                            SecurityRepository.MAX_CONCURRENT_VIEWERS
+                                        )
                                     }
-                                    Text(viewersText, style = MaterialTheme.typography.labelMedium)
+                                    Text(activeText, style = MaterialTheme.typography.labelMedium)
+                                }
+                            }
+
+                            // Paired Viewers Count
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.surfaceContainer
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Group,
+                                        contentDescription = stringResource(R.string.cd_paired_viewers),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    val pairedText = if (isLandscape) {
+                                        stringResource(
+                                            R.string.camera_paired_viewers_count,
+                                            pairedViewersCount,
+                                            SecurityRepository.MAX_PAIRED_VIEWERS
+                                        )
+                                    } else {
+                                        stringResource(
+                                            R.string.camera_viewers_count_short,
+                                            pairedViewersCount,
+                                            SecurityRepository.MAX_PAIRED_VIEWERS
+                                        )
+                                    }
+                                    Text(pairedText, style = MaterialTheme.typography.labelMedium)
                                 }
                             }
 
@@ -614,6 +669,8 @@ fun CameraModeScreen(
 
 @Composable
 private fun CameraPausedStandbyView(
+    activeViewers: Int,
+    pairedViewers: Int,
     onResume: () -> Unit,
     onExit: () -> Unit
 ) {
@@ -637,7 +694,61 @@ private fun CameraPausedStandbyView(
             style = MaterialTheme.typography.headlineMedium,
             color = Color.White
         )
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(12.dp))
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Visibility,
+                        contentDescription = stringResource(R.string.cd_active_viewers),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = stringResource(
+                            R.string.camera_viewers_count,
+                            activeViewers,
+                            SecurityRepository.MAX_CONCURRENT_VIEWERS
+                        ),
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+            }
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Group,
+                        contentDescription = stringResource(R.string.cd_paired_viewers),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = stringResource(
+                            R.string.camera_paired_viewers_count,
+                            pairedViewers,
+                            SecurityRepository.MAX_PAIRED_VIEWERS
+                        ),
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(12.dp))
         Text(
             text = stringResource(R.string.camera_paused_description),
             style = MaterialTheme.typography.bodyMedium,

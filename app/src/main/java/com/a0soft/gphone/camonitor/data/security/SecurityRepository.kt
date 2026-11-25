@@ -26,10 +26,11 @@ interface SecurityRepository {
     fun getActivePairingOtp(): String?
     fun clearPairingOtp()
 
-    // Whitelist
+    // Whitelist & Streaming Limits
     companion object {
         const val MAX_PAIRED_CAMERAS = 8
-        const val MAX_PAIRED_VIEWERS = 2
+        const val MAX_PAIRED_VIEWERS = 8
+        const val MAX_CONCURRENT_VIEWERS = 2
     }
 
     fun getPairedDevices(): List<PairedDevice>

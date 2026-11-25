@@ -81,8 +81,11 @@
 
     <!-- Camera Mode Screen -->
     <string name="camera_live_badge">720p %1$dfps</string>
-    <string name="camera_viewers_count">%1$d/%2$d Viewers</string>
+    <string name="camera_viewers_count">%1$d/%2$d Active</string>
+    <string name="camera_paired_viewers_count">%1$d/%2$d Paired</string>
     <string name="camera_viewers_count_short">%1$d/%2$d</string>
+    <string name="cd_active_viewers">Active Viewers</string>
+    <string name="cd_paired_viewers">Paired Viewers</string>
     <string name="camera_intercom_live">Intercom Live (Viewer Speaking)</string>
     <string name="camera_black_screen">Black Screen</string>
     <string name="camera_unlock_hint">Swipe to unlock</string>
@@ -156,7 +159,7 @@
 
     <!-- Manage Devices Screen -->
     <string name="manage_devices_pair_device">Pair Device</string>
-    <string name="manage_devices_empty_prompt">No paired devices yet.\nPair a camera to view streams (up to 8) or pair a viewer to share this camera (up to 2).</string>
+    <string name="manage_devices_empty_prompt">No paired devices yet.\nPair a camera to view streams (up to 8) or pair a viewer to share this camera (up to 8).</string>
     <string name="manage_devices_paired_info">Paired on %1$s\nID: %2$s...</string>
     <string name="dialog_revoke_title">Revoke Device Access?</string>
     <string name="dialog_revoke_message">Are you sure you want to revoke \'%1$s\'? It will immediately lose connection access.</string>
@@ -164,7 +167,7 @@
     <string name="manage_devices_pair_camera_option">Pair Camera (as Viewer)</string>
     <string name="manage_devices_pair_camera_desc">Scan camera QR code to view stream (max 8)</string>
     <string name="manage_devices_pair_viewer_option">Pair Viewer (as Camera)</string>
-    <string name="manage_devices_pair_viewer_desc">Show QR code for viewer to scan (max 2)</string>
+    <string name="manage_devices_pair_viewer_desc">Show QR code for viewer to scan (max 8)</string>
 
     <!-- Log Viewer Screen -->
     <string name="log_share_title">Share CamMonitor Logs</string>

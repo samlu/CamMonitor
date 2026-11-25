@@ -81,8 +81,11 @@
 
     <!-- Camera Mode Screen -->
     <string name="camera_live_badge">720p %1$dfps</string>
-    <string name="camera_viewers_count">ビューアー %1$d/%2$d</string>
+    <string name="camera_viewers_count">視聴中 %1$d/%2$d</string>
+    <string name="camera_paired_viewers_count">登録済 %1$d/%2$d</string>
     <string name="camera_viewers_count_short">%1$d/%2$d</string>
+    <string name="cd_active_viewers">視聴中のビューアー</string>
+    <string name="cd_paired_viewers">ペアリング済みビューアー</string>
     <string name="camera_intercom_live">インターホン通話中（ビューアーが発話中）</string>
     <string name="camera_black_screen">画面消灯</string>
     <string name="camera_unlock_hint">スワイプしてロック解除</string>
@@ -156,7 +159,7 @@
 
     <!-- Manage Devices Screen -->
     <string name="manage_devices_pair_device">デバイスをペアリング</string>
-    <string name="manage_devices_empty_prompt">ペアリング済みのデバイスはまだありません。\nカメラをペアリングすると映像を表示でき（最大 8台）、ビューアーをペアリングするとこのカメラを共有できます（最大 2台）。</string>
+    <string name="manage_devices_empty_prompt">ペアリング済みのデバイスはまだありません。\nカメラをペアリングすると映像を表示でき（最大 8台）、ビューアーをペアリングするとこのカメラを共有できます（最大 8台）。</string>
     <string name="manage_devices_paired_info">%1$s にペアリング\nID: %2$s...</string>
     <string name="dialog_revoke_title">デバイスのアクセスを解除しますか？</string>
     <string name="dialog_revoke_message">「%1$s」のアクセスを解除してもよろしいですか？このデバイスはすぐに接続できなくなります。</string>
@@ -164,7 +167,7 @@
     <string name="manage_devices_pair_camera_option">カメラをペアリング（ビューアーとして）</string>
     <string name="manage_devices_pair_camera_desc">カメラの QR コードをスキャンして映像を表示します（最大 8台）</string>
     <string name="manage_devices_pair_viewer_option">ビューアーをペアリング（カメラとして）</string>
-    <string name="manage_devices_pair_viewer_desc">ビューアーがスキャンする QR コードを表示します（最大 2台）</string>
+    <string name="manage_devices_pair_viewer_desc">ビューアーがスキャンする QR コードを表示します（最大 8台）</string>
 
     <!-- Log Viewer Screen -->
     <string name="log_share_title">CamMonitor のログを共有</string>
