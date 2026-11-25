@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="CamMonitor">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src wss://broker.hivemq.com:8884 wss://broker.emqx.io:8884; media-src 'self' mediastream: blob:;">
+    content="default-src 'self'; script-src 'self'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src wss://broker.hivemq.com:8884 wss://broker.emqx.io:8884; media-src 'self' mediastream: blob:;">
   <title>CamMonitor Web Viewer</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" sizes="180x180" href="./icons/icon-180.png">
@@ -75,7 +75,7 @@
 
     <div id="viewer-hud" class="viewer-hud">
       <div class="hud-bar">
-        <button id="viewer-back-btn" class="ctrl-btn" type="button">←</button>
+        <button id="viewer-back-btn" class="ctrl-btn" type="button">← <span data-i18n="action_back">Back</span></button>
         <div class="hud-title-group">
           <div id="viewer-cam-name" class="hud-cam-name">Camera</div>
           <div class="hud-status-row">

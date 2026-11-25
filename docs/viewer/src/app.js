@@ -36,6 +36,7 @@ let qrScanner = null;
 let wakeLockSentinel = null;
 let hudHideTimer = null;
 let lastTapTime = 0;
+let viewerHistoryPushed = false;
 
 let viewerState = {
   connState: "CONNECTING",
@@ -126,7 +127,7 @@ function syncAudioElement() {
 
 function resetHudAutoHide() {
   clearTimeout(hudHideTimer);
-  if (viewerState.hudVisible && activeCamera) {
+  if (viewerState.hudVisible && activeCamera && viewerState.connState === "LIVE") {
     hudHideTimer = setTimeout(() => {
       viewerState.hudVisible = false;
       renderViewerHud();
@@ -209,9 +210,11 @@ function renderCenterOverlay() {
       <div class="status-card-title">${escapeHtml(t("viewer_status_timeout", { sec }))}</div>
       <div class="muted">${escapeHtml(t("viewer_timeout_desc"))}</div>
       <div class="modal-actions">
+        <button id="overlay-back-btn" class="btn-outline" type="button">${escapeHtml(t("action_back"))}</button>
         <button id="overlay-reconnect-btn" class="btn-primary" type="button">${escapeHtml(t("action_reconnect_now"))}</button>
       </div>
     `;
+    $("overlay-back-btn")?.addEventListener("click", () => exitViewer());
     $("overlay-reconnect-btn")?.addEventListener("click", () => activeSession?.reconnect());
     return;
   }
@@ -226,9 +229,11 @@ function renderCenterOverlay() {
       <div class="status-card-title">${escapeHtml(t("viewer_status_failed"))}</div>
       <div class="error-text">${escapeHtml(msg)}</div>
       <div class="modal-actions">
+        <button id="overlay-back-btn" class="btn-outline" type="button">${escapeHtml(t("action_back"))}</button>
         <button id="overlay-reconnect-btn" class="btn-primary" type="button">${escapeHtml(t("action_retry"))}</button>
       </div>
     `;
+    $("overlay-back-btn")?.addEventListener("click", () => exitViewer());
     $("overlay-reconnect-btn")?.addEventListener("click", () => activeSession?.reconnect());
     return;
   }
@@ -240,9 +245,11 @@ function renderCenterOverlay() {
       <div class="status-card-title">${escapeHtml(title)}</div>
       ${desc ? `<div class="muted">${escapeHtml(desc)}</div>` : ""}
       <div class="modal-actions">
+        <button id="overlay-back-btn" class="btn-outline" type="button">${escapeHtml(t("action_back"))}</button>
         <button id="overlay-reconnect-btn" class="btn-primary" type="button">${escapeHtml(t("action_reconnect_now"))}</button>
       </div>
     `;
+    $("overlay-back-btn")?.addEventListener("click", () => exitViewer());
     $("overlay-reconnect-btn")?.addEventListener("click", () => activeSession?.reconnect());
     return;
   }
@@ -321,7 +328,11 @@ function renderCenterOverlay() {
     <ul class="step-list">${itemsHtml}</ul>
     ${countdownHtml}
     ${slowHintHtml}
+    <div class="modal-actions">
+      <button id="overlay-back-btn" class="btn-outline" type="button">${escapeHtml(t("action_back"))}</button>
+    </div>
   `;
+  $("overlay-back-btn")?.addEventListener("click", () => exitViewer());
 }
 
 async function renderHome() {
@@ -394,6 +405,13 @@ function openViewer(cam) {
     isAudioDucked: false
   };
 
+  if (!viewerHistoryPushed) {
+    try {
+      history.pushState({ view: "viewer", deviceId: cam.deviceId }, "");
+      viewerHistoryPushed = true;
+    } catch (_) {}
+  }
+
   $("home-view").classList.add("hidden");
   $("viewer-view").classList.remove("hidden");
   const video = $("remote-video");
@@ -412,6 +430,12 @@ function openViewer(cam) {
     onStateChange: (state, extra) => {
       viewerState.connState = state;
       viewerState.connExtra = extra || {};
+      if (state === "LIVE") {
+        resetHudAutoHide();
+      } else {
+        clearTimeout(hudHideTimer);
+        viewerState.hudVisible = true;
+      }
       renderViewerHud();
       renderCenterOverlay();
     },
@@ -475,13 +499,21 @@ function openViewer(cam) {
   activeSession.start();
 }
 
-async function exitViewer() {
+async function exitViewer({ fromPopState = false } = {}) {
   clearTimeout(hudHideTimer);
   if (activeSession) {
     activeSession.close();
     activeSession = null;
   }
   activeCamera = null;
+  if (!fromPopState && viewerHistoryPushed) {
+    viewerHistoryPushed = false;
+    try {
+      history.back();
+    } catch (_) {}
+  } else {
+    viewerHistoryPushed = false;
+  }
   const video = $("remote-video");
   if (video) video.srcObject = null;
   if (document.fullscreenElement) {
@@ -779,9 +811,21 @@ function wireEvents() {
   }
 
   window.addEventListener("keydown", (e) => {
-    if (e.code === "Space" && !e.repeat && activeSession && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA") {
+    const tag = document.activeElement?.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA") return;
+    if (e.code === "Escape" && activeCamera) {
+      e.preventDefault();
+      exitViewer();
+      return;
+    }
+    if (e.code === "Space" && !e.repeat && activeSession) {
       e.preventDefault();
       activeSession.startPtt();
+    }
+  });
+  window.addEventListener("popstate", () => {
+    if (activeCamera) {
+      exitViewer({ fromPopState: true });
     }
   });
   window.addEventListener("keyup", (e) => {

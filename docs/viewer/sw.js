@@ -1,4 +1,4 @@
-const CACHE_NAME = "cammonitor-viewer-v1";
+const CACHE_NAME = "cammonitor-viewer-v2";
 const APP_SHELL_URLS = [
   "./",
   "./index.html",
