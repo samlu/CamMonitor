@@ -7,8 +7,13 @@ import {
   ControlCommand,
   createInitialProgress,
   createWebRtcViewerSession,
+  extractCandidateIp,
+  isLoopbackIp,
+  isPrivateLocalIp,
   nextNightMode,
   parseControlCommand,
+  queryLocalNetworkPermissionState,
+  shouldFilterRemoteCandidate,
   shouldShowCountdown,
   shouldShowSlowHint,
   timeoutProgressFraction,
@@ -62,6 +67,45 @@ test("candidateDedupeKey and nextNightMode cycle", () => {
   assert.equal(nextNightMode("AUTO"), "NIGHT");
   assert.equal(nextNightMode("NIGHT"), "NORMAL");
   assert.equal(nextNightMode("NORMAL"), "AUTO");
+});
+
+test("Chrome LNA remote ICE candidate filter always drops loopback, drops private LAN only when LNA not granted, and preserves srflx with private raddr", async () => {
+  const loopback4 = "candidate:1 1 udp 2122129151 127.0.0.1 50942 typ host generation 0";
+  const loopback6 = "candidate:2 1 udp 2122202367 ::1 44380 typ host generation 0";
+  const lanHost = "candidate:3 1 udp 2122260223 192.168.100.107 55390 typ host generation 0";
+  const srflx = "candidate:4 1 udp 1686052607 111.240.66.72 65253 typ srflx raddr 192.168.100.107 rport 55390 generation 0";
+
+  assert.equal(extractCandidateIp(srflx), "111.240.66.72");
+  assert.equal(isLoopbackIp("127.0.0.1"), true);
+  assert.equal(isLoopbackIp("::1"), true);
+  assert.equal(isPrivateLocalIp("192.168.100.107"), true);
+  assert.equal(isPrivateLocalIp("10.0.0.5"), true);
+  assert.equal(isPrivateLocalIp("172.16.1.2"), true);
+  assert.equal(isPrivateLocalIp("111.240.66.72"), false);
+
+  // When LNA is NOT granted (e.g. Chrome 158 "prompt"/"denied"): drop loopback + private host, KEEP srflx!
+  assert.equal(shouldFilterRemoteCandidate(loopback4, { localNetworkGranted: false }), true);
+  assert.equal(shouldFilterRemoteCandidate(loopback6, { localNetworkGranted: false }), true);
+  assert.equal(shouldFilterRemoteCandidate(lanHost, { localNetworkGranted: false }), true);
+  assert.equal(shouldFilterRemoteCandidate(srflx, { localNetworkGranted: false }), false);
+
+  // When LNA IS granted (or unsupported browser): drop loopback only, KEEP private host + srflx!
+  assert.equal(shouldFilterRemoteCandidate(loopback4, { localNetworkGranted: true }), true);
+  assert.equal(shouldFilterRemoteCandidate(loopback6, { localNetworkGranted: true }), true);
+  assert.equal(shouldFilterRemoteCandidate(lanHost, { localNetworkGranted: true }), false);
+  assert.equal(shouldFilterRemoteCandidate(srflx, { localNetworkGranted: true }), false);
+
+  // Permission query helper
+  assert.equal(await queryLocalNetworkPermissionState(null), "unsupported");
+  assert.equal(
+    await queryLocalNetworkPermissionState({
+      async query({ name }) {
+        if (name === "local-network") return { state: "prompt" };
+        throw new TypeError("unsupported");
+      }
+    }),
+    "prompt"
+  );
 });
 
 function createMockPeerConnection() {

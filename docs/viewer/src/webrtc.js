@@ -133,6 +133,61 @@ export function candidateDedupeKey(cand) {
   return `${cand.sdpMid ?? ""}:${cand.sdpMLineIndex ?? 0}:${cand.sdp ?? ""}`;
 }
 
+export function extractCandidateIp(candidateSdp) {
+  if (typeof candidateSdp !== "string") return "";
+  const parts = candidateSdp.trim().split(/\s+/);
+  return parts.length >= 5 ? parts[4] : "";
+}
+
+export function isLoopbackIp(ip) {
+  if (!ip) return false;
+  const lower = ip.toLowerCase();
+  return lower === "::1" || lower.startsWith("127.");
+}
+
+export function isPrivateLocalIp(ip) {
+  if (!ip) return false;
+  const lower = ip.toLowerCase();
+  if (lower.endsWith(".local")) return true;
+  if (lower.startsWith("10.") || lower.startsWith("192.168.") || lower.startsWith("169.254.")) {
+    return true;
+  }
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(lower)) return true;
+  if (lower.startsWith("fe80:") || /^f[cd][0-9a-f]{2}:/.test(lower)) return true;
+  return false;
+}
+
+/**
+ * Chrome 145+ enforces Local Network Access (LNA) on WebRTC P2P UDP sockets.
+ * Sending even one STUN ping to a loopback or RFC1918 IP while `local-network`
+ * permission is "prompt"/"denied" triggers net::ERR_BLOCKED_BY_LOCAL_NETWORK_ACCESS_CHECKS (-36),
+ * which causes Chromium's P2PSocketUdp to close the entire UDP socket and break public srflx too.
+ */
+export function shouldFilterRemoteCandidate(candidateSdp, { localNetworkGranted = true } = {}) {
+  const ip = extractCandidateIp(candidateSdp);
+  if (!ip) return false;
+  if (isLoopbackIp(ip)) return true;
+  if (!localNetworkGranted && isPrivateLocalIp(ip)) return true;
+  return false;
+}
+
+export async function queryLocalNetworkPermissionState(permissionsApi = globalThis.navigator?.permissions) {
+  if (!permissionsApi || typeof permissionsApi.query !== "function") {
+    return "unsupported";
+  }
+  for (const name of ["local-network", "local-network-access"]) {
+    try {
+      const status = await permissionsApi.query({ name });
+      if (status && typeof status.state === "string") {
+        return status.state;
+      }
+    } catch (_) {
+      // Permission name not supported by this browser version
+    }
+  }
+  return "unsupported";
+}
+
 export function nextNightMode(current) {
   if (current === "AUTO") return "NIGHT";
   if (current === "NIGHT") return "NORMAL";
@@ -153,6 +208,7 @@ export function createWebRtcViewerSession({
   onPttStateChange = () => {},
   peerConnectionFactory = null,
   getUserMediaFn = null,
+  permissionsApi = globalThis.navigator?.permissions,
   nowFn = () => Date.now()
 }) {
   let pc = null;
@@ -160,6 +216,8 @@ export function createWebRtcViewerSession({
   const dataChannels = new Set();
   let closed = false;
   let sessionGen = 0;
+  let localNetworkState = "unsupported";
+  let localNetworkGranted = true;
 
   let currentState = "CONNECTING";
   let progress = createInitialProgress(computeTypicalConnectMs(camera.connectDurationsMs));
@@ -304,6 +362,13 @@ export function createWebRtcViewerSession({
   }
 
   async function addRemoteIceCandidate(msg) {
+    if (shouldFilterRemoteCandidate(msg.sdp, { localNetworkGranted })) {
+      logger.d(
+        "WebRTC",
+        `Filtered remote ICE candidate (${extractCandidateIp(msg.sdp)}, lna=${localNetworkState})`
+      );
+      return;
+    }
     const key = candidateDedupeKey(msg);
     if (seenRemoteCandidates.has(key)) return;
     seenRemoteCandidates.add(key);
@@ -383,6 +448,14 @@ export function createWebRtcViewerSession({
 
     const identity = await storage.getOrCreateIdentity();
     sharedKeyBytes = await deriveEcdhKey(identity.ecdhPrivateKey, camera.publicKeyBase64);
+    localNetworkState = await queryLocalNetworkPermissionState(permissionsApi);
+    localNetworkGranted = localNetworkState === "granted" || localNetworkState === "unsupported";
+    if (!localNetworkGranted) {
+      logger.w(
+        "WebRTC",
+        `Local Network Access permission is "${localNetworkState}"; filtering private LAN ICE candidates to protect UDP sockets`
+      );
+    }
 
     await signaling.startListening(camera.broker || null);
     if (closed || gen !== sessionGen) return;
@@ -484,7 +557,9 @@ export function createWebRtcViewerSession({
           sendCommand(ControlCommand.queryBattery());
         }, BATTERY_QUERY_INTERVAL_MS);
       } else if (st === "failed") {
-        setState("FAILED", { reason: "SYMMETRIC_NAT" });
+        setState("FAILED", {
+          reason: !localNetworkGranted ? "LOCAL_NETWORK_BLOCKED" : "SYMMETRIC_NAT"
+        });
       } else if (st === "disconnected") {
         setState("DISCONNECTED");
         clearTimeout(disconnectReconnectTimer);

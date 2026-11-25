@@ -240,7 +240,12 @@ function renderCenterOverlay() {
 
   if (st === "FAILED" || st === "DISCONNECTED") {
     const title = st === "FAILED" ? t("viewer_status_failed") : t("viewer_status_disconnected");
-    const desc = st === "FAILED" ? t("viewer_symmetric_nat_desc") : "";
+    const desc =
+      st === "FAILED"
+        ? viewerState.connExtra.reason === "LOCAL_NETWORK_BLOCKED"
+          ? t("viewer_lna_blocked_desc")
+          : t("viewer_symmetric_nat_desc")
+        : "";
     card.innerHTML = `
       <div class="status-card-title">${escapeHtml(title)}</div>
       ${desc ? `<div class="muted">${escapeHtml(desc)}</div>` : ""}
