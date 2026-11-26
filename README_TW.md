@@ -37,9 +37,21 @@ CamMonitor 能將您閒置的舊 Android 手機化身為居家安全監控攝影
 
 ## 系統需求
 
+### Android App（鏡頭端與觀看端）
 - **作業系統：** Android 9.0（Pie / API 28）或以上版本。
 - **系統權限：** 相機、麥克風、通知權限（Android 13+）。
-- **網路環境：** 兩支手機均需連線至網際網路（Wi-Fi 或行動數據）。支援同區域網路（LAN）與跨網外網連線（WAN）。
+- **網路環境：** 需連線至網際網路（Wi-Fi 或行動數據）。支援同區域網路（LAN）與跨網外網連線（WAN）。
+
+### 網頁觀看端（僅支援觀看模式）
+- **支援平台與瀏覽器：**
+  - **iOS / iPadOS（15 以上）：** Safari 或主畫面 PWA *（建議點選 **分享 → 加入主畫面**，以永久保存已配對鏡頭，避免一般 Safari 分頁閒置 7 天後遭系統清除本機資料）*。
+  - **Android（9 以上）：** Chrome、Edge 或 Firefox。
+  - **電腦（Windows / macOS / Linux）：** Chrome、Edge、Safari 或 Firefox。
+- **瀏覽器規格：** 需支援 **WebRTC**、**WebCrypto**（`crypto.subtle`）與 **IndexedDB**，且必須透過 **HTTPS** 安全連線開啟（例如 `https://samlu.github.io/CamMonitor/viewer/`；本機開發可使用 `http://localhost`）。
+- **選用權限：**
+  - **相機：** 僅於網頁觀看端內使用掃描 QR Code 功能時需要（若直接點擊分享的 `#pair=` 連結或以手機原生相機掃碼則無需開啟）。
+  - **麥克風：** 僅於使用雙向語音對講（PTT）時需要。
+- **網路環境：** 需可連上 Wi-Fi 或行動數據，並允許對外連線 MQTT over WSS（TLS 連接埠 `8884`）與 WebRTC（UDP/STUN）。*（僅作為觀看端使用；鏡頭端仍需使用 Android App。）*
 
 ---
 

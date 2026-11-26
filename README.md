@@ -37,9 +37,21 @@ CamMonitor turns your spare Android phone into a private, zero-account home secu
 
 ## Requirements
 
+### Android App (Camera & Viewer)
 - **Operating System:** Android 9.0 (Pie / API 28) or higher.
 - **Permissions:** Camera, Microphone, and Notifications (Android 13+).
-- **Network:** Both phones must have an active Wi-Fi or mobile data connection. Works on local Wi-Fi (LAN) and over the Internet (WAN).
+- **Network:** Active Wi-Fi or mobile data connection. Works on local Wi-Fi (LAN) and over the Internet (WAN).
+
+### Browser-Based Web Viewer (Viewer Only)
+- **Supported Platforms & Browsers:**
+  - **iOS / iPadOS (15+):** Safari or Home Screen PWA *(recommended: **Share → Add to Home Screen** so paired cameras persist permanently rather than expiring after 7 days of Safari tab inactivity)*.
+  - **Android (9+):** Chrome, Edge, or Firefox.
+  - **Desktop (Windows / macOS / Linux):** Chrome, Edge, Safari, or Firefox.
+- **Browser Capabilities:** Modern browser with **WebRTC**, **WebCrypto** (`crypto.subtle`), and **IndexedDB** enabled, loaded over **HTTPS** (e.g., `https://samlu.github.io/CamMonitor/viewer/`, or `http://localhost` for local testing).
+- **Optional Permissions:**
+  - **Camera:** Only needed if scanning QR codes inside the Web Viewer (not required when opening a shared `#pair=` link or scanning via the native phone camera).
+  - **Microphone:** Only needed when using Push-to-Talk (PTT) intercom.
+- **Network:** Active Wi-Fi or mobile data connection allowing outbound MQTT over WSS (TLS port `8884`) and WebRTC (UDP/STUN). *(Viewer-only; the camera device must run the Android app.)*
 
 ---
 
