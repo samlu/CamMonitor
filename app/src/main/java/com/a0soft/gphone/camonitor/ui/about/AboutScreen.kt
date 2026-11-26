@@ -35,6 +35,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.a0soft.gphone.camonitor.BuildConfig
 import com.a0soft.gphone.camonitor.R
+import com.a0soft.gphone.camonitor.config.AppConfig
 import com.a0soft.gphone.camonitor.data.model.PairingPayload
 import com.a0soft.gphone.camonitor.data.update.ReleaseCheckResult
 import com.a0soft.gphone.camonitor.data.update.ReleaseChecker
@@ -103,7 +104,7 @@ fun AboutScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    val githubUrl = stringResource(R.string.about_github_url)
+    val githubUrl = AppConfig.GITHUB_REPO_URL
     val webViewerUrl = PairingPayload.DEFAULT_WEB_VIEWER_BASE_URL
     val scope = rememberCoroutineScope()
     val updatePrefs = remember { UpdatePreferenceManager(context) }
@@ -558,7 +559,7 @@ fun AboutScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    val contributorsGraphUrl = stringResource(R.string.about_contributors_github_url)
+                    val contributorsGraphUrl = AppConfig.GITHUB_CONTRIBUTORS_URL
                     OutlinedButton(
                         onClick = {
                             val intent = Intent(Intent.ACTION_VIEW, contributorsGraphUrl.toUri()).apply {

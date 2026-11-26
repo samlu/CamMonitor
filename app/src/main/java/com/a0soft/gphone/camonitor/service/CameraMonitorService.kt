@@ -15,6 +15,7 @@ import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import com.a0soft.gphone.camonitor.CamMonitorApp
 import com.a0soft.gphone.camonitor.R
+import com.a0soft.gphone.camonitor.config.AppConfig
 import com.a0soft.gphone.camonitor.data.model.ControlCommand
 import com.a0soft.gphone.camonitor.data.model.SignalingMessage
 import com.a0soft.gphone.camonitor.data.security.SecurityRepository
@@ -52,8 +53,8 @@ class CameraMonitorService : Service() {
          * no benefit: a returning viewer triggers CameraWaking and the sensor is
          * re-opened in ~1-2s anyway.
          */
-        const val NO_VIEWER_PAUSE_MS = 15_000L
-        const val MAX_CAMERA_RECOVERY_ATTEMPTS = 5
+        const val NO_VIEWER_PAUSE_MS = AppConfig.NO_VIEWER_PAUSE_MS
+        const val MAX_CAMERA_RECOVERY_ATTEMPTS = AppConfig.MAX_CAMERA_RECOVERY_ATTEMPTS
 
         fun computeRecoveryDelayMs(attempt: Int): Long =
             (1_000L shl attempt.coerceAtMost(5)).coerceAtMost(20_000L)

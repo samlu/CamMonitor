@@ -2,6 +2,7 @@ package com.a0soft.gphone.camonitor.ui.home
 
 import android.content.Context
 import androidx.core.content.edit
+import com.a0soft.gphone.camonitor.config.AppConfig
 
 /** Network state shown in the Home pre-flight bar. */
 enum class NetworkType {
@@ -37,10 +38,10 @@ fun classifyNetwork(
 fun isBatteryLow(percentage: Int, isCharging: Boolean): Boolean =
     percentage in 0..LOW_BATTERY_PERCENT && !isCharging
 
-const val LOW_BATTERY_PERCENT = 20
+const val LOW_BATTERY_PERCENT = AppConfig.LOW_BATTERY_PERCENT
 
 /** Earlier, softer threshold used for the inline warning next to the Start buttons. */
-const val LOW_BATTERY_BROADCAST_WARN_PERCENT = 30
+const val LOW_BATTERY_BROADCAST_WARN_PERCENT = AppConfig.LOW_BATTERY_BROADCAST_WARN_PERCENT
 
 fun shouldWarnLowBatteryBeforeBroadcast(percentage: Int, isCharging: Boolean): Boolean =
     percentage in 0..LOW_BATTERY_BROADCAST_WARN_PERCENT && !isCharging

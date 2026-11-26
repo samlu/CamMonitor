@@ -7,6 +7,7 @@ import android.hardware.camera2.CaptureRequest
 import android.os.Handler
 import android.util.Range
 import android.view.Surface
+import com.a0soft.gphone.camonitor.config.AppConfig
 import com.a0soft.gphone.camonitor.data.model.ControlCommand
 import com.a0soft.gphone.camonitor.log.AppLogger
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -54,10 +55,10 @@ class WebRtcManager(private val context: Context) {
     private val _activeViewersCount = MutableStateFlow(0)
     val activeViewersCount: StateFlow<Int> = _activeViewersCount.asStateFlow()
 
-    private val _streamFps = MutableStateFlow(20)
+    private val _streamFps = MutableStateFlow(AppConfig.VIDEO_TARGET_FPS)
     val streamFps: StateFlow<Int> = _streamFps.asStateFlow()
 
-    private val _remoteStreamFps = MutableStateFlow(20)
+    private val _remoteStreamFps = MutableStateFlow(AppConfig.VIDEO_TARGET_FPS)
     val remoteStreamFps: StateFlow<Int> = _remoteStreamFps.asStateFlow()
 
     fun setRemoteFps(fps: Int) {
@@ -93,10 +94,12 @@ class WebRtcManager(private val context: Context) {
     private var viewerAudioTrack: AudioTrack? = null
     private var isPttActive = false
 
-    private val iceServers = listOf(
-        PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
-        PeerConnection.IceServer.builder("stun:stun1.l.google.com:19302").createIceServer()
-    )
+    private val iceServers = AppConfig.ICE_SERVERS.map { cfg ->
+        PeerConnection.IceServer.builder(cfg.urls).apply {
+            cfg.username?.let { setUsername(it) }
+            cfg.credential?.let { setPassword(it) }
+        }.createIceServer()
+    }
 
     init {
         initPeerConnectionFactory()
@@ -178,7 +181,11 @@ class WebRtcManager(private val context: Context) {
         }
     }
 
-    fun startCameraCapture(width: Int = 1280, height: Int = 720, fps: Int = 20) {
+    fun startCameraCapture(
+        width: Int = AppConfig.VIDEO_WIDTH,
+        height: Int = AppConfig.VIDEO_HEIGHT,
+        fps: Int = AppConfig.VIDEO_TARGET_FPS
+    ) {
         val factory = peerConnectionFactory ?: return
 
         if (localVideoTrack != null && isCameraCapturing) return // Already running healthy
@@ -290,8 +297,8 @@ class WebRtcManager(private val context: Context) {
                 parameters.encodings.forEach { encoding ->
                     encoding.scaleResolutionDownBy = 1.0
                     encoding.maxFramerate = _streamFps.value
-                    encoding.minBitrateBps = 800_000
-                    encoding.maxBitrateBps = 2_500_000
+                    encoding.minBitrateBps = AppConfig.VIDEO_MIN_BITRATE_BPS
+                    encoding.maxBitrateBps = AppConfig.VIDEO_MAX_BITRATE_BPS
                 }
             }
             val result = sender.setParameters(parameters)

@@ -49,8 +49,15 @@ CamMonitor/
 ├── AGENTS.md                                # Autonomous agent operational directives & working guide
 ├── Specification.md                         # Authoritative product & technical specification
 ├── README.md / README_TW.md / README_JA.md  # Multilingual public documentation
+├── WEB_VIEWER_DEPLOY.md                     # Developer guide for self-hosting Web Viewer & config overrides
+├── CONFIG.md                                # Parameter reference & Android/Web config generation flow
+├── cammonitor.config.json                   # Single source of truth for Tier 1 + Tier 2 app/web config
+├── cammonitor.local.json                    # (Optional, gitignored) Local deep-merge override (e.g. private broker/TURN)
+├── scripts/
+│   └── sync-web-config.mjs                  # Syncs cammonitor.config.json -> docs/viewer/src/config.js & CSP
+├── docs/viewer/                             # Static PWA Browser Web Viewer (GitHub Pages)
 ├── app/
-│   ├── build.gradle.kts                     # App module configuration & dependencies
+│   ├── build.gradle.kts                     # App module config, GenerateAppConfigTask codegen, dependencies
 │   └── src/
 │       ├── main/
 │       │   ├── AndroidManifest.xml          # Permissions, foreground services, activity
@@ -105,6 +112,24 @@ CamMonitor/
 │       │       └── values-ja/strings.xml            # Japanese
 │       └── test/java/com/a0soft/gphone/camonitor/   # Comprehensive JUnit tests
 ```
+
+### 1.3 Centralized Configuration (`cammonitor.config.json`)
+To eliminate cross-platform drift between Android and the static Web Viewer (and make forking or self-hosting a single-file change), shared infrastructure and tuning parameters live in repo-root [`cammonitor.config.json`](cammonitor.config.json) (fully documented with flow diagram and parameter table in [`CONFIG.md`](CONFIG.md)), with an optional gitignored `cammonitor.local.json` deep-merged on top for private deployments (e.g., custom MQTT brokers or TURN credentials):
+
+* **Tier 1 (Project & Infrastructure):**
+  * `project`: `githubOwner`, `githubRepo`, `webViewerBaseUrl` (derives GitHub repo, releases, latest release API, and contributors URLs).
+  * `signaling`: `topicPrefix`, `keepAliveSec`, `maxReconnectBackoffMs`, and `brokers[]` (`host`, `tlsPort`, `wssPort`, `wssPath`, `primary`).
+  * `webrtc.iceServers[]`: STUN and optional TURN entries (`urls`, optional `username`, `credential`).
+* **Tier 2 (Capacity, Media, Power, Updates & Logging):**
+  * `webrtc.video`: `width`, `height`, `targetFps`, `minBitrateBps`, `maxBitrateBps`.
+  * `limits`: `maxPairedCameras`, `maxPairedViewers`, `maxConcurrentViewers`.
+  * `camera`: `noViewerPauseMs`, `oledAutoLockSec`, `maxRecoveryAttempts`, `nightMode` (`luxEnter`, `luxExit`, `debounceMs`), `battery` (`lowPercent`, `broadcastWarnPercent`).
+  * `updates`: `checkIntervalHours`, `flexIntervalHours`, `httpTimeoutMs`.
+  * `logging`: `maxFileSizeMb`, `maxBackupFiles`, `androidMemoryEntries`, `webMemoryEntries`.
+* **Android Code Generation:** `GenerateAppConfigTask` in `app/build.gradle.kts` validates the merged JSON and emits compile-time `com.a0soft.gphone.camonitor.config.AppConfig` (`const val` primitives/strings + typed `BrokerConfig` / `IceServerConfig` lists) into each variant's generated Kotlin sources. Existing companion constants delegate to `AppConfig.*`.
+* **Web Viewer Sync:** `node scripts/sync-web-config.mjs` validates the same merged JSON, writes `docs/viewer/src/config.js` (`APP_CONFIG`), and keeps `docs/viewer/index.html`'s CSP `connect-src` aligned with `signaling.brokers[]` (`--check` verifies zero drift).
+* **Protocol Invariants Kept Hardcoded:** Cryptographic domain separation (`secp256r1`, `CamMonitor-OTP`, `CamMonitor-E2EE`, 12B GCM IV / 128-bit tag), anti-replay windows (`±120s`), and storage/channel identifiers remain intentionally hardcoded to prevent silent wire incompatibilities or upgrade regressions.
+* **Parity Tests:** `AppConfigParityTest.kt` (Android JVM) and `docs/viewer/test/config.test.js` (Node.js) verify Android, Web Viewer, and CSP match `cammonitor.config.json`.
 
 ---
 
@@ -974,7 +999,7 @@ To guarantee that every pre-release and final release provides a strictly monoto
 ## 10. Browser-Based Web Viewer (Static PWA in `docs/viewer/`)
 
 * **Hosting & Routing:** Served statically from `main / docs` on GitHub Pages at `https://samlu.github.io/CamMonitor/viewer/` (with `docs/.nojekyll` and `docs/index.html` redirecting `/` to `./viewer/` while preserving `window.location.search` and `window.location.hash`). Developer self-hosting steps are documented in `WEB_VIEWER_DEPLOY.md`.
-* **Zero-Build ES Modules & Vendored Dependencies:** Uses zero-build-step ES modules (`app.js`, `crypto.js`, `storage.js`, `signaling.js`, `pairing.js`, `webrtc.js`, `ui.js`, `i18n.js`, `logger.js`) with pinned `mqtt@5.16.1` (`docs/viewer/vendor/mqtt.min.js`) and `jsqr@1.4.0` (`docs/viewer/vendor/jsQR.js`) under strict CSP (`default-src 'self'; script-src 'self'; ...`).
+* **Zero-Build ES Modules & Vendored Dependencies:** Uses zero-build-step ES modules (`config.js`, `app.js`, `crypto.js`, `storage.js`, `signaling.js`, `pairing.js`, `webrtc.js`, `ui.js`, `i18n.js`, `logger.js`) with pinned `mqtt@5.16.1` (`docs/viewer/vendor/mqtt.min.js`) and `jsqr@1.4.0` (`docs/viewer/vendor/jsQR.js`) under strict CSP (`default-src 'self'; script-src 'self'; worker-src 'self' blob:; ...`).
 * **WebCrypto E2EE Parity (`crypto.js`, `signaling.js`):**
   * Generates EC P-256 identity keypairs once, persists non-extractable `ECDSA` + `ECDH` `CryptoKey` handles in `IndexedDB` (`cammonitor_web_db`), and scrubs `#pair=...` immediately via `history.replaceState`.
   * Implements custom HKDF-Expand-only (`HMAC-SHA256` with raw secret as PRK when salt is empty) matching `CryptoUtils.hkdfSha256()`, AES-256-GCM split-tag envelopes, ASN.1 DER $\leftrightarrow$ IEEE P1363 ECDSA signature conversion, $\pm 120\text{s}$ replay window, nonce rollback on auth/decrypt failure, Offer monotonic timestamps, Proof-of-Possession verification, and public key immutability guard.
@@ -982,8 +1007,8 @@ To guarantee that every pre-release and final release provides a strictly monoto
   * Connects via MQTT over WSS (`wss://broker.hivemq.com:8884/mqtt`, MQTT v3.1.1, honoring allowlisted `PairingPayload.broker`).
   * Configures Unified Plan transceivers (`video recvonly`, `audio sendrecv` without upfront mic capture, and `createDataChannel("control", { ordered: true })` before `createOffer()`), handles both local and PA-created DataChannels, buffers/deduplicates trickle ICE candidates, renders 4-step progress telemetry (`CAMERA_WAKING`, 15s `CameraTimeout` + 10s auto-retry, 3s disconnect auto-reconnect, `REJECT`), supports 90° rotation + Fit/Fill (double-tap), Screen Wake Lock, Touch/Spacebar PTT (`replaceTrack` with `pointercancel` safety and audio ducking), iOS PWA Home Screen banner, 4-locale i18n, and an in-app diagnostic log drawer.
 * **Automated Verification Suites:**
-  * `node --test docs/viewer/test/*.test.js` (`crypto.test.js`, `signaling.test.js`, `pairing.test.js`, `webrtc.test.js`, `ui-i18n.test.js`).
-  * `WebViewerCryptoInteropTest.kt` + `docs/viewer/test/interop-bridge.mjs` verifying bidirectional JVM `CryptoUtils` $\leftrightarrow$ Node.js WebCrypto compatibility, plus `PairingUrlTest.kt` and `QrUtilsTest.kt`.
+  * `node --test docs/viewer/test/*.test.js` (`config.test.js`, `crypto.test.js`, `signaling.test.js`, `pairing.test.js`, `webrtc.test.js`, `ui-i18n.test.js`).
+  * `WebViewerCryptoInteropTest.kt` + `docs/viewer/test/interop-bridge.mjs` verifying bidirectional JVM `CryptoUtils` $\leftrightarrow$ Node.js WebCrypto compatibility, plus `AppConfigParityTest.kt`, `PairingUrlTest.kt`, and `QrUtilsTest.kt`.
 
 
 

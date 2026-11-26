@@ -6,6 +6,7 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import com.a0soft.gphone.camonitor.config.AppConfig
 import com.a0soft.gphone.camonitor.log.AppLogger
 import java.util.concurrent.TimeUnit
 
@@ -21,8 +22,8 @@ object UpdateWorkScheduler {
                 .build()
 
             val workRequest = PeriodicWorkRequestBuilder<ReleaseCheckWorker>(
-                24, TimeUnit.HOURS,
-                4, TimeUnit.HOURS
+                AppConfig.UPDATE_CHECK_INTERVAL_HOURS, TimeUnit.HOURS,
+                AppConfig.UPDATE_FLEX_INTERVAL_HOURS, TimeUnit.HOURS
             )
                 .setConstraints(constraints)
                 .build()
@@ -32,7 +33,7 @@ object UpdateWorkScheduler {
                 ExistingPeriodicWorkPolicy.KEEP,
                 workRequest
             )
-            AppLogger.d(TAG, "Enqueued unique periodic release check worker (24h)")
+            AppLogger.d(TAG, "Enqueued unique periodic release check worker (${AppConfig.UPDATE_CHECK_INTERVAL_HOURS}h)")
         } catch (e: Exception) {
             AppLogger.w(TAG, "Failed scheduling periodic release check: ${e.message}")
         }

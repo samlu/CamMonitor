@@ -5,6 +5,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
+import com.a0soft.gphone.camonitor.config.AppConfig
 import com.a0soft.gphone.camonitor.data.model.SignalingEnvelope
 import com.a0soft.gphone.camonitor.data.model.SignalingMessage
 import com.a0soft.gphone.camonitor.data.security.SecurityRepository
@@ -71,10 +72,11 @@ class MqttSignalingClient(
     private val connectMutex = Mutex()
 
     companion object {
-        const val PRIMARY_BROKER_HOST = "broker.hivemq.com"
-        const val PRIMARY_BROKER_PORT = 8883
-        const val SECONDARY_BROKER_HOST = "broker.emqx.io"
-        const val SECONDARY_BROKER_PORT = 8883
+        const val PRIMARY_BROKER_HOST = AppConfig.PRIMARY_BROKER_HOST
+        const val PRIMARY_BROKER_PORT = AppConfig.PRIMARY_BROKER_PORT
+        const val SECONDARY_BROKER_HOST = AppConfig.SECONDARY_BROKER_HOST
+        const val SECONDARY_BROKER_PORT = AppConfig.SECONDARY_BROKER_PORT
+        const val TOPIC_PREFIX = AppConfig.SIGNALING_TOPIC_PREFIX
     }
 
     init {
@@ -89,7 +91,7 @@ class MqttSignalingClient(
                         AppLogger.i(tag, "Network available callback received")
                         if (isListeningWanted && !_isConnectedFlow.value) {
                             val deviceId = securityRepository.getDeviceId()
-                            val topic = "cammonitor/$deviceId/rx"
+                            val topic = "$TOPIC_PREFIX/$deviceId/rx"
                             reconnectJob?.cancel()
                             triggerReconnectLoop(topic)
                         }
@@ -115,7 +117,7 @@ class MqttSignalingClient(
         }
 
         val deviceId = securityRepository.getDeviceId()
-        val topic = "cammonitor/$deviceId/rx"
+        val topic = "$TOPIC_PREFIX/$deviceId/rx"
 
         AppLogger.i(tag, "Connecting to MQTT signaling for device: $deviceId, topic: $topic")
         val success = connectWithRetry(topic)
@@ -220,7 +222,7 @@ class MqttSignalingClient(
                         _isConnectedFlow.value = false
                         if (isListeningWanted) {
                             val deviceId = securityRepository.getDeviceId()
-                            triggerReconnectLoop("cammonitor/$deviceId/rx")
+                            triggerReconnectLoop("$TOPIC_PREFIX/$deviceId/rx")
                         }
                     }
                 }
@@ -246,7 +248,7 @@ class MqttSignalingClient(
             try {
                 newClient.connectWith()
                     .cleanSession(true)
-                    .keepAlive(30)
+                    .keepAlive(AppConfig.SIGNALING_KEEP_ALIVE_SEC)
                     .send()
                     .whenComplete { _, connectError ->
                         if (!continuation.isActive) {
@@ -308,7 +310,7 @@ class MqttSignalingClient(
                     AppLogger.i(tag, "Reconnection successfully restored signaling")
                     break
                 }
-                delayMs = (delayMs * 2).coerceAtMost(15_000L)
+                delayMs = (delayMs * 2).coerceAtMost(AppConfig.SIGNALING_MAX_RECONNECT_BACKOFF_MS)
             }
         }
     }
@@ -443,7 +445,7 @@ class MqttSignalingClient(
             return false
         }
 
-        val targetTopic = "cammonitor/${envelope.recipientId}/rx"
+        val targetTopic = "$TOPIC_PREFIX/${envelope.recipientId}/rx"
         val payload = envelope.toJson().toByteArray(Charsets.UTF_8)
 
         return suspendCancellableCoroutine { continuation ->

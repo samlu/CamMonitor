@@ -1,0 +1,71 @@
+{
+  "project": {
+    "githubOwner": "samlu",
+    "githubRepo": "CamMonitor",
+    "webViewerBaseUrl": "https://samlu.github.io/CamMonitor/viewer/"
+  },
+  "signaling": {
+    "topicPrefix": "cammonitor",
+    "keepAliveSec": 30,
+    "maxReconnectBackoffMs": 15000,
+    "brokers": [
+      {
+        "host": "broker.hivemq.com",
+        "tlsPort": 8883,
+        "wssPort": 8884,
+        "wssPath": "/mqtt",
+        "primary": true
+      },
+      {
+        "host": "broker.emqx.io",
+        "tlsPort": 8883,
+        "wssPort": 8884,
+        "wssPath": "/mqtt",
+        "primary": false
+      }
+    ]
+  },
+  "webrtc": {
+    "iceServers": [
+      { "urls": "stun:stun.l.google.com:19302" },
+      { "urls": "stun:stun1.l.google.com:19302" }
+    ],
+    "video": {
+      "width": 1280,
+      "height": 720,
+      "targetFps": 20,
+      "minBitrateBps": 800000,
+      "maxBitrateBps": 2500000
+    }
+  },
+  "limits": {
+    "maxPairedCameras": 8,
+    "maxPairedViewers": 8,
+    "maxConcurrentViewers": 2
+  },
+  "camera": {
+    "noViewerPauseMs": 15000,
+    "oledAutoLockSec": 60,
+    "maxRecoveryAttempts": 5,
+    "nightMode": {
+      "luxEnter": 10.0,
+      "luxExit": 25.0,
+      "debounceMs": 1500
+    },
+    "battery": {
+      "lowPercent": 20,
+      "broadcastWarnPercent": 30
+    }
+  },
+  "updates": {
+    "checkIntervalHours": 24,
+    "flexIntervalHours": 4,
+    "httpTimeoutMs": 10000
+  },
+  "logging": {
+    "maxFileSizeMb": 8,
+    "maxBackupFiles": 5,
+    "androidMemoryEntries": 500,
+    "webMemoryEntries": 300
+  }
+}

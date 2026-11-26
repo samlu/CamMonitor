@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import androidx.core.content.edit
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import com.a0soft.gphone.camonitor.config.AppConfig
 import com.a0soft.gphone.camonitor.data.model.PairedDevice
 import com.a0soft.gphone.camonitor.data.model.SignalingEnvelope
 import com.a0soft.gphone.camonitor.log.AppLogger
@@ -28,9 +29,9 @@ interface SecurityRepository {
 
     // Whitelist & Streaming Limits
     companion object {
-        const val MAX_PAIRED_CAMERAS = 8
-        const val MAX_PAIRED_VIEWERS = 8
-        const val MAX_CONCURRENT_VIEWERS = 2
+        const val MAX_PAIRED_CAMERAS = AppConfig.MAX_PAIRED_CAMERAS
+        const val MAX_PAIRED_VIEWERS = AppConfig.MAX_PAIRED_VIEWERS
+        const val MAX_CONCURRENT_VIEWERS = AppConfig.MAX_CONCURRENT_VIEWERS
     }
 
     fun getPairedDevices(): List<PairedDevice>

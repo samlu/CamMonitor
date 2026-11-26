@@ -3,6 +3,7 @@ package com.a0soft.gphone.camonitor.data.update
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
+import com.a0soft.gphone.camonitor.config.AppConfig
 
 class UpdatePreferenceManager(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -17,7 +18,7 @@ class UpdatePreferenceManager(context: Context) {
         private const val KEY_CACHED_URL = "key_cached_url"
         private const val KEY_CACHED_NOTES = "key_cached_notes"
 
-        const val COOLDOWN_24_HOURS_MS = 24 * 60 * 60 * 1000L
+        const val COOLDOWN_24_HOURS_MS = AppConfig.UPDATE_COOLDOWN_MS
 
         fun shouldCheck(
             lastCheckTimeMs: Long,
@@ -75,7 +76,7 @@ class UpdatePreferenceManager(context: Context) {
         val version = prefs.getString(KEY_CACHED_VERSION, null) ?: return null
         val tag = prefs.getString(KEY_CACHED_TAG, "v$version") ?: "v$version"
         val title = prefs.getString(KEY_CACHED_TITLE, "CamMonitor $tag") ?: "CamMonitor $tag"
-        val url = prefs.getString(KEY_CACHED_URL, "https://github.com/samlu/CamMonitor/releases") ?: ""
+        val url = prefs.getString(KEY_CACHED_URL, AppConfig.GITHUB_RELEASES_URL) ?: ""
         val notes = prefs.getString(KEY_CACHED_NOTES, "") ?: ""
         return ReleaseInfo(
             versionName = version,

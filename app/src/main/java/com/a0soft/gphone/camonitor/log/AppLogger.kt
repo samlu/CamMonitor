@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Build
 import android.os.SystemClock
 import android.util.Log
+import com.a0soft.gphone.camonitor.config.AppConfig
 import com.a0soft.gphone.camonitor.data.model.LogEntry
 import com.a0soft.gphone.camonitor.data.model.LogLevel
 import kotlinx.coroutines.CoroutineScope
@@ -54,13 +55,13 @@ import java.util.concurrent.atomic.AtomicLong
 object AppLogger {
     private const val TAG = "AppLogger"
 
-    /** Rotate at 8 MB; ~7 MB/day at INFO, so one file is about a day. */
-    private const val MAX_FILE_SIZE_BYTES = 8 * 1024 * 1024L
+    /** Rotate at configured MB limit; ~7 MB/day at INFO, so one file is about a day. */
+    private const val MAX_FILE_SIZE_BYTES = AppConfig.LOG_MAX_FILE_SIZE_BYTES
 
-    /** Rotated siblings kept on disk: 6 files ≈ 48 MB total. */
-    private const val MAX_BACKUP_FILES = 5
+    /** Rotated siblings kept on disk: (MAX_BACKUP_FILES + 1) files total. */
+    private const val MAX_BACKUP_FILES = AppConfig.LOG_MAX_BACKUP_FILES
 
-    private const val MAX_MEMORY_LOGS = 500
+    private const val MAX_MEMORY_LOGS = AppConfig.LOG_MAX_MEMORY_ENTRIES
 
     /**
      * Hard ceiling on queued-but-unwritten entries.

@@ -33,6 +33,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
+import com.a0soft.gphone.camonitor.config.AppConfig
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -237,7 +238,7 @@ fun CameraModeScreen(
     LaunchedEffect(isLocked, showRenameDialog, isServiceActive) {
         if (!isLocked && !showRenameDialog && isServiceActive) {
             idleSeconds = 0
-            while (idleSeconds < 60) {
+            while (idleSeconds < AppConfig.OLED_AUTO_LOCK_SEC) {
                 delay(1000L)
                 idleSeconds++
             }

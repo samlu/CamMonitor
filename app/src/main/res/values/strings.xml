@@ -210,7 +210,6 @@
     <string name="about_description">Turn your spare Android phone into a private, zero-account home security camera with end-to-end encryption, smart battery protection, and 2-way walkie-talkie intercom.</string>
     <string name="about_open_source_notice">This app is open source under the Apache 2.0 License.</string>
     <string name="about_view_on_github">View on GitHub</string>
-    <string name="about_github_url">https://github.com/samlu/CamMonitor</string>
     <string name="about_web_viewer_title">Browser Web Viewer</string>
     <string name="about_web_viewer_desc">Open this URL on iPhone, iPad, or desktop browsers to watch already-paired cameras without bookmarking.</string>
     <string name="about_web_viewer_copy">Copy URL</string>
@@ -223,7 +222,6 @@
     <string name="about_contributor_owwhale_role">Logging Pipeline, Camera Engine &amp; i18n</string>
     <string name="about_contributor_eltociear_role">Japanese Localization</string>
     <string name="about_view_all_contributors">View All Contributors on GitHub</string>
-    <string name="about_contributors_github_url">https://github.com/samlu/CamMonitor/graphs/contributors</string>
     <!-- Permissions Rationale & Recovery -->
     <string name="permission_dialog_title">Permissions Required</string>
     <string name="permission_camera_reason">Camera: Required to stream video and scan pairing QR codes.</string>

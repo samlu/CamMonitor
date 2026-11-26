@@ -210,7 +210,6 @@
     <string name="about_description">使わなくなった Android スマートフォンを、アカウント不要でプライベートな家庭用防犯カメラに変えます。エンドツーエンド暗号化、スマートなバッテリー保護、双方向のトランシーバー式インターホンを備えています。</string>
     <string name="about_open_source_notice">このアプリは Apache 2.0 ライセンスのオープンソースです。</string>
     <string name="about_view_on_github">GitHub で見る</string>
-    <string name="about_github_url">https://github.com/samlu/CamMonitor</string>
     <string name="about_web_viewer_title">ブラウザ Web ビューアー</string>
     <string name="about_web_viewer_desc">iPhone、iPad、PC のブラウザでこの URL を開くと、ペアリング済みのカメラをいつでも視聴できます。</string>
     <string name="about_web_viewer_copy">URL をコピー</string>
@@ -223,7 +222,6 @@
     <string name="about_contributor_owwhale_role">ログパイプライン・カメラエンジン・簡体字中国語</string>
     <string name="about_contributor_eltociear_role">日本語ローカライズ</string>
     <string name="about_view_all_contributors">GitHub でコントリビューター一覧を見る</string>
-    <string name="about_contributors_github_url">https://github.com/samlu/CamMonitor/graphs/contributors</string>
     <!-- Permissions Rationale & Recovery -->
     <string name="permission_dialog_title">権限が必要です</string>
     <string name="permission_camera_reason">カメラ: 映像の配信とペアリング用 QR コードのスキャンに必要です。</string>

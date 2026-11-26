@@ -64,20 +64,27 @@ https://<YOUR_USERNAME>.github.io/<YOUR_REPO>/viewer/
 
 ---
 
-## Step 3: Point Your Android Build to Your GitHub Pages URL
+## Step 3: Point Your Android Build & Web Viewer to Your GitHub Pages URL
 
-By default, Android PA generates QR codes and Share/Copy links pointing to `https://samlu.github.io/CamMonitor/viewer/`.
+All shared project URLs, MQTT brokers, ICE/STUN/TURN servers, and capacity/tuning settings live in a single root file: **`cammonitor.config.json`** (or create a gitignored **`cammonitor.local.json`** with only the fields you want to override). See **[CONFIG.md](CONFIG.md)** for the full parameter reference and generation flow.
 
-To make your own Android builds point to **your** hosted viewer:
+To point both Android and the Web Viewer to **your** fork and hosted URL:
 
-1. Edit `app/src/main/java/com/a0soft/gphone/camonitor/data/model/Models.kt`:
-   ```kotlin
-   companion object {
-       const val DEFAULT_WEB_VIEWER_BASE_URL = "https://<YOUR_USERNAME>.github.io/<YOUR_REPO>/viewer/"
-       const val PAIR_FRAGMENT_PREFIX = "#pair="
+1. Edit **`cammonitor.config.json`** (or **`cammonitor.local.json`**):
+   ```json
+   {
+     "project": {
+       "githubOwner": "<YOUR_USERNAME>",
+       "githubRepo": "<YOUR_REPO>",
+       "webViewerBaseUrl": "https://<YOUR_USERNAME>.github.io/<YOUR_REPO>/viewer/"
+     }
+   }
    ```
-2. *(Optional)* Update the paste-input placeholder URL in `docs/viewer/src/i18n.js` (`pair_paste_placeholder` across `en`, `zh-Hant`, `zh-Hans`, `ja`) and the unit test assertion in `app/src/test/java/com/a0soft/gphone/camonitor/model/PairingUrlTest.kt` (note: `PairingUrlTest` references `PairingPayload.DEFAULT_WEB_VIEWER_BASE_URL` dynamically, so it passes automatically).
-3. Rebuild and install the APK:
+2. Sync the static Web Viewer config (`docs/viewer/src/config.js`) and CSP (`docs/viewer/index.html`):
+   ```bash
+   node scripts/sync-web-config.mjs
+   ```
+3. Rebuild and install the Android APK (Gradle automatically generates `AppConfig.kt` from `cammonitor.config.json` + optional `cammonitor.local.json`):
    ```powershell
    # Windows
    .\gradlew.bat testDebugUnitTest assembleDebug
@@ -92,20 +99,31 @@ To make your own Android builds point to **your** hosted viewer:
 
 ### Custom Domain
 1. Add a `docs/CNAME` file containing your domain (e.g., `cam.example.com`) and configure DNS per GitHub Pages docs.
-2. Update `DEFAULT_WEB_VIEWER_BASE_URL` in `Models.kt` to `https://cam.example.com/viewer/`.
+2. Update `project.webViewerBaseUrl` in `cammonitor.config.json` to `"https://cam.example.com/viewer/"`, then run `node scripts/sync-web-config.mjs` and rebuild Android.
 
-### Custom MQTT-over-WSS Broker
-Both Android PA and the Web Viewer must use the **same** MQTT broker (default: `broker.hivemq.com`). To switch brokers:
-1. **Android PA/PB:** Update `PRIMARY_BROKER_HOST` in `app/src/main/java/com/a0soft/gphone/camonitor/data/signaling/SignalingClient.kt`.
-2. **Web Viewer signaling:** Update `DEFAULT_BROKER_URL` and `ALLOWED_BROKER_HOSTS` in `docs/viewer/src/signaling.js`.
-3. **Web Viewer CSP:** Add your broker's `wss://<host>:<port>` origin to `connect-src` in `docs/viewer/index.html`:
-   ```html
-   <meta http-equiv="Content-Security-Policy"
-     content="default-src 'self'; script-src 'self'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src wss://broker.hivemq.com:8884 wss://broker.emqx.io:8884; media-src 'self' mediastream: blob:;">
+### Custom MQTT-over-WSS Broker or STUN/TURN Servers
+Both Android PA and the Web Viewer read brokers and ICE servers from **`cammonitor.config.json`** (or gitignored **`cammonitor.local.json`** for private credentials):
+1. Update `signaling.brokers` (with exactly one `"primary": true` entry) and/or `webrtc.iceServers` (supports optional `"username"` and `"credential"` fields for TURN):
+   ```json
+   {
+     "signaling": {
+       "brokers": [
+         { "host": "mqtt.example.com", "tlsPort": 8883, "wssPort": 8884, "wssPath": "/mqtt", "primary": true }
+       ]
+     },
+     "webrtc": {
+       "iceServers": [
+         { "urls": "stun:stun.l.google.com:19302" },
+         { "urls": "turn:turn.example.com:3478", "username": "cam", "credential": "secret" }
+       ]
+     }
+   }
    ```
+2. Run `node scripts/sync-web-config.mjs` — this updates both `docs/viewer/src/config.js` and the `connect-src` CSP directive in `docs/viewer/index.html` automatically.
+3. Rebuild Android (`.\gradlew.bat assembleDebug`).
 
 ### Refreshing Cached Clients After Updates (Service Worker)
-Whenever you modify files under `docs/viewer/`, bump `CACHE_NAME` in `docs/viewer/sw.js` (e.g. `cammonitor-viewer-v2` → `cammonitor-viewer-v3`) before pushing so installed PWAs and mobile browsers purge stale cached assets.
+Whenever you modify files under `docs/viewer/` (including after running `sync-web-config.mjs`), bump `CACHE_NAME` in `docs/viewer/sw.js` (e.g. `cammonitor-viewer-v4` → `cammonitor-viewer-v5`) before pushing so installed PWAs and mobile browsers purge stale cached assets.
 
 ---
 
@@ -121,10 +139,13 @@ Open `http://localhost:8080/viewer/`.
 
 ### Run Automated Tests
 ```powershell
-# 1. Web Viewer unit & 4-locale i18n parity tests (27 tests)
+# 1. Verify Web Viewer config & CSP are in sync with cammonitor.config.json
+node scripts/sync-web-config.mjs --check
+
+# 2. Web Viewer unit, config parity & 4-locale i18n parity tests (32 tests)
 node --test docs/viewer/test/*.test.js
 
-# 2. Android unit tests + live bidirectional JVM <-> WebCrypto interop test (197 tests)
+# 3. Android unit tests + AppConfig parity + live JVM <-> WebCrypto interop test (198 tests)
 .\gradlew.bat testDebugUnitTest
 ```
 

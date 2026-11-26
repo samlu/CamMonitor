@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "./config.js";
 import {
   createEnvelope,
   decryptAesGcm,
@@ -9,8 +10,15 @@ import {
 } from "./crypto.js";
 import { logger } from "./logger.js";
 
-export const DEFAULT_BROKER_URL = "wss://broker.hivemq.com:8884/mqtt";
-export const ALLOWED_BROKER_HOSTS = new Set(["broker.hivemq.com", "broker.emqx.io"]);
+const PRIMARY_BROKER =
+  APP_CONFIG.signaling.brokers.find((b) => b.primary) || APP_CONFIG.signaling.brokers[0];
+const BROKERS_BY_HOST = new Map(
+  APP_CONFIG.signaling.brokers.map((b) => [b.host.toLowerCase(), b])
+);
+
+export const SIGNALING_TOPIC_PREFIX = APP_CONFIG.signaling.topicPrefix;
+export const DEFAULT_BROKER_URL = `wss://${PRIMARY_BROKER.host}:${PRIMARY_BROKER.wssPort}${PRIMARY_BROKER.wssPath}`;
+export const ALLOWED_BROKER_HOSTS = new Set(BROKERS_BY_HOST.keys());
 export const TIMESTAMP_TOLERANCE_MS = 120_000;
 export const NONCE_RETENTION_MS = 120_000;
 
@@ -24,14 +32,15 @@ export function resolveBrokerUrl(brokerHint) {
   try {
     if (trimmed.startsWith("wss://") || trimmed.startsWith("ws://")) {
       const parsed = new URL(trimmed);
-      if (parsed.protocol === "wss:" && ALLOWED_BROKER_HOSTS.has(parsed.hostname)) {
+      if (parsed.protocol === "wss:" && ALLOWED_BROKER_HOSTS.has(parsed.hostname.toLowerCase())) {
         return trimmed;
       }
       return DEFAULT_BROKER_URL;
     }
     const hostOnly = trimmed.split(":")[0].toLowerCase();
-    if (ALLOWED_BROKER_HOSTS.has(hostOnly)) {
-      return `wss://${hostOnly}:8884/mqtt`;
+    const matched = BROKERS_BY_HOST.get(hostOnly);
+    if (matched) {
+      return `wss://${matched.host}:${matched.wssPort}${matched.wssPath}`;
     }
   } catch (_) {}
   return DEFAULT_BROKER_URL;
@@ -291,7 +300,7 @@ export function createSignalingClient({ storage, mqttConnectFn = null }) {
   function scheduleReconnect() {
     if (!isListeningWanted || isConnected || reconnectTimer) return;
     const wait = backoffMs;
-    backoffMs = Math.min(15_000, backoffMs * 2);
+    backoffMs = Math.min(APP_CONFIG.signaling.maxReconnectBackoffMs, backoffMs * 2);
     logger.i("MQTT", `Scheduling reconnect in ${wait}ms...`);
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
@@ -313,7 +322,7 @@ export function createSignalingClient({ storage, mqttConnectFn = null }) {
 
     connectPromise = (async () => {
       const identity = await storage.getOrCreateIdentity();
-      const topic = `cammonitor/${identity.deviceId}/rx`;
+      const topic = `${SIGNALING_TOPIC_PREFIX}/${identity.deviceId}/rx`;
       const gen = ++clientGeneration;
 
       if (activeClient) {
@@ -341,7 +350,7 @@ export function createSignalingClient({ storage, mqttConnectFn = null }) {
           clientId,
           protocolVersion: 4,
           clean: true,
-          keepalive: 30,
+          keepalive: APP_CONFIG.signaling.keepAliveSec,
           reconnectPeriod: 0,
           connectTimeout: 8000
         });
@@ -495,7 +504,7 @@ export function createSignalingClient({ storage, mqttConnectFn = null }) {
         ecdsaPrivateKey: identity.ecdsaPrivateKey,
         timestamp
       });
-      const targetTopic = `cammonitor/${recipientId}/rx`;
+      const targetTopic = `${SIGNALING_TOPIC_PREFIX}/${recipientId}/rx`;
       const payloadStr = JSON.stringify(envelope);
       return await new Promise((resolve) => {
         try {

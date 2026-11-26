@@ -33,6 +33,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
+import com.a0soft.gphone.camonitor.config.AppConfig
 import com.a0soft.gphone.camonitor.data.model.NightModeSetting
 import com.a0soft.gphone.camonitor.log.AppLogger
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -53,13 +54,13 @@ class CameraXVideoCapturer(
 ) : VideoCapturer {
 
     companion object {
-        const val LUX_THRESHOLD_NIGHT_ENTER = 10.0f
-        const val LUX_THRESHOLD_NIGHT_EXIT = 25.0f
-        const val LIGHT_DEBOUNCE_DELAY_MS = 1500L
+        const val LUX_THRESHOLD_NIGHT_ENTER = AppConfig.NIGHT_LUX_ENTER
+        const val LUX_THRESHOLD_NIGHT_EXIT = AppConfig.NIGHT_LUX_EXIT
+        const val LIGHT_DEBOUNCE_DELAY_MS = AppConfig.NIGHT_DEBOUNCE_MS
 
         fun selectClosestFps(
             availablePairs: List<Pair<Int, Int>>,
-            targetFps: Int = 20
+            targetFps: Int = AppConfig.VIDEO_TARGET_FPS
         ): Pair<Int, Int> {
             if (availablePairs.isEmpty()) return Pair(targetFps, targetFps)
             val valid = availablePairs.filter { it.first > 0 && it.second >= it.first }
@@ -73,7 +74,7 @@ class CameraXVideoCapturer(
 
         fun selectClosestSupportedFpsRange(
             availableRanges: Array<Range<Int>>?,
-            targetFps: Int = 20
+            targetFps: Int = AppConfig.VIDEO_TARGET_FPS
         ): Range<Int> {
             if (availableRanges.isNullOrEmpty()) {
                 return Range(targetFps, targetFps)
@@ -95,10 +96,10 @@ class CameraXVideoCapturer(
     private val tag = "CameraXVideoCapturer"
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    var finalFps: Int = 20
+    var finalFps: Int = AppConfig.VIDEO_TARGET_FPS
         private set
 
-    private val _streamFpsFlow = MutableStateFlow(20)
+    private val _streamFpsFlow = MutableStateFlow(AppConfig.VIDEO_TARGET_FPS)
     @Suppress("unused")
     val streamFpsFlow: StateFlow<Int> = _streamFpsFlow.asStateFlow()
 
@@ -122,9 +123,9 @@ class CameraXVideoCapturer(
     private val isCapturing = AtomicBoolean(false)
     private val captureSessionToken = java.util.concurrent.atomic.AtomicInteger(0)
 
-    private var lastWidth: Int = 1280
-    private var lastHeight: Int = 720
-    private var lastFramerate: Int = 20
+    private var lastWidth: Int = AppConfig.VIDEO_WIDTH
+    private var lastHeight: Int = AppConfig.VIDEO_HEIGHT
+    private var lastFramerate: Int = AppConfig.VIDEO_TARGET_FPS
     private var isTorchActive: Boolean = false
     var nightModeSetting: NightModeSetting = NightModeSetting.AUTO
         private set

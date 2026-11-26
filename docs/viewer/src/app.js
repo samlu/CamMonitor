@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "./config.js";
 import { createTranslator, resolveLocale } from "./i18n.js";
 import { logger } from "./logger.js";
 import {
@@ -42,7 +43,7 @@ let viewerState = {
   connState: "CONNECTING",
   connExtra: {},
   progress: null,
-  fps: 20,
+  fps: APP_CONFIG.webrtc.video.targetFps,
   battery: null,
   torchEnabled: false,
   nightMode: "AUTO",
@@ -74,7 +75,11 @@ function applyTranslations() {
   const autoOpt = $("lang-select")?.querySelector('option[value="auto"]');
   if (autoOpt) autoOpt.textContent = t("home_lang_auto");
   const pasteInput = $("pair-paste-input");
-  if (pasteInput) pasteInput.placeholder = t("pair_paste_placeholder");
+  if (pasteInput) {
+    pasteInput.placeholder = t("pair_paste_placeholder", {
+      url: APP_CONFIG.project.webViewerBaseUrl
+    });
+  }
   const renameInput = $("rename-input");
   if (renameInput) renameInput.placeholder = t("rename_placeholder");
   const bannerText = $("ios-pwa-banner-text");
@@ -108,8 +113,8 @@ function syncVideoLayout() {
   const layout = computeRotatedVideoLayout({
     containerWidth: stage.clientWidth || window.innerWidth,
     containerHeight: stage.clientHeight || window.innerHeight,
-    videoWidth: video.videoWidth || 1280,
-    videoHeight: video.videoHeight || 720,
+    videoWidth: video.videoWidth || APP_CONFIG.webrtc.video.width,
+    videoHeight: video.videoHeight || APP_CONFIG.webrtc.video.height,
     rotationDeg: viewerState.rotationDeg,
     fitMode: viewerState.fitMode
   });
@@ -223,7 +228,7 @@ function renderCenterOverlay() {
     const reason = viewerState.connExtra.reason || "REJECTED";
     const msg =
       reason === "MAX_CAPACITY_REACHED"
-        ? t("viewer_rejected_capacity")
+        ? t("viewer_rejected_capacity", { max: APP_CONFIG.limits.maxConcurrentViewers })
         : t("viewer_rejected", { reason });
     card.innerHTML = `
       <div class="status-card-title">${escapeHtml(t("viewer_status_failed"))}</div>
@@ -345,7 +350,10 @@ async function renderHome() {
   $("viewer-name-display").textContent = identity.deviceName;
 
   const cameras = await storage.listCameras();
-  $("cameras-heading").textContent = t("home_cameras_heading", { count: cameras.length });
+  $("cameras-heading").textContent = t("home_cameras_heading", {
+    count: cameras.length,
+    max: MAX_PAIRED_CAMERAS
+  });
   const listEl = $("camera-list");
   const emptyEl = $("empty-state");
   listEl.innerHTML = "";
@@ -397,7 +405,7 @@ function openViewer(cam) {
     connState: "CONNECTING",
     connExtra: {},
     progress: null,
-    fps: 20,
+    fps: APP_CONFIG.webrtc.video.targetFps,
     battery: null,
     torchEnabled: false,
     nightMode: cam.nightModeSetting || "AUTO",

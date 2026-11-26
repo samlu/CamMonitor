@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "./config.js";
 import { deriveEcdhKey } from "./crypto.js";
 import { logger } from "./logger.js";
 import { computeTypicalConnectMs } from "./storage.js";
@@ -14,10 +15,7 @@ export const DISCONNECT_RECONNECT_DELAY_MS = 3000;
 export const BATTERY_QUERY_INTERVAL_MS = 15_000;
 export const PTT_IDLE_RELEASE_MS = 15_000;
 
-export const ICE_SERVERS = [
-  { urls: "stun:stun.l.google.com:19302" },
-  { urls: "stun:stun1.l.google.com:19302" }
-];
+export const ICE_SERVERS = APP_CONFIG.webrtc.iceServers;
 
 export const ViewerConnectionStep = Object.freeze({
   CONNECTING_NETWORK: 0,

@@ -1,5 +1,6 @@
 package com.a0soft.gphone.camonitor.data.model
 
+import com.a0soft.gphone.camonitor.config.AppConfig
 import org.json.JSONObject
 
 /**
@@ -31,7 +32,7 @@ data class PairingPayload(
     }
 
     companion object {
-        const val DEFAULT_WEB_VIEWER_BASE_URL = "https://samlu.github.io/CamMonitor/viewer/"
+        const val DEFAULT_WEB_VIEWER_BASE_URL = AppConfig.WEB_VIEWER_BASE_URL
         const val PAIR_FRAGMENT_PREFIX = "#pair="
 
         fun fromJson(jsonStr: String): PairingPayload? {

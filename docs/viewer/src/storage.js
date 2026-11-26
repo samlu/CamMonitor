@@ -1,7 +1,8 @@
+import { APP_CONFIG } from "./config.js";
 import { generateIdentityKeyPair, importPrivateKeysFromPkcs8, randomUuid } from "./crypto.js";
 import { sanitizeDeviceName } from "./ui.js";
 
-export const MAX_PAIRED_CAMERAS = 8;
+export const MAX_PAIRED_CAMERAS = APP_CONFIG.limits.maxPairedCameras;
 export const MAX_CONNECT_DURATION_SAMPLES = 3;
 export const MIN_VALID_CONNECT_DURATION_MS = 100;
 export const MAX_VALID_CONNECT_DURATION_MS = 30_000;

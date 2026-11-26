@@ -1,6 +1,7 @@
 package com.a0soft.gphone.camonitor.data.update
 
 import com.a0soft.gphone.camonitor.BuildConfig
+import com.a0soft.gphone.camonitor.config.AppConfig
 import com.a0soft.gphone.camonitor.log.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -12,7 +13,7 @@ import java.net.URL
 
 object ReleaseChecker {
     private const val TAG = "ReleaseChecker"
-    const val DEFAULT_GITHUB_RELEASE_URL = "https://api.github.com/repos/samlu/CamMonitor/releases/latest"
+    const val DEFAULT_GITHUB_RELEASE_URL = AppConfig.GITHUB_LATEST_RELEASE_API_URL
 
     /**
      * Parses the GitHub release JSON object into a [ReleaseInfo] model.
@@ -24,7 +25,7 @@ object ReleaseChecker {
             if (tag.isEmpty()) return null
             val versionName = tag.removePrefix("v").removePrefix("V")
             val title = json.optString("name", "CamMonitor $tag")
-            val releaseUrl = json.optString("html_url", "https://github.com/samlu/CamMonitor/releases")
+            val releaseUrl = json.optString("html_url", AppConfig.GITHUB_RELEASES_URL)
             val releaseNotes = json.optString("body", "")
             ReleaseInfo(
                 versionName = versionName,
@@ -75,8 +76,8 @@ object ReleaseChecker {
             val url = URL(endpointUrl)
             connection = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
-                connectTimeout = 10_000
-                readTimeout = 10_000
+                connectTimeout = AppConfig.UPDATE_HTTP_TIMEOUT_MS
+                readTimeout = AppConfig.UPDATE_HTTP_TIMEOUT_MS
                 setRequestProperty("Accept", "application/vnd.github+json")
                 setRequestProperty("User-Agent", "CamMonitor-Android/$currentVersionName")
             }

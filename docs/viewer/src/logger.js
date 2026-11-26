@@ -1,4 +1,6 @@
-const MAX_ENTRIES = 300;
+import { APP_CONFIG } from "./config.js";
+
+const MAX_ENTRIES = APP_CONFIG.logging.webMemoryEntries;
 const startEpochMs = Date.now();
 const entries = [];
 const listeners = new Set();
