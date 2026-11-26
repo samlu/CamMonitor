@@ -619,6 +619,9 @@ Every signaling envelope sent over the public MQTT broker is structured as:
     * Icon: `Icons.Default.Refresh` or a 16dp `CircularProgressIndicator` while checking.
     * Inline Feedback: Text status indicating `"Checking for updates..."`, `"You're on the latest version"`, or network error.
     * Update Found: Dynamically reveals `UpdateBannerCard` with update details and browser navigation button.
+* **Browser Web Viewer Card (`ElevatedCard`, `surfaceContainerHigh` `#2A2A2A`):**
+  * Displays the hosted Web Viewer URL (`PairingPayload.DEFAULT_WEB_VIEWER_BASE_URL`, `https://samlu.github.io/CamMonitor/viewer/`) inside a selectable monospace pill so paired users can easily retrieve or bookmark it.
+  * Actions: **`Copy URL`** (copies to `ClipboardManager` with 2.5s confirmation), **`Open`** (`Intent.ACTION_VIEW`), and **`Share`** (`Intent.ACTION_SEND`).
 * **Application Summary Card (`ElevatedCard`, `surfaceContainerHigh` `#2A2A2A`):**
   * Short Description: Multi-line overview emphasizing zero-account, P2P encryption, OLED power management, and 2-way talkback.
   * Open Source Notice: License declaration (Apache License 2.0).

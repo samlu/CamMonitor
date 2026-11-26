@@ -211,6 +211,12 @@
     <string name="about_open_source_notice">このアプリは Apache 2.0 ライセンスのオープンソースです。</string>
     <string name="about_view_on_github">GitHub で見る</string>
     <string name="about_github_url">https://github.com/samlu/CamMonitor</string>
+    <string name="about_web_viewer_title">ブラウザ Web ビューアー</string>
+    <string name="about_web_viewer_desc">iPhone、iPad、PC のブラウザでこの URL を開くと、ペアリング済みのカメラをいつでも視聴できます。</string>
+    <string name="about_web_viewer_copy">URL をコピー</string>
+    <string name="about_web_viewer_copied">コピー済み</string>
+    <string name="about_web_viewer_open">開く</string>
+    <string name="about_web_viewer_share">Web ビューアーの URL を共有</string>
     <string name="about_contributors_title">コントリビューター</string>
     <string name="about_contributors_subtitle">CamMonitor の改善にご協力いただいた皆様に感謝いたします。</string>
     <string name="about_contributor_samlu_role">作成者・コアメンテナー</string>
