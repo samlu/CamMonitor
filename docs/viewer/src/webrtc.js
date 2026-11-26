@@ -7,6 +7,8 @@ import { sanitizeDeviceName } from "./ui.js";
 export const DEFAULT_TIMEOUT_SEC = 15;
 export const DEFAULT_MAX_ATTEMPTS = 5;
 export const OFFER_RETRY_INTERVAL_MS = 3000;
+export const OFFER_RETRY_WAKING_INTERVAL_MS = 8000;
+export const ICE_ESTABLISH_WATCHDOG_MS = 12_000;
 export const COUNTDOWN_REVEAL_AFTER_SEC = 2;
 export const SLOW_HINT_AFTER_SEC = 5;
 export const FIRST_FRAME_FALLBACK_TIMEOUT_MS = 1500;
@@ -140,7 +142,7 @@ export function extractCandidateIp(candidateSdp) {
 export function isLoopbackIp(ip) {
   if (!ip) return false;
   const lower = ip.toLowerCase();
-  return lower === "::1" || lower.startsWith("127.");
+  return lower === "::1" || lower === "::" || lower === "0.0.0.0" || lower.startsWith("127.");
 }
 
 export function isPrivateLocalIp(ip) {
@@ -151,6 +153,8 @@ export function isPrivateLocalIp(ip) {
     return true;
   }
   if (/^172\.(1[6-9]|2\d|3[01])\./.test(lower)) return true;
+  // RFC 6598 Carrier-Grade NAT (100.64.0.0/10) — also treated as non-public by Chrome LNA
+  if (/^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(lower)) return true;
   if (lower.startsWith("fe80:") || /^f[cd][0-9a-f]{2}:/.test(lower)) return true;
   return false;
 }
@@ -207,6 +211,9 @@ export function createWebRtcViewerSession({
   peerConnectionFactory = null,
   getUserMediaFn = null,
   permissionsApi = globalThis.navigator?.permissions,
+  offerRetryIntervalMs = OFFER_RETRY_INTERVAL_MS,
+  wakingRetryIntervalMs = OFFER_RETRY_WAKING_INTERVAL_MS,
+  iceWatchdogMs = ICE_ESTABLISH_WATCHDOG_MS,
   nowFn = () => Date.now()
 }) {
   let pc = null;
@@ -223,6 +230,9 @@ export function createWebRtcViewerSession({
   let stepStartMs = 0;
   let hasRenderedFirstFrame = false;
   let isRemoteDescSet = false;
+  let appliedAnswerSdp = null;
+  let cameraWakingReceived = false;
+  let iceWatchdogRetried = false;
   let cameraName = camera.name || "Camera";
 
   const seenRemoteCandidates = new Set();
@@ -235,11 +245,13 @@ export function createWebRtcViewerSession({
   let unsubSignalingConn = null;
   let countdownTimer = null;
   let retryTimer = null;
+  let iceWatchdogTimer = null;
   let autoRetryTimeoutTimer = null;
   let disconnectReconnectTimer = null;
   let firstFrameFallbackTimer = null;
   let batteryPollTimer = null;
   const burstTimers = [];
+  let rescheduleOfferRetry = null;
 
   // PTT state
   let micTrack = null;
@@ -262,6 +274,8 @@ export function createWebRtcViewerSession({
     countdownTimer = null;
     clearTimeout(retryTimer);
     retryTimer = null;
+    clearTimeout(iceWatchdogTimer);
+    iceWatchdogTimer = null;
     clearTimeout(autoRetryTimeoutTimer);
     autoRetryTimeoutTimer = null;
     clearTimeout(disconnectReconnectTimer);
@@ -273,6 +287,7 @@ export function createWebRtcViewerSession({
     while (burstTimers.length) {
       clearTimeout(burstTimers.pop());
     }
+    rescheduleOfferRetry = null;
   }
 
   function releaseMicHardware() {
@@ -420,19 +435,44 @@ export function createWebRtcViewerSession({
         pc.ontrack = null;
         pc.ondatachannel = null;
         pc.onconnectionstatechange = null;
+        pc.oniceconnectionstatechange = null;
         pc.close();
       } catch (_) {}
       pc = null;
     }
     audioTransceiver = null;
     isRemoteDescSet = false;
+    appliedAnswerSdp = null;
+    cameraWakingReceived = false;
     localOfferSdp = null;
     localCandidates.length = 0;
     pendingRemoteCandidates.length = 0;
     seenRemoteCandidates.clear();
   }
 
-  async function startAttempt() {
+  function startIceEstablishWatchdog(gen) {
+    clearTimeout(iceWatchdogTimer);
+    iceWatchdogTimer = setTimeout(() => {
+      if (closed || gen !== sessionGen || !pc || pc.connectionState === "connected" || currentState === "LIVE") {
+        return;
+      }
+      if (!iceWatchdogRetried) {
+        iceWatchdogRetried = true;
+        logger.w(
+          "WebRTC",
+          `ICE did not reach connected within ${iceWatchdogMs}ms after Answer; retrying once with fresh session`
+        );
+        startAttempt({ forceFreshSignaling: true });
+      } else {
+        logger.w("WebRTC", `ICE stalled after Answer (${iceWatchdogMs}ms) on retry; marking FAILED`);
+        setState("FAILED", {
+          reason: !localNetworkGranted ? "LOCAL_NETWORK_BLOCKED" : "SYMMETRIC_NAT"
+        });
+      }
+    }, iceWatchdogMs);
+  }
+
+  async function startAttempt({ forceFreshSignaling = false } = {}) {
     if (closed) return;
     const gen = ++sessionGen;
     teardownPeer();
@@ -455,8 +495,22 @@ export function createWebRtcViewerSession({
       );
     }
 
-    await signaling.startListening(camera.broker || null);
+    let mqttConnected =
+      forceFreshSignaling && typeof signaling.forceReconnect === "function"
+        ? await signaling.forceReconnect(camera.broker || null)
+        : await signaling.startListening(camera.broker || null);
     if (closed || gen !== sessionGen) return;
+
+    if (!mqttConnected && typeof signaling.forceReconnect === "function") {
+      logger.w("WebRTC", "Initial MQTT connect failed; retrying once with fresh socket");
+      mqttConnected = await signaling.forceReconnect(camera.broker || null);
+      if (closed || gen !== sessionGen) return;
+    }
+    if (!mqttConnected) {
+      logger.e("WebRTC", "Signaling broker connection failed");
+      setState("FAILED", { reason: "SIGNALING_FAILED" });
+      return;
+    }
 
     const afterMqtt = nowFn();
     const step1Dur = Math.max(50, afterMqtt - stepStartMs);
@@ -522,11 +576,40 @@ export function createWebRtcViewerSession({
         .catch(() => {});
     };
 
+    const handlePeerFailed = () => {
+      clearTimeout(iceWatchdogTimer);
+      iceWatchdogTimer = null;
+      if (!iceWatchdogRetried && currentState !== "LIVE") {
+        iceWatchdogRetried = true;
+        logger.w("WebRTC", "PeerConnection failed before LIVE; retrying once with fresh session");
+        startAttempt({ forceFreshSignaling: true });
+        return;
+      }
+      setState("FAILED", {
+        reason: !localNetworkGranted ? "LOCAL_NETWORK_BLOCKED" : "SYMMETRIC_NAT"
+      });
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      if (closed || gen !== sessionGen || !pc) return;
+      const iceSt = pc.iceConnectionState;
+      logger.d("WebRTC", `IceConnectionState -> ${iceSt}`);
+      if (iceSt === "connected" || iceSt === "completed") {
+        clearTimeout(iceWatchdogTimer);
+        iceWatchdogTimer = null;
+      } else if (iceSt === "failed" && pc.connectionState !== "failed") {
+        handlePeerFailed();
+      }
+    };
+
     pc.onconnectionstatechange = () => {
       if (closed || gen !== sessionGen || !pc) return;
       const st = pc.connectionState;
       logger.i("WebRTC", `PeerConnectionState -> ${st}`);
       if (st === "connected") {
+        clearTimeout(iceWatchdogTimer);
+        iceWatchdogTimer = null;
+        iceWatchdogRetried = false;
         const now = nowFn();
         const step3Dur = Math.max(50, now - stepStartMs);
         stepStartMs = now;
@@ -555,16 +638,14 @@ export function createWebRtcViewerSession({
           sendCommand(ControlCommand.queryBattery());
         }, BATTERY_QUERY_INTERVAL_MS);
       } else if (st === "failed") {
-        setState("FAILED", {
-          reason: !localNetworkGranted ? "LOCAL_NETWORK_BLOCKED" : "SYMMETRIC_NAT"
-        });
+        handlePeerFailed();
       } else if (st === "disconnected") {
         setState("DISCONNECTED");
         clearTimeout(disconnectReconnectTimer);
         disconnectReconnectTimer = setTimeout(() => {
           if (!closed && gen === sessionGen && currentState === "DISCONNECTED") {
             logger.i("WebRTC", "Auto-reconnecting after 3s disconnect...");
-            startAttempt();
+            startAttempt({ forceFreshSignaling: true });
           }
         }, DISCONNECT_RECONNECT_DELAY_MS);
       }
@@ -576,19 +657,14 @@ export function createWebRtcViewerSession({
       await pc.setLocalDescription(offer);
       if (closed || gen !== sessionGen) return;
       localOfferSdp = offer.sdp;
-      await signaling.sendSignalingMessage(
-        camera.deviceId,
-        { type: "OFFER", sdp: localOfferSdp },
-        sharedKeyBytes,
-        { isOffer: true }
-      );
     } catch (err) {
       logger.e("WebRTC", `Offer creation failed: ${err.message}`);
       setState("FAILED", { reason: "OFFER_FAILED" });
       return;
     }
 
-    // Bounded 15s countdown
+    // Arm bounded 15s countdown and Offer retry BEFORE transmitting Offer so a slow/stalled
+    // MQTT publish can never freeze Step 2 unboundedly.
     let remaining = DEFAULT_TIMEOUT_SEC;
     countdownTimer = setInterval(() => {
       if (closed || gen !== sessionGen || isRemoteDescSet) {
@@ -608,16 +684,24 @@ export function createWebRtcViewerSession({
         autoRetryTimeoutTimer = setTimeout(() => {
           if (!closed && gen === sessionGen && currentState === "CAMERA_TIMEOUT") {
             logger.i("WebRTC", "Auto-retrying after CameraTimeout...");
-            startAttempt();
+            startAttempt({ forceFreshSignaling: true });
           }
         }, AUTO_RETRY_AFTER_TIMEOUT_MS);
       }
     }, 1000);
 
-    // Bounded Offer retries (every 3s up to 5 attempts)
+    // Bounded Offer retries (every 3s, extended to 8s once CAMERA_WAKING arrives to avoid clobbering PA)
     let attempt = 1;
-    const scheduleRetry = () => {
+    const scheduleRetry = (customDelayMs = null) => {
+      clearTimeout(retryTimer);
+      retryTimer = null;
       if (closed || gen !== sessionGen || isRemoteDescSet || attempt >= DEFAULT_MAX_ATTEMPTS) return;
+      const delayMs =
+        customDelayMs !== null
+          ? customDelayMs
+          : cameraWakingReceived
+            ? wakingRetryIntervalMs
+            : offerRetryIntervalMs;
       retryTimer = setTimeout(async () => {
         if (
           closed ||
@@ -649,9 +733,20 @@ export function createWebRtcViewerSession({
             .catch(() => {});
         }
         scheduleRetry();
-      }, OFFER_RETRY_INTERVAL_MS);
+      }, delayMs);
     };
+    rescheduleOfferRetry = (delayMs) => scheduleRetry(delayMs);
     scheduleRetry();
+
+    const offerSent = await signaling.sendSignalingMessage(
+      camera.deviceId,
+      { type: "OFFER", sdp: localOfferSdp },
+      sharedKeyBytes,
+      { isOffer: true }
+    );
+    if (!offerSent && !closed && gen === sessionGen && !isRemoteDescSet) {
+      logger.w("WebRTC", "Initial Offer publish failed; Offer retry timer will retransmit");
+    }
   }
 
   function start() {
@@ -660,18 +755,34 @@ export function createWebRtcViewerSession({
       if (closed || senderId !== camera.deviceId || !message) return;
       switch (message.type) {
         case "CAMERA_WAKING": {
+          cameraWakingReceived = true;
           if (message.cameraName) {
             cameraName = sanitizeDeviceName(message.cameraName, cameraName);
             onCameraUpdate({ name: cameraName });
           }
           updateProgress({ isCameraWakingUp: true });
+          if (!isRemoteDescSet && typeof rescheduleOfferRetry === "function") {
+            rescheduleOfferRetry(wakingRetryIntervalMs);
+          }
           break;
         }
         case "ANSWER": {
+          if (isRemoteDescSet) {
+            if (appliedAnswerSdp === message.sdp) {
+              logger.d("WebRTC", "Ignoring duplicate Answer with identical SDP");
+              return;
+            }
+            if (pc?.connectionState !== "connected" && currentState !== "LIVE") {
+              logger.w("WebRTC", "Received newer Answer after PeerConnection already stable; restarting attempt to resync");
+              startAttempt();
+            }
+            return;
+          }
           clearInterval(countdownTimer);
           countdownTimer = null;
           clearTimeout(retryTimer);
           retryTimer = null;
+          const answerGen = sessionGen;
           const now = nowFn();
           const step2Dur = Math.max(50, now - stepStartMs);
           stepStartMs = now;
@@ -691,10 +802,13 @@ export function createWebRtcViewerSession({
           if (pc) {
             try {
               await pc.setRemoteDescription({ type: "answer", sdp: message.sdp });
+              if (closed || answerGen !== sessionGen) return;
               isRemoteDescSet = true;
+              appliedAnswerSdp = message.sdp;
               if (currentState !== "LIVE") {
                 setState("STARTING_STREAM");
               }
+              startIceEstablishWatchdog(answerGen);
               await flushPendingIce();
               for (const cand of localCandidates) {
                 signaling
@@ -808,7 +922,10 @@ export function createWebRtcViewerSession({
 
   return {
     start,
-    reconnect: () => startAttempt(),
+    reconnect: () => {
+      iceWatchdogRetried = false;
+      return startAttempt({ forceFreshSignaling: true });
+    },
     notifyFirstFrame() {
       hasRenderedFirstFrame = true;
       if (

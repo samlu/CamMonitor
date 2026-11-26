@@ -39,6 +39,7 @@ class WebRtcManager(private val context: Context) {
     // Active PeerConnections mapped by peerId (max 2 for PA)
     private val peerConnections = java.util.concurrent.ConcurrentHashMap<String, PeerConnection>()
     private val peerConnectionStates = java.util.concurrent.ConcurrentHashMap<String, PeerConnection.PeerConnectionState>()
+    private val peerConnectionGenerations = java.util.concurrent.ConcurrentHashMap<String, Long>()
     private val dataChannels = java.util.concurrent.ConcurrentHashMap<String, DataChannel>()
 
     // Flows
@@ -333,8 +334,10 @@ class WebRtcManager(private val context: Context) {
             try {
                 com.a0soft.gphone.camonitor.CamMonitorApp.instance.torchManager.resetState()
             } catch (_: Exception) {}
+            peerConnections.keys.forEach { peerConnectionGenerations.merge(it, 1L, Long::plus) }
             peerConnections.values.forEach { it.dispose() }
             peerConnections.clear()
+            peerConnectionStates.clear()
             dataChannels.values.forEach { it.dispose() }
             dataChannels.clear()
             remoteDescriptionSetPeers.clear()
@@ -423,7 +426,8 @@ class WebRtcManager(private val context: Context) {
             return null
         }
         closePeer(peerId, keepPendingCandidates = true)
-        AppLogger.i(tag, "Creating new PeerConnection for $peerId with ${iceServers.size} ICE servers")
+        val pcGen = peerConnectionGenerations.merge(peerId, 1L, Long::plus) ?: 1L
+        AppLogger.i(tag, "Creating new PeerConnection for $peerId (gen=$pcGen) with ${iceServers.size} ICE servers")
 
         val rtcConfig = PeerConnection.RTCConfiguration(iceServers).apply {
             sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
@@ -432,24 +436,32 @@ class WebRtcManager(private val context: Context) {
 
         val pc = factory.createPeerConnection(rtcConfig, object : PeerConnection.Observer {
             override fun onIceCandidate(candidate: IceCandidate) {
+                if (peerConnectionGenerations[peerId] != pcGen) return
                 val typeMatch = Regex("typ\\s+(\\w+)").find(candidate.sdp)?.groupValues?.getOrNull(1) ?: "unknown"
                 AppLogger.i(tag, "Local ICE Candidate generated for $peerId: type=$typeMatch, mid=${candidate.sdpMid}, index=${candidate.sdpMLineIndex}")
                 onIceCandidateGenerated(candidate)
             }
 
             override fun onIceCandidatesRemoved(candidates: Array<out IceCandidate>?) {
+                if (peerConnectionGenerations[peerId] != pcGen) return
                 AppLogger.i(tag, "IceCandidates removed for $peerId: count=${candidates?.size ?: 0}")
             }
 
             override fun onSignalingChange(state: PeerConnection.SignalingState?) {
+                if (peerConnectionGenerations[peerId] != pcGen) return
                 AppLogger.i(tag, "SignalingState for $peerId: $state")
             }
 
             override fun onIceConnectionChange(state: PeerConnection.IceConnectionState?) {
+                if (peerConnectionGenerations[peerId] != pcGen) return
                 AppLogger.i(tag, "IceConnectionState for $peerId: $state")
             }
 
             override fun onConnectionChange(newState: PeerConnection.PeerConnectionState) {
+                if (peerConnectionGenerations[peerId] != pcGen) {
+                    AppLogger.d(tag, "Ignoring stale ConnectionChange($newState) for replaced PeerConnection $peerId (gen=$pcGen)")
+                    return
+                }
                 AppLogger.i(tag, "ConnectionChange for $peerId: $newState")
                 peerConnectionStates[peerId] = newState
                 _connectionState.value = newState
@@ -468,12 +480,14 @@ class WebRtcManager(private val context: Context) {
             }
 
             override fun onIceGatheringChange(state: PeerConnection.IceGatheringState?) {
+                if (peerConnectionGenerations[peerId] != pcGen) return
                 AppLogger.i(tag, "IceGatheringState for $peerId: $state")
             }
 
             override fun onAddStream(stream: MediaStream?) {}
 
             override fun onTrack(transceiver: RtpTransceiver?) {
+                if (peerConnectionGenerations[peerId] != pcGen) return
                 val track = transceiver?.receiver?.track()
                 if (track is VideoTrack) {
                     AppLogger.i(tag, "Remote VideoTrack received: id=${track.id()}, state=${track.state()}, enabled=${track.enabled()}")
@@ -505,6 +519,7 @@ class WebRtcManager(private val context: Context) {
             override fun onRemoveStream(stream: MediaStream?) {}
 
             override fun onDataChannel(dataChannel: DataChannel) {
+                if (peerConnectionGenerations[peerId] != pcGen) return
                 AppLogger.i(tag, "DataChannel received from $peerId: label=${dataChannel.label()}, id=${dataChannel.id()}")
                 setupDataChannel(peerId, dataChannel)
             }
@@ -829,6 +844,7 @@ class WebRtcManager(private val context: Context) {
     fun getPeerConnectionState(peerId: String): PeerConnection.PeerConnectionState? = peerConnectionStates[peerId]
 
     fun closePeer(peerId: String, keepPendingCandidates: Boolean = false) {
+        peerConnectionGenerations.merge(peerId, 1L, Long::plus)
         peerConnectionStates.remove(peerId)
         remoteDescriptionSetPeers.remove(peerId)
         if (!keepPendingCandidates) {
@@ -860,6 +876,7 @@ class WebRtcManager(private val context: Context) {
     }
 
     fun closeAll() {
+        peerConnections.keys.forEach { peerConnectionGenerations.merge(it, 1L, Long::plus) }
         peerConnectionStates.clear()
         remoteDescriptionSetPeers.clear()
         activePttPeers.clear()

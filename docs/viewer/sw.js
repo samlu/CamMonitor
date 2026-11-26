@@ -1,4 +1,4 @@
-const CACHE_NAME = "cammonitor-viewer-v4";
+const CACHE_NAME = "cammonitor-viewer-v5";
 const APP_SHELL_URLS = [
   "./",
   "./index.html",
@@ -36,6 +36,14 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+function isAppCodeRequest(url) {
+  return (
+    url.pathname.endsWith("/styles.css") ||
+    url.pathname.endsWith("/manifest.webmanifest") ||
+    url.pathname.includes("/src/")
+  );
+}
+
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
@@ -57,6 +65,23 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // Network-first for app ES modules & CSS to prevent HTML/JS version skew across deploys
+  if (isAppCodeRequest(url)) {
+    event.respondWith(
+      fetch(request)
+        .then((resp) => {
+          if (resp && resp.ok) {
+            const copy = resp.clone();
+            caches.open(CACHE_NAME).then((c) => c.put(request, copy)).catch(() => {});
+          }
+          return resp;
+        })
+        .catch(() => caches.match(request))
+    );
+    return;
+  }
+
+  // Cache-first (with background revalidate) for version-pinned vendor bundles & icons
   event.respondWith(
     caches.match(request).then((cached) => {
       const networkFetch = fetch(request)

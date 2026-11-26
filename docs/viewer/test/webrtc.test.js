@@ -299,3 +299,141 @@ test("WebRtcViewerSession creates video(recvonly), audio(sendrecv), DataChannel(
 
   session.close();
 });
+
+test("Chrome LNA filter also drops CGNAT 100.64.0.0/10 and unspecified 0.0.0.0 / :: addresses", () => {
+  const cgnat = "candidate:1 1 udp 2122260223 100.64.12.34 50000 typ host";
+  const unspecV4 = "candidate:2 1 udp 2122260223 0.0.0.0 50000 typ host";
+  const unspecV6 = "candidate:3 1 udp 2122260223 :: 50000 typ host";
+  assert.equal(shouldFilterRemoteCandidate(cgnat, { localNetworkGranted: false }), true);
+  assert.equal(shouldFilterRemoteCandidate(cgnat, { localNetworkGranted: true }), false);
+  assert.equal(shouldFilterRemoteCandidate(unspecV4, { localNetworkGranted: true }), true);
+  assert.equal(shouldFilterRemoteCandidate(unspecV6, { localNetworkGranted: true }), true);
+});
+
+test("WebRtcViewerSession extends Offer retry on CAMERA_WAKING, handles duplicate/split-brain ANSWER, and fires ICE watchdog retry", async () => {
+  const pa = await generateIdentityKeyPair();
+  const storage = createMemoryStore();
+  await storage.getOrCreateIdentity("Test Browser");
+  await storage.saveCamera({
+    deviceId: "pa-resilience",
+    name: "Porch",
+    publicKeyBase64: pa.publicKeySpkiBase64
+  });
+  const cam = await storage.getCamera("pa-resilience");
+
+  const msgHandlers = new Set();
+  const sentOffers = [];
+  let forceReconnectCalls = 0;
+  const signaling = {
+    onMessage: (cb) => {
+      msgHandlers.add(cb);
+      return () => msgHandlers.delete(cb);
+    },
+    onConnectionChange: () => () => {},
+    async startListening() {
+      return true;
+    },
+    async forceReconnect() {
+      forceReconnectCalls += 1;
+      return true;
+    },
+    async sendSignalingMessage(_id, msg) {
+      if (msg.type === "OFFER") sentOffers.push(msg);
+      return true;
+    }
+  };
+
+  const pcs = [];
+  const states = [];
+  const session = createWebRtcViewerSession({
+    camera: cam,
+    storage,
+    signaling,
+    offerRetryIntervalMs: 30,
+    wakingRetryIntervalMs: 250,
+    iceWatchdogMs: 60,
+    peerConnectionFactory: () => {
+      const pc = createMockPeerConnection();
+      pcs.push(pc);
+      return pc;
+    },
+    onStateChange: (st, extra) => states.push({ st, extra })
+  });
+
+  session.start();
+  await new Promise((r) => setTimeout(r, 15));
+  assert.equal(sentOffers.length, 1);
+
+  // CAMERA_WAKING must delay retry well past 30ms so PA isn't clobbered while waking
+  for (const cb of msgHandlers) {
+    await cb({ senderId: "pa-resilience", message: { type: "CAMERA_WAKING", cameraName: "Porch" } });
+  }
+  await new Promise((r) => setTimeout(r, 60));
+  assert.equal(sentOffers.length, 1, "Offer must NOT retransmit at 30ms after CAMERA_WAKING");
+
+  // Apply Answer #1, then receive identical Answer #1 duplicate (ignored)
+  for (const cb of msgHandlers) {
+    await cb({ senderId: "pa-resilience", message: { type: "ANSWER", sdp: "v=0\r\nans1" } });
+    await cb({ senderId: "pa-resilience", message: { type: "ANSWER", sdp: "v=0\r\nans1" } });
+  }
+  assert.equal(pcs.length, 1);
+
+  // ICE stalls past 60ms watchdog -> auto-retries once with forceReconnect (creating PC #2)
+  await new Promise((r) => setTimeout(r, 95));
+  assert.equal(forceReconnectCalls, 1);
+  assert.equal(pcs.length, 2);
+
+  // Apply Answer #2 on PC #2, then receive a DIFFERENT Answer #3 while still not connected -> triggers resync (PC #3)
+  for (const cb of msgHandlers) {
+    await cb({ senderId: "pa-resilience", message: { type: "ANSWER", sdp: "v=0\r\nans2" } });
+    await cb({ senderId: "pa-resilience", message: { type: "ANSWER", sdp: "v=0\r\nans3-different" } });
+  }
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(pcs.length, 3);
+
+  session.close();
+});
+
+test("WebRtcViewerSession fails cleanly with SIGNALING_FAILED when MQTT cannot connect", async () => {
+  const pa = await generateIdentityKeyPair();
+  const storage = createMemoryStore();
+  await storage.getOrCreateIdentity("Test Browser");
+  await storage.saveCamera({
+    deviceId: "pa-offline",
+    name: "Garage",
+    publicKeyBase64: pa.publicKeySpkiBase64
+  });
+  const cam = await storage.getCamera("pa-offline");
+
+  let forceCalls = 0;
+  const signaling = {
+    onMessage: () => () => {},
+    onConnectionChange: () => () => {},
+    async startListening() {
+      return false;
+    },
+    async forceReconnect() {
+      forceCalls += 1;
+      return false;
+    },
+    async sendSignalingMessage() {
+      return false;
+    }
+  };
+
+  const states = [];
+  const session = createWebRtcViewerSession({
+    camera: cam,
+    storage,
+    signaling,
+    peerConnectionFactory: () => createMockPeerConnection(),
+    onStateChange: (st, extra) => states.push({ st, extra })
+  });
+
+  session.start();
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(forceCalls, 1);
+  assert.equal(states.at(-1).st, "FAILED");
+  assert.equal(states.at(-1).extra.reason, "SIGNALING_FAILED");
+  session.close();
+});

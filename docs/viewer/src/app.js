@@ -249,7 +249,9 @@ function renderCenterOverlay() {
       st === "FAILED"
         ? viewerState.connExtra.reason === "LOCAL_NETWORK_BLOCKED"
           ? t("viewer_lna_blocked_desc")
-          : t("viewer_symmetric_nat_desc")
+          : viewerState.connExtra.reason === "SIGNALING_FAILED"
+            ? t("viewer_signaling_failed_desc")
+            : t("viewer_symmetric_nat_desc")
         : "";
     card.innerHTML = `
       <div class="status-card-title">${escapeHtml(title)}</div>
@@ -459,7 +461,15 @@ function openViewer(cam) {
     onStream: (stream) => {
       video.srcObject = stream;
       syncAudioElement();
-      video.play().catch(() => {});
+      video.play().catch((err) => {
+        if (!video.muted) {
+          logger.w("Video", `Unmuted autoplay blocked (${err?.name || "error"}); falling back to muted playback`);
+          viewerState.audioEnabled = false;
+          syncAudioElement();
+          renderViewerHud();
+          video.play().catch(() => {});
+        }
+      });
     },
     onCommand: (cmd) => {
       switch (cmd.cmd) {
@@ -849,9 +859,18 @@ function wireEvents() {
 
   window.addEventListener("online", () => signaling.handleNetworkOnline());
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") {
-      signaling.handlePageVisible();
+    if (document.visibilityState === "hidden") {
+      signaling.handlePageHidden();
+    } else if (document.visibilityState === "visible") {
+      signaling.handlePageVisible({ resumeIfWanted: Boolean(activeCamera) });
       if (activeCamera) acquireWakeLock();
+    }
+  });
+  window.addEventListener("pageshow", (ev) => {
+    if (ev.persisted && activeCamera) {
+      signaling.handlePageVisible({ resumeIfWanted: true });
+      activeSession?.reconnect();
+      acquireWakeLock();
     }
   });
   window.addEventListener("pagehide", () => {

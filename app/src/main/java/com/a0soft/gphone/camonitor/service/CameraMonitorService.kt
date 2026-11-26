@@ -39,6 +39,75 @@ enum class CameraStreamingState {
     PAUSED_INACTIVITY // Paused after 15s of 0 viewers
 }
 
+internal enum class OfferDedupAction {
+    CREATE_NEW_PEER,
+    IGNORE_IN_FLIGHT,
+    RESEND_CACHED_ANSWER
+}
+
+internal data class ActiveOfferSession(
+    val offerSdp: String,
+    val createdAtMs: Long,
+    @Volatile var answer: SignalingMessage.Answer? = null,
+    val localIceCandidates: java.util.concurrent.CopyOnWriteArrayList<SignalingMessage.IceCandidate> =
+        java.util.concurrent.CopyOnWriteArrayList()
+)
+
+/**
+ * Pure, JVM-testable Offer deduplication tracker.
+ * Prevents retransmitted identical Offers (e.g. while PA is waking up or Answer #1 was slow)
+ * from destroying PeerConnection #1 and triggering a split-brain SDP deadlock.
+ */
+internal class OfferDeduplicationTracker(
+    private val dedupWindowMs: Long = 15_000L
+) {
+    private val sessions = java.util.concurrent.ConcurrentHashMap<String, ActiveOfferSession>()
+
+    fun evaluate(
+        senderId: String,
+        offerSdp: String,
+        nowMs: Long,
+        isPeerAlive: Boolean
+    ): Pair<OfferDedupAction, ActiveOfferSession> {
+        val existing = sessions[senderId]
+        if (
+            existing != null &&
+            existing.offerSdp == offerSdp &&
+            isPeerAlive &&
+            (nowMs - existing.createdAtMs) in 0..dedupWindowMs
+        ) {
+            return if (existing.answer == null) {
+                OfferDedupAction.IGNORE_IN_FLIGHT to existing
+            } else {
+                OfferDedupAction.RESEND_CACHED_ANSWER to existing
+            }
+        }
+        val fresh = ActiveOfferSession(offerSdp = offerSdp, createdAtMs = nowMs)
+        sessions[senderId] = fresh
+        return OfferDedupAction.CREATE_NEW_PEER to fresh
+    }
+
+    fun recordAnswer(senderId: String, session: ActiveOfferSession, answer: SignalingMessage.Answer) {
+        if (sessions[senderId] === session) {
+            session.answer = answer
+        }
+    }
+
+    fun recordLocalCandidate(senderId: String, session: ActiveOfferSession, candidate: SignalingMessage.IceCandidate) {
+        if (sessions[senderId] === session) {
+            session.localIceCandidates.add(candidate)
+        }
+    }
+
+    fun clearPeer(senderId: String) {
+        sessions.remove(senderId)
+    }
+
+    fun clearAll() {
+        sessions.clear()
+    }
+}
+
 class CameraMonitorService : Service() {
     companion object {
         @Volatile
@@ -94,6 +163,7 @@ class CameraMonitorService : Service() {
      */
     private var cameraRecoveryAttempts = 0
     private var cameraRecoveryJob: Job? = null
+    private val offerDedupTracker = OfferDeduplicationTracker()
 
     inner class LocalBinder : Binder() {
         fun getService(): CameraMonitorService = this@CameraMonitorService
@@ -324,6 +394,7 @@ class CameraMonitorService : Service() {
         cancelInactivityTimer()
         stopBatteryBroadcast()
         resetCameraRecovery()
+        offerDedupTracker.clearAll()
         _streamingState.value = CameraStreamingState.IDLE
         CamMonitorApp.instance.webRtcManager.stopCameraCapture()
     }
@@ -400,6 +471,7 @@ class CameraMonitorService : Service() {
             }
             AppLogger.i(tag, "0 viewers for ${NO_VIEWER_PAUSE_MS / 1000}s: Stopping camera and pausing")
             resetCameraRecovery()
+            offerDedupTracker.clearAll()
             CamMonitorApp.instance.webRtcManager.stopCameraCapture()
             _streamingState.value = CameraStreamingState.PAUSED_INACTIVITY
             updateNotification(getString(R.string.notification_standby_waiting))
@@ -461,6 +533,41 @@ class CameraMonitorService : Service() {
             return
         }
 
+        // Deduplicate retransmitted identical Offer SDPs so PA doesn't destroy an in-flight/live PC #1
+        val existingPcState = app.webRtcManager.getPeerConnectionState(senderId)
+        val isPeerAlive = isExistingPeer &&
+            existingPcState != null &&
+            existingPcState != org.webrtc.PeerConnection.PeerConnectionState.FAILED &&
+            existingPcState != org.webrtc.PeerConnection.PeerConnectionState.CLOSED &&
+            existingPcState != org.webrtc.PeerConnection.PeerConnectionState.DISCONNECTED
+        val (offerAction, offerSession) = offerDedupTracker.evaluate(
+            senderId = senderId,
+            offerSdp = sdpStr,
+            nowMs = startTime,
+            isPeerAlive = isPeerAlive
+        )
+        when (offerAction) {
+            OfferDedupAction.IGNORE_IN_FLIGHT -> {
+                AppLogger.i(tag, "Ignoring duplicate retransmitted Offer from $senderId while Answer is still in flight")
+                return
+            }
+            OfferDedupAction.RESEND_CACHED_ANSWER -> {
+                val cachedAnswer = offerSession.answer
+                if (cachedAnswer != null) {
+                    AppLogger.i(
+                        tag,
+                        "Re-sending cached Answer and ${offerSession.localIceCandidates.size} ICE candidates for duplicate Offer from $senderId"
+                    )
+                    sendSignalingMessageToViewer(senderId, cachedAnswer)
+                    offerSession.localIceCandidates.forEach { cand ->
+                        sendSignalingMessageToViewer(senderId, cand)
+                    }
+                    return
+                }
+            }
+            OfferDedupAction.CREATE_NEW_PEER -> Unit
+        }
+
         // Cancel previous inactivity countdown so old timer does not kill camera mid-handshake
         cancelInactivityTimer()
         // A fresh connection is a fresh chance for the camera pipeline.
@@ -498,8 +605,10 @@ class CameraMonitorService : Service() {
             val typeMatch = Regex("typ\\s+(\\w+)").find(candidate.sdp)?.groupValues?.getOrNull(1) ?: "unknown"
             AppLogger.d(tag, "Generated local ICE candidate for $senderId: mid=${candidate.sdpMid}, type=$typeMatch. Transmitting...")
             val iceMsg = SignalingMessage.IceCandidate(candidate.sdpMid, candidate.sdpMLineIndex, candidate.sdp)
+            offerDedupTracker.recordLocalCandidate(senderId, offerSession, iceMsg)
             sendSignalingMessageToViewer(senderId, iceMsg)
         } ?: run {
+            offerDedupTracker.clearPeer(senderId)
             AppLogger.e(tag, "Failed to create PeerConnection for $senderId")
             return
         }
@@ -531,29 +640,41 @@ class CameraMonitorService : Service() {
                                                 cameraName = app.securityRepository.getDeviceName(),
                                                 fps = app.webRtcManager.streamFps.value
                                             )
+                                            offerDedupTracker.recordAnswer(senderId, offerSession, answerMsg)
                                             sendSignalingMessageToViewer(senderId, answerMsg)
                                         } catch (t: Throwable) {
                                             AppLogger.e(tag, "Error in setLocalDescription.onSetSuccess for $senderId", t)
                                         }
                                     }
                                     override fun onCreateSuccess(desc: SessionDescription?) {}
-                                    override fun onSetFailure(err: String?) { AppLogger.e(tag, "Failed setting local answer for $senderId: $err") }
+                                    override fun onSetFailure(err: String?) {
+                                        offerDedupTracker.clearPeer(senderId)
+                                        AppLogger.e(tag, "Failed setting local answer for $senderId: $err")
+                                    }
                                     override fun onCreateFailure(err: String?) {}
                                 }, answerDesc)
                             } catch (t: Throwable) {
+                                offerDedupTracker.clearPeer(senderId)
                                 AppLogger.e(tag, "Error in createAnswer.onCreateSuccess for $senderId", t)
                             }
                         }
                         override fun onSetSuccess() {}
-                        override fun onCreateFailure(err: String?) { AppLogger.e(tag, "Failed creating answer for $senderId: $err") }
+                        override fun onCreateFailure(err: String?) {
+                            offerDedupTracker.clearPeer(senderId)
+                            AppLogger.e(tag, "Failed creating answer for $senderId: $err")
+                        }
                         override fun onSetFailure(err: String?) {}
                     }, constraints)
                 } catch (t: Throwable) {
+                    offerDedupTracker.clearPeer(senderId)
                     AppLogger.e(tag, "Error in setRemoteDescription.onSetSuccess for $senderId", t)
                 }
             }
             override fun onCreateSuccess(desc: SessionDescription?) {}
-            override fun onSetFailure(err: String?) { AppLogger.e(tag, "Failed setting remote offer from $senderId: $err") }
+            override fun onSetFailure(err: String?) {
+                offerDedupTracker.clearPeer(senderId)
+                AppLogger.e(tag, "Failed setting remote offer from $senderId: $err")
+            }
             override fun onCreateFailure(err: String?) {}
         }, offerDesc)
     }

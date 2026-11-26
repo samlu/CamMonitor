@@ -21,6 +21,17 @@ export const DEFAULT_BROKER_URL = `wss://${PRIMARY_BROKER.host}:${PRIMARY_BROKER
 export const ALLOWED_BROKER_HOSTS = new Set(BROKERS_BY_HOST.keys());
 export const TIMESTAMP_TOLERANCE_MS = 120_000;
 export const NONCE_RETENTION_MS = 120_000;
+export const PUBLISH_TIMEOUT_MS = 5000;
+export const PAGE_HIDDEN_REFRESH_MS = 10_000;
+
+export function isClientHealthy(client) {
+  if (!client) return false;
+  if (client.disconnecting === true || client.disconnected === true) return false;
+  if (typeof client.connected === "boolean" && !client.connected) return false;
+  const readyState = client.stream?.socket?.readyState;
+  if (typeof readyState === "number" && readyState !== 1) return false;
+  return true;
+}
 
 export function resolveBrokerUrl(brokerHint) {
   if (!brokerHint || typeof brokerHint !== "string") {
@@ -262,13 +273,21 @@ export function createEnvelopeProcessor({
   };
 }
 
-export function createSignalingClient({ storage, mqttConnectFn = null }) {
+export function createSignalingClient({
+  storage,
+  mqttConnectFn = null,
+  publishTimeoutMs = PUBLISH_TIMEOUT_MS,
+  connectTimeoutMs = 8500,
+  hiddenRefreshMs = PAGE_HIDDEN_REFRESH_MS,
+  nowFn = () => Date.now()
+}) {
   const listeners = new Set();
   const connectionListeners = new Set();
 
   const processor = createEnvelopeProcessor({
     getIdentity: () => storage.getOrCreateIdentity(),
-    getPairedCamera: (id) => storage.getCamera(id)
+    getPairedCamera: (id) => storage.getCamera(id),
+    nowFn
   });
 
   let activeClient = null;
@@ -279,6 +298,8 @@ export function createSignalingClient({ storage, mqttConnectFn = null }) {
   let reconnectTimer = null;
   let backoffMs = 2000;
   let connectPromise = null;
+  let cancelPendingConnect = null;
+  let hiddenAtMs = null;
 
   function setConnected(val) {
     if (isConnected === val) return;
@@ -297,22 +318,47 @@ export function createSignalingClient({ storage, mqttConnectFn = null }) {
     }
   }
 
+  function abortInFlightAndCloseClient() {
+    clearReconnectTimer();
+    clientGeneration += 1;
+    const cancel = cancelPendingConnect;
+    cancelPendingConnect = null;
+    connectPromise = null;
+    if (cancel) {
+      try {
+        cancel();
+      } catch (_) {}
+    }
+    const client = activeClient;
+    activeClient = null;
+    setConnected(false);
+    if (client) {
+      try {
+        client.end(true);
+      } catch (_) {}
+    }
+  }
+
   function scheduleReconnect() {
-    if (!isListeningWanted || isConnected || reconnectTimer) return;
+    if (!isListeningWanted || (isConnected && isClientHealthy(activeClient)) || reconnectTimer) return;
     const wait = backoffMs;
     backoffMs = Math.min(APP_CONFIG.signaling.maxReconnectBackoffMs, backoffMs * 2);
     logger.i("MQTT", `Scheduling reconnect in ${wait}ms...`);
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
-      if (isListeningWanted && !isConnected) {
+      if (isListeningWanted && (!isConnected || !isClientHealthy(activeClient))) {
         connectInternal().catch(() => {});
       }
     }, wait);
   }
 
-  async function connectInternal() {
+  async function connectInternal(timeoutMs = connectTimeoutMs) {
     if (!isListeningWanted) return false;
-    if (isConnected && activeClient) return true;
+    if (isConnected && isClientHealthy(activeClient)) return true;
+    if (activeClient && !isClientHealthy(activeClient)) {
+      logger.w("MQTT", "Detected stale/unhealthy MQTT socket; resetting before connect");
+      abortInFlightAndCloseClient();
+    }
     if (connectPromise) return connectPromise;
 
     const connectImpl = mqttConnectFn || globalThis.mqtt?.connect;
@@ -320,10 +366,11 @@ export function createSignalingClient({ storage, mqttConnectFn = null }) {
       throw new Error("Vendored mqtt.min.js client is not loaded");
     }
 
-    connectPromise = (async () => {
+    const gen = ++clientGeneration;
+    const myPromise = (async () => {
       const identity = await storage.getOrCreateIdentity();
+      if (!isListeningWanted || gen !== clientGeneration) return false;
       const topic = `${SIGNALING_TOPIC_PREFIX}/${identity.deviceId}/rx`;
-      const gen = ++clientGeneration;
 
       if (activeClient) {
         try {
@@ -338,45 +385,75 @@ export function createSignalingClient({ storage, mqttConnectFn = null }) {
       return await new Promise((resolve) => {
         let settled = false;
         let hasEverConnected = false;
+        let client = null;
+        let timeoutId = null;
+
         const finish = (ok) => {
           if (!settled) {
             settled = true;
             clearTimeout(timeoutId);
+            if (cancelPendingConnect === cancel) {
+              cancelPendingConnect = null;
+            }
             resolve(ok);
           }
         };
 
-        const client = connectImpl(currentBrokerUrl, {
+        const cancel = () => {
+          if (client) {
+            try {
+              client.end(true);
+            } catch (_) {}
+          }
+          finish(false);
+        };
+        cancelPendingConnect = cancel;
+
+        if (!isListeningWanted || gen !== clientGeneration) {
+          finish(false);
+          return;
+        }
+
+        client = connectImpl(currentBrokerUrl, {
           clientId,
           protocolVersion: 4,
           clean: true,
           keepalive: APP_CONFIG.signaling.keepAliveSec,
           reconnectPeriod: 0,
-          connectTimeout: 8000
+          connectTimeout: Math.max(1000, timeoutMs - 500)
         });
 
-        const timeoutId = setTimeout(() => {
-          if (gen === clientGeneration && !settled) {
-            logger.w("MQTT", `Connection timeout (gen=${gen})`);
+        timeoutId = setTimeout(() => {
+          if (!settled) {
+            if (gen === clientGeneration) {
+              logger.w("MQTT", `Connection timeout (gen=${gen})`);
+              setConnected(false);
+            }
             try {
               client.end(true);
             } catch (_) {}
-            setConnected(false);
             finish(false);
           }
-        }, 8500);
+        }, timeoutMs);
 
         client.on("connect", () => {
           if (gen !== clientGeneration) {
             try {
               client.end(true);
             } catch (_) {}
+            finish(false);
             return;
           }
           hasEverConnected = true;
           backoffMs = 2000;
           client.subscribe(topic, { qos: 1 }, (err) => {
-            if (gen !== clientGeneration) return;
+            if (gen !== clientGeneration) {
+              try {
+                client.end(true);
+              } catch (_) {}
+              finish(false);
+              return;
+            }
             if (err) {
               logger.e("MQTT", `Subscribe failed on ${topic}: ${err.message}`);
               try {
@@ -412,7 +489,10 @@ export function createSignalingClient({ storage, mqttConnectFn = null }) {
         });
 
         const handleDrop = (reason) => {
-          if (gen !== clientGeneration) return;
+          if (gen !== clientGeneration) {
+            finish(false);
+            return;
+          }
           if (activeClient === client) activeClient = null;
           setConnected(false);
           if (!settled) {
@@ -432,11 +512,48 @@ export function createSignalingClient({ storage, mqttConnectFn = null }) {
       });
     })();
 
+    connectPromise = myPromise;
     try {
-      return await connectPromise;
+      return await myPromise;
     } finally {
-      connectPromise = null;
+      if (connectPromise === myPromise) {
+        connectPromise = null;
+      }
     }
+  }
+
+  function publishOnce(client, targetTopic, payloadStr) {
+    if (!isClientHealthy(client)) {
+      return Promise.resolve({ ok: false, timedOut: false, reason: "unhealthy_socket" });
+    }
+    return new Promise((resolve) => {
+      let settled = false;
+      const done = (result) => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          resolve(result);
+        }
+      };
+      const timer = setTimeout(() => {
+        logger.w("MQTT", `Publish timed out after ${publishTimeoutMs}ms on ${targetTopic}; treating socket as dead`);
+        done({ ok: false, timedOut: true, reason: "timeout" });
+      }, publishTimeoutMs);
+
+      try {
+        client.publish(targetTopic, payloadStr, { qos: 1 }, (err) => {
+          if (err) {
+            logger.w("MQTT", `Publish failed to ${targetTopic}: ${err.message}`);
+            done({ ok: false, timedOut: false, reason: err.message || "error" });
+          } else {
+            done({ ok: true, timedOut: false });
+          }
+        });
+      } catch (err) {
+        logger.w("MQTT", `Publish threw for ${targetTopic}: ${err.message}`);
+        done({ ok: false, timedOut: false, reason: err.message || "throw" });
+      }
+    });
   }
 
   return {
@@ -450,14 +567,15 @@ export function createSignalingClient({ storage, mqttConnectFn = null }) {
       connectionListeners.add(cb);
       return () => connectionListeners.delete(cb);
     },
-    isConnected: () => isConnected,
-    async startListening(brokerHint = null) {
+    isConnected: () => isConnected && isClientHealthy(activeClient),
+    async startListening(brokerHint = null, { forceFresh = false } = {}) {
       const nextUrl = resolveBrokerUrl(brokerHint);
-      if (nextUrl !== currentBrokerUrl && activeClient) {
-        await this.stopListening();
+      if (forceFresh || (nextUrl !== currentBrokerUrl && (activeClient || connectPromise))) {
+        abortInFlightAndCloseClient();
       }
       currentBrokerUrl = nextUrl;
       isListeningWanted = true;
+      backoffMs = 2000;
       clearReconnectTimer();
       const ok = await connectInternal();
       if (!ok && isListeningWanted) {
@@ -465,37 +583,47 @@ export function createSignalingClient({ storage, mqttConnectFn = null }) {
       }
       return ok;
     },
+    async forceReconnect(brokerHint = null, timeoutMs = connectTimeoutMs) {
+      const nextUrl = brokerHint ? resolveBrokerUrl(brokerHint) : currentBrokerUrl;
+      abortInFlightAndCloseClient();
+      currentBrokerUrl = nextUrl;
+      isListeningWanted = true;
+      backoffMs = 2000;
+      const ok = await connectInternal(timeoutMs);
+      if (!ok && isListeningWanted) {
+        scheduleReconnect();
+      }
+      return ok;
+    },
     async stopListening() {
       isListeningWanted = false;
-      clearReconnectTimer();
-      clientGeneration += 1;
-      const client = activeClient;
-      activeClient = null;
-      setConnected(false);
-      if (client) {
-        try {
-          client.end(true);
-        } catch (_) {}
-      }
+      abortInFlightAndCloseClient();
       logger.i("MQTT", "Stopped MQTT signaling");
     },
     async ensureConnected(timeoutMs = 7000) {
-      if (isConnected && activeClient) return true;
+      if (isConnected && isClientHealthy(activeClient)) return true;
       isListeningWanted = true;
-      const started = await Promise.race([
-        this.startListening(currentBrokerUrl),
-        new Promise((r) => setTimeout(() => r(false), timeoutMs))
-      ]);
-      return Boolean(started || (isConnected && activeClient));
+      clearReconnectTimer();
+      const ok = await connectInternal(timeoutMs);
+      if (ok && isConnected && isClientHealthy(activeClient)) return true;
+      // Cancel any wedged/timed-out attempt before caller retries
+      if (connectPromise) {
+        abortInFlightAndCloseClient();
+      }
+      return false;
     },
     async sendSignalingMessage(recipientId, messageObj, keyBytes, { isOffer = false } = {}) {
-      const connected = (await this.ensureConnected(7000)) || (await this.ensureConnected(5000));
+      let connected = await this.ensureConnected(7000);
+      if (!connected) {
+        logger.w("MQTT", `Initial connect failed before sending ${messageObj.type}; forcing fresh reconnect`);
+        connected = await this.forceReconnect(null, 5000);
+      }
       if (!connected || !activeClient) {
         logger.w("MQTT", `Cannot send ${messageObj.type} to ${recipientId}: not connected`);
         return false;
       }
       const identity = await storage.getOrCreateIdentity();
-      const timestamp = isOffer ? processor.nextOfferTimestamp(recipientId) : Date.now();
+      const timestamp = isOffer ? processor.nextOfferTimestamp(recipientId) : nowFn();
       const envelope = await createEnvelope({
         senderId: identity.deviceId,
         recipientId,
@@ -506,34 +634,36 @@ export function createSignalingClient({ storage, mqttConnectFn = null }) {
       });
       const targetTopic = `${SIGNALING_TOPIC_PREFIX}/${recipientId}/rx`;
       const payloadStr = JSON.stringify(envelope);
-      return await new Promise((resolve) => {
-        try {
-          activeClient.publish(targetTopic, payloadStr, { qos: 1 }, (err) => {
-            if (err) {
-              logger.w("MQTT", `Publish failed to ${targetTopic}: ${err.message}`);
-              resolve(false);
-            } else {
-              resolve(true);
-            }
-          });
-        } catch (err) {
-          logger.w("MQTT", `Publish threw for ${targetTopic}: ${err.message}`);
-          resolve(false);
-        }
-      });
+
+      const first = await publishOnce(activeClient, targetTopic, payloadStr);
+      if (first.ok) return true;
+
+      // Socket died or QoS-1 PUBACK timed out — tear down zombie socket and retry once cleanly
+      logger.w("MQTT", `Reconnecting MQTT after ${messageObj.type} publish failure (${first.reason})`);
+      const recovered = await this.forceReconnect(null, 5000);
+      if (!recovered || !activeClient) return false;
+      const retry = await publishOnce(activeClient, targetTopic, payloadStr);
+      return retry.ok;
     },
     handleNetworkOnline() {
-      if (isListeningWanted && !isConnected) {
+      if (isListeningWanted && (!isConnected || !isClientHealthy(activeClient))) {
         backoffMs = 2000;
-        clearReconnectTimer();
-        connectInternal().catch(() => {});
+        this.forceReconnect().catch(() => {});
       }
     },
-    handlePageVisible() {
-      if (isListeningWanted && (!isConnected || !activeClient)) {
-        backoffMs = 2000;
-        clearReconnectTimer();
-        connectInternal().catch(() => {});
+    handlePageHidden() {
+      hiddenAtMs = nowFn();
+    },
+    handlePageVisible({ resumeIfWanted = false } = {}) {
+      const hiddenDur = hiddenAtMs !== null ? Math.max(0, nowFn() - hiddenAtMs) : 0;
+      hiddenAtMs = null;
+      if (resumeIfWanted) {
+        isListeningWanted = true;
+      }
+      if (!isListeningWanted) return;
+      if (!isConnected || !isClientHealthy(activeClient) || hiddenDur >= hiddenRefreshMs) {
+        logger.i("MQTT", `Refreshing MQTT connection on page visible (hidden=${hiddenDur}ms, connected=${isConnected})`);
+        this.forceReconnect().catch(() => {});
       }
     }
   };
