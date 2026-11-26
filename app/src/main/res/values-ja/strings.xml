@@ -60,7 +60,7 @@
     <string name="home_stealth_intro_confirm">消灯して開始</string>
     <string name="home_compact_pair_hint">この端末をカメラとして使うには、先にビューアーをペアリングしてください</string>
     <string name="home_section_broadcaster">配信端末 (このデバイス)</string>
-    <string name="home_section_monitored_cameras">監視カメラ一覧 (%1$d)</string>
+    <string name="home_section_monitored_cameras">監視カメラ一覧 (%1$d/%2$d)</string>
     <string name="home_broadcaster_stealth_btn">消灯ステルス</string>
     <string name="home_broadcaster_start_btn">カメラ起動</string>
     <string name="home_broadcaster_viewers_authorized">%1$d/%2$d台 認証済み</string>

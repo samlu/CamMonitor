@@ -60,7 +60,7 @@
     <string name="home_stealth_intro_confirm">進入黑畫面</string>
     <string name="home_compact_pair_hint">請先配對觀看端，才能將此手機當作鏡頭使用</string>
     <string name="home_section_broadcaster">鏡頭端 (本裝置)</string>
-    <string name="home_section_monitored_cameras">監看鏡頭 (%1$d)</string>
+    <string name="home_section_monitored_cameras">監看鏡頭 (%1$d/%2$d)</string>
     <string name="home_broadcaster_stealth_btn">黑畫面啟動</string>
     <string name="home_broadcaster_start_btn">啟動鏡頭</string>
     <string name="home_broadcaster_viewers_authorized">已授權觀看端 (%1$d/%2$d)</string>

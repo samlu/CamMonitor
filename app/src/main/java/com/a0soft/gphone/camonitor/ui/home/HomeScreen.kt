@@ -843,7 +843,11 @@ private fun MonitoredCamerasSection(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = stringResource(R.string.home_section_monitored_cameras, pairedCameras.size),
+                text = stringResource(
+                    R.string.home_section_monitored_cameras,
+                    pairedCameras.size,
+                    SecurityRepository.MAX_PAIRED_CAMERAS
+                ),
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant

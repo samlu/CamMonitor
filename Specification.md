@@ -368,7 +368,7 @@ Every signaling envelope sent over the public MQTT broker is structured as:
        * `[▶ Start Camera]` (`Button`, Primary Cyan): Standard live camera launch with live local viewfinder active.
        * If 0 viewers are paired, tapping either button routes to Camera Pairing QR Display first (`broadcasterLaunchRoute()` → `PAIR_VIEWER_FIRST`). The Stealth choice is preserved across the pairing detour (`StealthLaunchIntent`), so after a successful pairing the camera still starts in the mode the user picked. The intent is cleared whenever the user leaves Camera Pairing or Camera Mode (including via system Back) and by the explicit `PersonAdd` / Manage Devices pairing entry points, so it can never leak into a later normal launch.
   2. **Monitored Cameras Section (`MonitoredCamerasSection`):**
-     * Header: `"MONITORED CAMERAS (<count>)"` (labelMedium, bold) with `TextButton("+ Pair Camera")` (visible if count $< 8$).
+     * Header: `"MONITORED CAMERAS (<count>/8)"` (labelMedium, bold) with `TextButton("+ Pair Camera")` (visible if count $< 8$).
      * Camera List: Each paired camera renders as a first-class `DirectCameraTile`:
         * Spacing: in portrait the two consoles are separated by 28dp (16dp column spacing + 12dp spacer) — larger than the 16dp used between other Home elements.
         * Squircle Icon: `Icons.Default.Visibility` (42dp, `secondaryContainer` alpha 0.35) — deliberately different from the Broadcaster card's `Videocam` so "watch" and "be the camera" are never the same glyph.
