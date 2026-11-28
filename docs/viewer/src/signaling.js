@@ -420,7 +420,9 @@ export function createSignalingClient({
           clean: true,
           keepalive: APP_CONFIG.signaling.keepAliveSec,
           reconnectPeriod: 0,
-          connectTimeout: Math.max(1000, timeoutMs - 500)
+          connectTimeout: Math.max(1000, timeoutMs - 500),
+          // Avoid mqtt.js worker-timers cross-realm performance.timeOrigin drift after mobile sleep/Doze
+          timerVariant: "native"
         });
 
         timeoutId = setTimeout(() => {

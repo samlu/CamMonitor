@@ -372,3 +372,37 @@ test("handlePageVisible refreshes stale socket after long hidden duration and re
   assert.equal(sig.isConnected(), true);
   await sig.stopListening();
 });
+
+test("createSignalingClient passes timerVariant='native' to avoid mqtt.js worker-timers sleep drift", async () => {
+  const pb = await generateIdentityKeyPair();
+  const storage = {
+    getOrCreateIdentity: async () => ({
+      deviceId: "pb-timer",
+      ecdsaPrivateKey: pb.ecdsaPrivateKey,
+      ecdhPrivateKey: pb.ecdhPrivateKey
+    }),
+    getCamera: async () => null
+  };
+
+  let receivedOpts = null;
+  const mqttConnectFn = (_url, opts) => {
+    receivedOpts = opts;
+    const c = new EventEmitter();
+    c.connected = false;
+    c.end = () => {
+      c.connected = false;
+    };
+    c.subscribe = (_t, _o, cb) => cb(null);
+    setTimeout(() => {
+      c.connected = true;
+      c.emit("connect");
+    }, 5);
+    return c;
+  };
+
+  const sig = createSignalingClient({ storage, mqttConnectFn });
+  assert.equal(await sig.startListening(), true);
+  assert.equal(receivedOpts?.timerVariant, "native");
+  assert.equal(receivedOpts?.protocolVersion, 4);
+  await sig.stopListening();
+});
